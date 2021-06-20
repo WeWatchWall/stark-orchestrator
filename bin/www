@@ -1,0 +1,124 @@
+#!/usr/bin/env node
+
+var debug = require('debug')('stark-server:server');
+require('dotenv').config();
+
+let modes = JSON.parse(process.env.STARK_MODES);
+
+// if (modes[0] || modes[1]) { 
+// 	require('appmetrics-prometheus').attach();
+// }
+
+// Optional based on the root user parameter.
+if (modes[0]) {
+	// Automatically turn on the edge service if it's not configured.
+	if (!modes[1]) {
+		process.env.STARK_MODES = '[true, true]';
+		modes[1] = true;
+	}
+
+	runApp('core');
+}
+
+if(modes[1]) {
+	runApp('edge');
+}
+
+
+function runApp(appName) {
+	/**
+	 * Module dependencies.
+	 */
+
+	const fs = require('fs');
+	var https = require('https');
+	var app = require(`../dist/${appName}/${appName}`);
+
+	/**
+	 * Get port from environment and store in Express.
+	 */
+	
+	var port = normalizePort(process.env.STARK_PORT || '3000');
+	port = (modes[0] && appName === 'edge' ? port + 1 : port);
+	
+	app.set('port', port);
+
+	/**
+	 * Create HTTP server.
+	 */
+
+	var server = https.createServer({
+	  key: fs.readFileSync(__dirname + './../key.pem'),
+	  cert: fs.readFileSync(__dirname + './../cert.pem'),
+	  passphrase: process.env.STARK_CERT_PASS
+	}, app);
+
+	/**
+	 * Listen on provided port, on all network interfaces.
+	 */
+
+	server.listen(port, '0.0.0.0');
+	server.on('error', onError);
+	server.on('listening', onListening);
+		
+		
+	/**
+	 * Event listener for HTTP server "error" event.
+	 */
+	function onError(error) {
+	  if (error.syscall !== 'listen') {
+		throw error;
+	  }
+
+	  var bind = typeof port === 'string'
+		? 'Pipe ' + port
+		: 'Port ' + port;
+
+	  // handle specific listen errors with friendly messages
+	  switch (error.code) {
+		case 'EACCES':
+		  console.error(bind + ' requires elevated privileges');
+		  process.exit(1);
+		  break;
+		case 'EADDRINUSE':
+		  console.error(bind + ' is already in use');
+		  process.exit(1);
+		  break;
+		default:
+		  throw error;
+	  }
+	}
+
+	/**
+	 * Event listener for HTTP server "listening" event.
+	 */
+	function onListening() {
+	  var addr = server.address();
+	  var bind = typeof addr === 'string'
+		? 'pipe ' + addr
+		: 'port ' + addr.port;
+	  debug('Listening on ' + bind);
+	}
+	
+}
+
+/**
+ * Normalize a port into a number, string, or false.
+ */
+
+function normalizePort(val) {
+  var port = parseInt(val, 10);
+
+  if (isNaN(port)) {
+    // named pipe
+    return val;
+  }
+
+  if (port >= 0) {
+    // port number
+    return port;
+  }
+
+  return false;
+}
+
