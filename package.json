@@ -36,7 +36,7 @@
     "generate-password": "^1.5.1",
     "http-errors": "~1.6.3",
     "jszip": "^3.5.0",
-    "lodash": "^4.17.20",
+    "lodash": "^4.17.21",
     "morgan": "~1.9.1",
     "nano": "^9.0.1",
     "node-fetch": "^2.6.1",

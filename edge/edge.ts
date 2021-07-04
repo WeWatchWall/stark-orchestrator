@@ -11,6 +11,8 @@ const health = require('@cloudnative/health-connect');
 
 import { NodeBootstrap } from './services/nodeBootstrap';
 import { PodManager } from './services/podManager';
+import { PodConfigManager } from './services/podConfigManager';
+import { UserAuth } from '../shared/objectmodels/userAuth';
 
 var edge = express();
 
@@ -64,6 +66,16 @@ async function Main() {
 
   let deployManagerService = new PodManager(nodeBootstrapService);
   await deployManagerService.init();
+
+  // TODO: Security problem, please make the PodConfigManager handle multiple nodes.
+  let user = new UserAuth({
+      server: undefined,
+      arg: undefined
+  }, true);
+  await user.load();
+
+  let podConfigService = new PodConfigManager(user);
+  await podConfigService.init();
 
 }
 Main();

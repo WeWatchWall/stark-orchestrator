@@ -86,8 +86,6 @@ export class PodEnv {
     // If I reach 0, and I call delete again, then I delete the install package,
     // So that I can call load automatically again...:()
     async delete() {
-        debugger;
-        throw new Error("This method is not implemented.");
 	}
 
     private newPodEnvModel = ObjectModel({

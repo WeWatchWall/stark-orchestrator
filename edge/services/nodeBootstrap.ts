@@ -1,10 +1,7 @@
-import FlatPromise from "flat-promise";
-import promiseRetry from 'promise-retry';
-
 import { NodeConfig } from "../objectmodels/nodeConfig";
 import { NodeUser } from "../objectmodels/nodeUser";
 import { Database } from "../../shared/objectmodels/database";
-import { UserUnauth } from "../objectmodels/userUnauth";
+import { UserUnauth } from "../../shared/objectmodels/userUnauth";
 
 export class NodeBootstrap {
     nodeConfig: NodeConfig;
@@ -31,26 +28,7 @@ export class NodeBootstrap {
             arg: {}
         }, true);
 
-        let promise = new FlatPromise();
-        var self = this;
-		promiseRetry(
-			async function (retry) {
-				try {
-                    await self.nodeUser.load();
-                } catch (error) {
-                    retry(error)
-                }
-			},
-			{retries: 8}
-		).then(
-			() => {
-				promise.resolve()
-			},
-			(error) => {
-				promise.reject(error);
-			}
-		);
-        await promise.promise;
+        await this.nodeUser.load();        
         
         // The admin key should exist on the core node after I add the node. 
         // this.user.state.key

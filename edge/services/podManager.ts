@@ -1,5 +1,5 @@
 import fs from 'fs-extra';
-import { PodConfig } from '../objectmodels/podConfig';
+import { Pod } from '../objectmodels/pod';
 import { NodeBootstrap } from './nodeBootstrap';
 
 export class PodManager {
@@ -28,7 +28,7 @@ export class PodManager {
                 "_id": {"$regex": "^podConfig"}
             }
         }).on('change', async function (change) {
-            if (change._deleted) { return; } 
+            if (change.deleted) { return; } 
             let newPodName = change.doc.data.name;
             if (!self.podConfigs[newPodName] && change.doc._attachments) {
                 self.add(newPodName);
@@ -38,7 +38,7 @@ export class PodManager {
 
     // Internally used on watching
     async add(podName: string) {
-        let podConfig = new PodConfig({
+        let podConfig = new Pod({
             db: this.nodeBootstrap.database.state,
             arg: {
                 name: podName,

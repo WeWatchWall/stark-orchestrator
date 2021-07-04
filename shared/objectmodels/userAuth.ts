@@ -67,10 +67,9 @@ export class UserAuth extends UserUnauth {
 			
 				// Alphanumeric string that may include _ and - having a length of 3 to 20 characters.
 				RegExp('^[a-zA-Z0-9-_]{3,20}$').test(newUser.name) &&
-				newUser.name !== 'admin' &&
 				newUser.name.indexOf('nodedb-') === -1 &&
-				RegExp('^[a-zA-Z0-9]{8,20}$').test(newUser.key);
-				// TODO: CONDITIONAL IF THERE IS A PASSWORD RegExp('^[a-zA-Z0-9]{8,20}$').test(newUser.password)
+				RegExp('^[a-zA-Z0-9]{8,20}$').test(newUser.key) &&
+				RegExp('^[a-zA-Z0-9]{8,20}$').test(newUser.password);
 		}
 	);
 }

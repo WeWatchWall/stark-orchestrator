@@ -117,11 +117,12 @@ export class NodeRegistration {
 		await databaseSecurity.load();
 		await databaseSecurity.save();
 
-		
 		// TODO: Bootstrap packages from OWN USER!
 		// On the edge, get own nodeConfig, install, and report status
 		// The service can watch for changes so the bootstrap is a 1-time
 		// version of the bootstraped pod from Admin.
+		//
+		// INFO: Only Availability.Any gets deployed here, means bootstrap only.
 		let podConfig = new PodConfig({
 			db: nodeDatabase.state,
 			arg: {
