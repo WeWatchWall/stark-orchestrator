@@ -32,7 +32,7 @@
     "email-validator": "^2.0.4",
     "express": "~4.16.1",
     "flat-promise": "^1.0.2",
-    "fs-extra": "git+https://github.com/jprichardson/node-fs-extra.git",
+    "fs-extra": "^9.0.1",
     "generate-password": "^1.5.1",
     "http-errors": "~1.6.3",
     "jszip": "^3.5.0",
@@ -52,7 +52,7 @@
     "session-pouchdb-store": "^0.4.1",
     "update-dotenv": "^1.1.1",
     "uuid": "^8.3.2",
-    "vm2": "git+https://github.com/patriksimek/vm2.git"
+    "vm2": "^3.9.2"
   },
   "devDependencies": {
     "@types/cors": "^2.8.8",

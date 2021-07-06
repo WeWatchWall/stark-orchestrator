@@ -24,7 +24,7 @@
     "registry": "https://npm.pkg.github.com/"
   },
   "dependencies": {
-    "fs-extra": "git+https://github.com/jprichardson/node-fs-extra.git"
+    "fs-extra": "^9.0.1"
   },
   "devDependencies": {
     "typescript": "^4.1.3"
