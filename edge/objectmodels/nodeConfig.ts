@@ -21,7 +21,7 @@ export class NodeConfig {
 	init(): void { 
         this.arg.username = process.env.STARK_USER_NAME;
         let mode = JSON.parse(process.env.STARK_MODES);
-        this.arg.mode = mode[0] ? DeploymentMode.Core : DeploymentMode.Edge // Browser will be hard-coded?;
+		this.arg.mode = mode[0] ? DeploymentMode.Core : DeploymentMode.Edge; // Browser will be hard-coded?;
         
 		if (this.validate) { this.validateNew() };
 	}
@@ -48,7 +48,7 @@ export class NodeConfig {
 		if (this.state) { this.validateState() };
 
 		this.db.setSchema(this.nodeConfigSchema);
-		this.state = await this.db.rel.save('nodeConfig', this.state);
+		this.state = { ...this.state, ...await this.db.rel.save('nodeConfig', this.state) };
 	}
 	
     toString() {
@@ -93,6 +93,8 @@ export class NodeConfig {
 
     	
 	private stateNodeConfigModel = ObjectModel({
+		id: String,
+		rev: String,
 		username: String,
 		name: String,
 		password: undefined,

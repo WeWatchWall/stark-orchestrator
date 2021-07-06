@@ -48,7 +48,8 @@ export class PodConfig {
                     'mode': this.arg.mode,
                     'name': this.arg.name
                 }
-            }
+            },
+            limit: 1
 		})).docs;
 		this.state = await this.arg.userDb.rel.parseRelDocs('packageConfig', this.state);
 		this.state = this.state.packageConfigs[0];

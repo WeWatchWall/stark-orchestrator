@@ -12,7 +12,7 @@ export class PodConfigManager {
   nodeDb: any;
 
   podConfigs = {};
-  podConfigsId = {};
+  packConfigsId = {};
 
   addWatcher: any;
 
@@ -57,19 +57,20 @@ export class PodConfigManager {
     /* #endregion */
 
     /* #region  Get pre-existing pods */
-    let prePodConfigs = (
-      await this.nodeDb.state.find({
+    // TODO: I HAVE TO CHECK THE LOGIC FOR SECURITY, AVAILABILITY, TAGS, ... AND ALSO NUMBER OF NODES, MAX NODES SOON
+    let prePackConfigs = (
+      await this.userDb.state.find({
         selector: {
-          _id: { $regex: "^podConfig" },
+          _id: { $regex: "^packageConfig" },
           data: {
             mode: this.nodeConfig.state.mode,
-          },
-        },
+          }
+        }
       })
     ).docs;
 
-    for (let prePodConfig of prePodConfigs) {
-      await this.add(prePodConfig._id, prePodConfig.data.name);
+    for (let prePackConfig of prePackConfigs) {
+      await this.add(prePackConfig._id, prePackConfig.data.name);
     }
     /* #endregion */
 
@@ -82,19 +83,19 @@ export class PodConfigManager {
         live: true,
         include_docs: true,
         selector: {
-          _id: { $regex: "^packageConfig" },
-        },
+          _id: { $regex: "^packageConfig" }
+        }
       })
-      .on("change", async function (change) {
+      .on('change', async function (change) {
         if (change.deleted) {
           self.delete(change.doc._id);
           return;
         }
 
         let newPodName = change.doc.data.name;
-        let newPodId = change.doc._id;
+        let newPackId = change.doc._id;
         if (!self.podConfigs[newPodName] && change.doc._attachments) {
-          self.add(newPodId, newPodName);
+          self.add(newPackId, newPodName);
         }
       });
     /* #endregion */
@@ -102,6 +103,7 @@ export class PodConfigManager {
 
   // Internally used on watching
   async add(podId: string, podName: string) {
+    /* #region  Create and save the PodConfig. */
     let podConfig = new PodConfig(
       {
         db: this.nodeDb.state,
@@ -113,20 +115,42 @@ export class PodConfigManager {
       },
       true
     );
-    this.podConfigsId[podId] = podConfig;
+    await podConfig.save();
+    
+    this.packConfigsId[podId] = podConfig;
     this.podConfigs[podName] = podConfig;
 
-    await podConfig.save();
+    /* #endregion */
+
+    /* #region  Get, add pod name, and save the NodeConfig. */
+    await this.nodeConfig.load();
+    let podConfigs = new Set(this.nodeConfig.state.podConfigs);
+    podConfigs.add(podName);
+    this.nodeConfig.state.podConfigs = Array.from(podConfigs);
+    await this.nodeConfig.save();
+    /* #endregion */
   }
 
   // TODO: Retrieve by Id.
   async delete(podId: string) {
-    let podConfig = this.podConfigsId[podId];
+    /* #region  Get pod by Id and retrieve its name. */
+    let podConfig = this.packConfigsId[podId];
     let podName = podConfig.arg.name;
+    /* #endregion */
+
+    /* #region  Get, remove pod name, and save the NodeConfig. */
+    await this.nodeConfig.load();
+    let podConfigs = new Set(this.nodeConfig.state.podConfigs);
+    podConfigs.delete(podName);
+    this.nodeConfig.state.podConfigs = Array.from(podConfigs);
+    await this.nodeConfig.save();
+    /* #endregion */
 
     podConfig.delete();
 
-    this.podConfigsId[podId] = undefined;
+    /* #region  Accounting. */
+    this.packConfigsId[podId] = undefined;
     this.podConfigs[podName] = undefined;
+    /* #endregion */
   }
 }
