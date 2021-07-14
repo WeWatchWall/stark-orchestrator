@@ -1,5 +1,7 @@
 // import assert from "assert"
+import { EventEmitter } from 'events';
 import { ObjectModel, ArrayModel } from "objectmodel";
+
 import { ProvisionStatus } from '../../shared/objectmodels/provisionStatus';
 import { DeploymentMode } from '../../shared/objectmodels/deploymentMode'
 import { Availability } from "../../shared/objectmodels/availability";
@@ -11,6 +13,8 @@ export class NodeConfig {
 	validate: boolean;
 	state: any;
 	string: string;
+	watcher: any;
+	eventEmitter = new EventEmitter();
 	
 	constructor(arg = { db: undefined, arg: undefined}, validate = false) {
 		this.db = arg.db;
@@ -32,7 +36,6 @@ export class NodeConfig {
 	}
 
     async load() {
-		// TODO USE DB
 		this.db.setSchema(this.nodeConfigSchema);
 		this.state = (await this.db.find({
 			selector: { data: this.arg },
@@ -41,6 +44,32 @@ export class NodeConfig {
 		this.state = await this.db.rel.parseRelDocs('nodeConfig', this.state);
 		this.state = this.state.nodeConfigs[0];
 		this.validateState();
+
+		var self = this;
+		this.watcher = this.db.changes({
+            since: 'now',
+            live: true,
+            include_docs: true,
+            selector: {
+                "_id": self.db.rel.makeDocID({
+					id: self.state.id,
+					type: 'nodeConfig'
+				})
+            }
+        }).on('change', async function (change) {
+            if (change.deleted) {
+                await self.delete();
+                return;
+            }
+
+            self.db.setSchema(self.nodeConfigSchema);
+            let parsedChange = await self.db.rel.parseRelDocs('nodeConfig', [change.doc]);
+            parsedChange = parsedChange.nodeConfigs[0];
+			self.state = parsedChange;
+			self.validateState();
+
+			self.eventEmitter.emit('change', self.state);
+        });
 	}
 	
 	async save() {

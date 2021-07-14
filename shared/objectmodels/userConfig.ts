@@ -1,3 +1,4 @@
+import { EventEmitter } from 'events';
 import { ObjectModel, ArrayModel } from "objectmodel";
 import assert from "assert"
 import validator from "email-validator";
@@ -8,7 +9,9 @@ export class UserConfig {
 	db: any;
 	string: string;
 	state: any;
-		
+	watcher: any;
+	eventEmitter = new EventEmitter();
+
 	constructor(arg = { db: undefined, arg: undefined},  validate = false) {
 		this.db = arg.db;
 		this.arg = arg.arg;
@@ -31,6 +34,32 @@ export class UserConfig {
 		this.state = await this.db.rel.parseRelDocs('userConfig', this.state);
 		this.state = this.state.userConfigs[0];
 		this.validateState();
+
+		var self = this;
+		this.watcher = this.db.changes({
+			since: 'now',
+			live: true,
+			include_docs: true,
+			selector: {
+				"_id": self.db.rel.makeDocID({
+					id: self.state.id,
+					type: 'userConfig'
+				})
+			}
+		}).on('change', async function (change) {
+			if (change.deleted) {
+				await self.delete();
+				return;
+			}
+
+			self.db.setSchema(self.userConfigSchema);
+			let parsedChange = await self.db.rel.parseRelDocs('userConfig', [change.doc]);
+			parsedChange = parsedChange.userConfigs[0];
+			self.state = parsedChange;
+			self.validateState();
+
+			self.eventEmitter.emit('change', self.state);
+		});
 	}
 
 	async save() {

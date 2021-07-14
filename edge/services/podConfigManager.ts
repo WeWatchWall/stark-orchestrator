@@ -1,12 +1,14 @@
 import { Availability } from "../../shared/objectmodels/availability";
 import { Database } from "../../shared/objectmodels/database";
 import { NodeUser } from "../../shared/objectmodels/nodeUser";
+import { UserConfig } from "../../shared/objectmodels/userConfig";
 import { NodeConfig } from "../objectmodels/nodeConfig";
 import { PodConfig } from "../objectmodels/podConfig";
 
 export class PodConfigManager {
   user: any;
   userDb: any;
+  userConfig: any;
 
   nodeUser: any;
   nodeConfig: any;
@@ -16,6 +18,7 @@ export class PodConfigManager {
   packConfigsId = {};
 
   addWatcher: any;
+  isDeleting = false;
 
   constructor(user: any) {
     this.user = user;
@@ -29,6 +32,9 @@ export class PodConfigManager {
       password: this.user.state.password
     });
     await this.userDb.load();
+
+    this.userConfig = new UserConfig({ db: this.userDb.state, arg: { name: this.user.state.name} });
+    await this.userConfig.load();
 
     this.nodeUser = new NodeUser(
       {
@@ -110,6 +116,14 @@ export class PodConfigManager {
         }
       });
     /* #endregion */
+
+    this.nodeConfig.eventEmitter.on('change', async (nodeConfig) => {
+      if (!self.isDeleting && nodeConfig.availability === Availability.Off) {
+        self.isDeleting = true;
+        await self.deleteAll();
+        self.isDeleting = false;
+      }
+    })
   }
 
   // Internally used on watching
@@ -148,12 +162,14 @@ export class PodConfigManager {
   }
 
   private async isAvailable(packageDoc): Promise<boolean> {
+    if (!this.userConfig.state.enablePods) { return false; }
+    if (!this.nodeConfig.state.availability) { return false; }
+
     if (!packageDoc._attachments) { return false; }
     if (packageDoc.data.mode !== this.nodeConfig.state.mode) { return false; }
-    if (packageDoc.data.availability === Availability.Off) { return false; }
+    if (!packageDoc.data.availability) { return false; }
 
     if (packageDoc.data.availability === Availability.Tag) {
-      await this.nodeConfig.load();
       let nodeDoc = this.nodeConfig.state;
 
       packageDoc.data.tags.forEach(tag => {
@@ -187,5 +203,13 @@ export class PodConfigManager {
     this.packConfigsId[podId] = undefined;
     this.podConfigs[podName] = undefined;
     /* #endregion */
+  }
+
+  private async deleteAll() {
+    let packNames = [...Object.keys(this.packConfigsId)]; // Copying an array with the spread operator :)
+
+    packNames.forEach(packName => {
+      this.delete(packName);
+    });
   }
 }
