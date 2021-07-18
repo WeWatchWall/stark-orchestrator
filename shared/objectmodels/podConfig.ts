@@ -1,0 +1,117 @@
+import { EventEmitter } from 'events';
+import assert from "assert";
+import { ObjectModel } from "objectmodel";
+import { diff } from 'deep-object-diff';
+
+export class PodConfig {
+	db: any;
+	arg: any;
+	validate: boolean;
+    state: any;
+    change: any;
+    isSaved = false;
+	string: string;
+    watcher: any;
+    eventEmitter = new EventEmitter();
+    
+	/**
+	 * Creates an instance of user.
+	 * @param [arg.db]
+	 * @param [arg.arg]
+	 * @param [validate] Is necessary because the arg could be used to load (future).
+	 */
+	constructor(arg = { db: undefined, arg: undefined},  validate = false) {
+		this.db = arg.db;
+		this.arg = arg.arg;
+		this.validate = validate;
+	}
+
+    // Fragile, could change before load but don't want it to run before load. should be easy with a flag :)
+    async init() {
+        var self = this;
+        this.watcher = this.db.changes({
+            since: 'now',
+            live: true,
+            include_docs: true,
+            selector: {
+                "_id": this.arg.id
+            }
+        }).on('change', async function (change) {
+            if (change.deleted) {
+                // TODO: self-destruct?
+                this.eventEmitter.emit("delete");
+                self.delete();
+                return;
+            }
+
+            let saved;
+            saved = [change.doc];
+            self.db.setSchema(self.podConfigSchema);
+            saved = await self.db.rel.parseRelDocs('podConfig', saved);
+            saved = saved.podConfigs[0];
+            self.change = diff(self.state, saved);
+            self.state = saved;
+            
+            self.validateState();            
+			self.eventEmitter.emit('change', self.change);
+        });
+    }
+	
+	/**
+	 * Parses user.
+	 * @param arg 
+	 */
+	parse(arg: string) {
+		this.arg = JSON.parse(arg);
+		if (this.validate) { this.validateNew(); }
+	}
+	
+    async load() {
+        if (this.state) { return; }
+        if (this.validate) { this.validateNew(); }
+        
+        this.db.setSchema(this.podConfigSchema);
+        let  saved = (await this.db.find({
+            selector: {
+                "_id": this.arg.id
+            },
+            limit: 1
+        })).docs;
+        saved = await this.db.rel.parseRelDocs('podConfig', saved);
+        this.state = saved.podConfigs[0];
+        this.validateState();
+	}
+
+    async save() {
+        if (this.validate) { this.validateNew(); }
+		if (!this.state) { this.init(); }
+
+		this.db.setSchema(this.podConfigSchema);
+		this.state = { ...this.state, ...await this.db.rel.save('podConfig', this.state) };
+
+		this.validateState();
+	}
+
+	toString() {
+		this.string = JSON.stringify(this.state);
+	}
+
+    async delete() {
+        // NOOP
+	}
+
+    private newDeployConfigModel = ObjectModel({
+        id: String
+    });
+
+    private validateNew() {
+        this.arg = new this.newDeployConfigModel(this.arg);
+    }
+
+    private podConfigSchema = [{ singular: 'podConfig', plural: 'podConfigs' }];
+
+    private validateState() {
+        assert(!!this.state);
+    }
+	
+}

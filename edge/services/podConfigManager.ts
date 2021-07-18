@@ -34,7 +34,7 @@ export class PodConfigManager {
     await this.userDb.load();
 
     this.userConfig = new UserConfig({ db: this.userDb.state, arg: { name: this.user.state.name} });
-    await this.userConfig.load();
+    await this.userConfig.init();
 
     this.nodeUser = new NodeUser(
       {
@@ -64,7 +64,6 @@ export class PodConfigManager {
     /* #endregion */
 
     /* #region  Get pre-existing pods */
-    // TODO: I HAVE TO CHECK THE LOGIC FOR SECURITY, AVAILABILITY, TAGS, ... AND ALSO NUMBER OF NODES, MAX NODES SOON
     let prePackConfigs = (
       await this.userDb.state.find({
         selector: {
@@ -85,7 +84,6 @@ export class PodConfigManager {
     /* #endregion */
 
     /* #region  Watch the user's DB for changes to the package. */
-    // TODO: I HAVE TO CHECK THE LOGIC FOR SECURITY, AVAILABILITY, TAGS, ... AND ALSO NUMBER OF NODES, MAX NODES SOON
     var self = this;
     this.addWatcher = this.userDb.state
       .changes({
@@ -110,7 +108,7 @@ export class PodConfigManager {
           return;
         }
 
-        if (!await self.isAvailable(doc)) {
+        if (!self.isAvailable(doc)) {
           self.delete(doc._id);
           return;
         }
@@ -123,7 +121,7 @@ export class PodConfigManager {
         await self.deleteAll();
         self.isDeleting = false;
       }
-    })
+    });
   }
 
   // Internally used on watching
@@ -131,7 +129,7 @@ export class PodConfigManager {
     let podId = packageDoc._id;
     let podName = packageDoc.data.name;
 
-    if (!await this.isAvailable(packageDoc)) { return; }
+    if (!this.isAvailable(packageDoc)) { return; }
 
     /* #region  Create and save the PodConfig. */
     let podConfig = new PodConfig(
@@ -157,11 +155,11 @@ export class PodConfigManager {
     let podConfigs = new Set(this.nodeConfig.state.podConfigs);
     podConfigs.add(podName);
     this.nodeConfig.state.podConfigs = Array.from(podConfigs);
-    await this.nodeConfig.save();
+    await this.nodeConfig.save();  // TODO: DANGER MAY COLLIDE
     /* #endregion */
   }
 
-  private async isAvailable(packageDoc): Promise<boolean> {
+  private isAvailable(packageDoc): boolean {
     if (!this.userConfig.state.enablePods) { return false; }
     if (!this.nodeConfig.state.availability) { return false; }
 
@@ -194,7 +192,7 @@ export class PodConfigManager {
     let podConfigs = new Set(this.nodeConfig.state.podConfigs);
     podConfigs.delete(podName);
     this.nodeConfig.state.podConfigs = Array.from(podConfigs);
-    await this.nodeConfig.save();
+    await this.nodeConfig.save();  // TODO: DANGER MAY COLLIDE
     /* #endregion */
 
     podConfig.delete();
@@ -206,10 +204,10 @@ export class PodConfigManager {
   }
 
   private async deleteAll() {
-    let packNames = [...Object.keys(this.packConfigsId)]; // Copying an array with the spread operator :)
+    let packIds = [...Object.keys(this.packConfigsId)]; // Copying an array with the spread operator :)
 
-    packNames.forEach(packName => {
-      this.delete(packName);
+    packIds.forEach(packId => {
+      this.delete(packId);
     });
   }
 }

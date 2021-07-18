@@ -18,22 +18,8 @@ export class UserConfig {
 		this.validate = validate;
 	}
 	
-	init(): void { throw new Error("This method is not implemented."); }
-
-	parse(arg: string) {
-		this.arg = JSON.parse(arg);
-	}
-	
-	// NOTE: This is assumed to be called first!
-	async load() {		
-		this.db.setSchema(this.userConfigSchema);
-		this.state = (await this.db.find({
-			selector: { data: this.arg },
-			limit: 1
-		})).docs;
-		this.state = await this.db.rel.parseRelDocs('userConfig', this.state);
-		this.state = this.state.userConfigs[0];
-		this.validateState();
+	async init() {
+		await this.load();
 
 		var self = this;
 		this.watcher = this.db.changes({
@@ -41,14 +27,14 @@ export class UserConfig {
 			live: true,
 			include_docs: true,
 			selector: {
-				"_id": self.db.rel.makeDocID({
-					id: self.state.id,
+				"_id": this.db.rel.makeDocID({
+					id: this.state.id,
 					type: 'userConfig'
 				})
 			}
 		}).on('change', async function (change) {
 			if (change.deleted) {
-				await self.delete();
+				this.eventEmitter.emit("delete");
 				return;
 			}
 
@@ -60,6 +46,25 @@ export class UserConfig {
 
 			self.eventEmitter.emit('change', self.state);
 		});
+	}
+
+	parse(arg: string) {
+		this.arg = JSON.parse(arg);
+	}
+	
+	async load() {
+		if (this.state) { return; }
+		if (this.validate) { this.validateNew(); }
+		
+		this.db.setSchema(this.userConfigSchema);
+		this.state = (await this.db.find({
+			selector: { data: this.arg },
+			limit: 1
+		})).docs;
+		this.state = await this.db.rel.parseRelDocs('userConfig', this.state);
+		this.state = this.state.userConfigs[0];
+
+		this.validateState();
 	}
 
 	async save() {
@@ -75,8 +80,9 @@ export class UserConfig {
 		this.string = JSON.stringify(this.state);
 	}
 	
-	// NOOP
+	// TODO: NEVER CALLED?
 	async delete() {
+		
 	}
 	
 	// TODO: Not allowed. Will validate args later...
@@ -141,7 +147,8 @@ export class UserConfig {
 	);
 
 	private validateState() {
-		this.state = new this.stateUserConfigInstance(this.state);
+		assert(!!this.state);
+		// TODO: use this: this.state = new this.stateUserConfigInstance(this.state);
 	}
 
 }

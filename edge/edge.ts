@@ -13,6 +13,7 @@ import { NodeBootstrap } from './services/nodeBootstrap';
 import { PodManager } from './services/podManager';
 import { PodConfigManager } from './services/podConfigManager';
 import { UserAuth } from '../shared/objectmodels/userAuth';
+import { PodNumManager } from './services/podNumManager';
 
 var edge = express();
 
@@ -77,6 +78,8 @@ async function Main() {
   let podConfigService = new PodConfigManager(user);
   await podConfigService.init();
 
+  let podNumService = new PodNumManager(user);
+  await podNumService.init();
 }
 Main();
 

@@ -4,6 +4,7 @@ import assert from "assert";
 import { DeploymentMode } from '../../shared/objectmodels/deploymentMode';
 import { Security } from '../../shared/objectmodels/security';
 import { Availability } from '../../shared/objectmodels/availability';
+import { ProvisionStatus } from '../../shared/objectmodels/provisionStatus';
 
 export class PackageConfig {
 	db: any;
@@ -85,7 +86,8 @@ export class PackageConfig {
         security: [Security.Private, Security.Friends, Security.Public],
 		tags: ArrayModel(String),
 		maxPods: Number,
-		numPods: Number
+		numPods: Number,
+		status: [ProvisionStatus.Init, ProvisionStatus.Up, ProvisionStatus.Error, ProvisionStatus.Stop]
 		
     }).defaultTo({
         // Require name
@@ -94,7 +96,8 @@ export class PackageConfig {
         security: Security.Private,
 		tags: [],
 		maxPods: 0,
-		numPods: -1
+		numPods: 0,
+		status: ProvisionStatus.Init
     }).assert(
 		newUser => {
 			// TODO

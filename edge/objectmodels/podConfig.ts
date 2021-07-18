@@ -63,7 +63,8 @@ export class PodConfig {
                     'mode': this.arg.mode,
                     'name': this.arg.name
                 }
-            }
+            },
+            limit: 1
         })).docs;
         saved = await this.db.rel.parseRelDocs('podConfig', saved);
         this.isSaved = !!saved.podConfigs[0];

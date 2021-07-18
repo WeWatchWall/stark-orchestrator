@@ -37,7 +37,7 @@ export class PackageRegistration {
             await packageConfig.load();
         } catch (error) {            
             let userConfig = new UserConfig({ db: arg.db, arg: { name: arg.username} });
-            await userConfig.load();
+            await userConfig.init();
             let packageConfigs = new Set(userConfig.state.packageConfigs);
             packageConfigs.add(arg.arg.name);
             userConfig.state.packageConfigs = Array.from(packageConfigs);

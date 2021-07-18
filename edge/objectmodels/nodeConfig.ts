@@ -23,8 +23,8 @@ export class NodeConfig {
 	}
 	
 	init(): void { 
-        this.arg.username = process.env.STARK_USER_NAME;
-        let mode = JSON.parse(process.env.STARK_MODES);
+		this.arg.username = process.env.STARK_USER_NAME;
+		let mode = JSON.parse(process.env.STARK_MODES);
 		this.arg.mode = mode[0] ? DeploymentMode.Core : DeploymentMode.Edge; // Browser will be hard-coded?;
         
 		if (this.validate) { this.validateNew() };
@@ -47,37 +47,39 @@ export class NodeConfig {
 
 		var self = this;
 		this.watcher = this.db.changes({
-            since: 'now',
-            live: true,
-            include_docs: true,
-            selector: {
-                "_id": self.db.rel.makeDocID({
-					id: self.state.id,
-					type: 'nodeConfig'
+			since: 'now',
+			live: true,
+			include_docs: true,
+			selector: {
+				"_id": self.db.rel.makeDocID({
+						id: self.state.id,
+						type: 'nodeConfig'
 				})
-            }
-        }).on('change', async function (change) {
-            if (change.deleted) {
-                await self.delete();
-                return;
-            }
+			}
+		}).on('change', async function (change) {
+			if (change.deleted) {
+					await self.delete();
+					return;
+			}
 
-            self.db.setSchema(self.nodeConfigSchema);
-            let parsedChange = await self.db.rel.parseRelDocs('nodeConfig', [change.doc]);
-            parsedChange = parsedChange.nodeConfigs[0];
+			self.db.setSchema(self.nodeConfigSchema);
+			let parsedChange = await self.db.rel.parseRelDocs('nodeConfig', [change.doc]);
+			parsedChange = parsedChange.nodeConfigs[0];
 			self.state = parsedChange;
 			self.validateState();
 
 			self.eventEmitter.emit('change', self.state);
-        });
+		});
 	}
 	
 	async save() {
-        if (this.validate) { this.validateNew() };
-		if (this.state) { this.validateState() };
+		if (this.validate) { this.validateNew(); }
+		if (this.state) { this.validateState(); }
 
 		this.db.setSchema(this.nodeConfigSchema);
 		this.state = { ...this.state, ...await this.db.rel.save('nodeConfig', this.state) };
+
+		this.validateState();
 	}
 	
     toString() {
