@@ -35,8 +35,7 @@ export class NodeConfig {
 		if (this.validate) { this.validateNew() };
 	}
 
-    async load() {
-		this.db.setSchema(this.nodeConfigSchema);
+  async load() {
 		this.state = (await this.db.find({
 			selector: { data: this.arg },
 			limit: 1
@@ -62,7 +61,6 @@ export class NodeConfig {
 					return;
 			}
 
-			self.db.setSchema(self.nodeConfigSchema);
 			let parsedChange = await self.db.rel.parseRelDocs('nodeConfig', [change.doc]);
 			parsedChange = parsedChange.nodeConfigs[0];
 			self.state = parsedChange;
@@ -76,7 +74,6 @@ export class NodeConfig {
 		if (this.validate) { this.validateNew(); }
 		if (this.state) { this.validateState(); }
 
-		this.db.setSchema(this.nodeConfigSchema);
 		this.state = { ...this.state, ...await this.db.rel.save('nodeConfig', this.state) };
 
 		this.validateState();
@@ -110,18 +107,6 @@ export class NodeConfig {
 	private validateNew() {
 		this.arg = new this.newNodeConfigModel(this.arg);
 	}
-
-	
-	private nodeConfigSchema = [
-		{
-		  singular: 'userConfig', plural: 'userConfigs', 
-		  relations: {
-			  nodeConfigs: {hasMany: 'nodeConfig'}
-		  }
-		},
-		{singular: 'nodeConfig', plural: 'nodeConfigs', relations: {userConfig: {belongsTo: 'userConfig'}}}
-	  ];
-
     	
 	private stateNodeConfigModel = ObjectModel({
 		id: String,

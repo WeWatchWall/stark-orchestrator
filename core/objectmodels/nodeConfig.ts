@@ -35,7 +35,6 @@ export class NodeConfig {
 	async save() {
 		if (this.validate) { this.validateNew() };
 
-		this.db.setSchema(this.nodeConfigSchema);
 		let arg = this.state || this.arg;
 		this.state = { ...arg, ...await this.db.rel.save('nodeConfig', arg) };	
 		
@@ -114,17 +113,6 @@ export class NodeConfig {
 	private validateNew() {
 		this.arg = new this.newNodeConfigModel(this.arg);
 	}
-
-	
-	private nodeConfigSchema = [
-		{
-			singular: 'userConfig', plural: 'userConfigs', 
-			relations: {
-				nodeConfigs: {hasMany: 'nodeConfig'}
-			}
-		},
-		{singular: 'nodeConfig', plural: 'nodeConfigs', relations: {userConfig: {belongsTo: 'userConfig'}}}
-	];
 
 	private validateState() {
 		// assert(this.state);

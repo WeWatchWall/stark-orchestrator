@@ -28,18 +28,20 @@ export class NodeRegistration {
 
 	}
 
-    async add(arg) { 
-        let userDatabase = new Database({ arg: { username: arg.username }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
+  async add(arg) { 
+    let userDatabase = new Database({ arg: { username: arg.username }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
 				
 		let adminDatabase = new Database({ arg: { username: UserAdmin.AdminName }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
 		await adminDatabase.load();
-		
+    adminDatabase.state.setSchema(this.userDbSchema);
+    
 		let adminConfig = new UserConfig({ db: adminDatabase.state, arg: { name: UserAdmin.AdminName} });
 		await adminConfig.load();
 
 		if (!adminConfig.state.enableAllNodes) { return; }
 		
 		await userDatabase.load();
+    userDatabase.state.setSchema(this.userDbSchema);
 
 		let userConfig = new UserConfig({ db: userDatabase.state, arg: { name: arg.username } });
 		await userConfig.load();
@@ -59,17 +61,17 @@ export class NodeRegistration {
 
 		let nodeDatabase = new Database({ arg: { username: nodeUser.arg.name }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
 		await nodeDatabase.load();
-
+    nodeDatabase.state.setSchema(this.nodeDbSchema);
 		
-        let designDocument = new DesignDocument(
-            {
-                db: nodeDatabase.state,
-                arg: undefined
-            },
-            true
-        );
-        designDocument.init();
-        await designDocument.save();    
+    let designDocument = new DesignDocument(
+        {
+            db: nodeDatabase.state,
+            arg: undefined
+        },
+        true
+    );
+    designDocument.init();
+    await designDocument.save();    
 
 		let databaseReplication = new Replication(
 			{
@@ -141,5 +143,26 @@ export class NodeRegistration {
 		await nodeConfig.save();
 		// Frees the memory here and saves the packages to the DB.
 		await podConfig.save();
-	}
+  }
+  
+  private userDbSchema = [
+    { singular: 'packageConfig', plural: 'packageConfigs' },
+    {
+		  singular: 'userConfig', plural: 'userConfigs', 
+		  relations: {
+			  nodeConfigs: {hasMany: 'nodeConfig'}
+		  }
+		},
+		{singular: 'nodeConfig', plural: 'nodeConfigs', relations: {userConfig: {belongsTo: 'userConfig'}}}
+  ];
+  private nodeDbSchema = [
+    { singular: 'podConfig', plural: 'podConfigs' },
+    {
+		  singular: 'userConfig', plural: 'userConfigs', 
+		  relations: {
+			  nodeConfigs: {hasMany: 'nodeConfig'}
+		  }
+		},
+		{singular: 'nodeConfig', plural: 'nodeConfigs', relations: {userConfig: {belongsTo: 'userConfig'}}}
+  ];
 }

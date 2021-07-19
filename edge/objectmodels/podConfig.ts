@@ -38,8 +38,6 @@ export class PodConfig {
     async load() {
         if (this.state) { return; }
         if (this.validate) { this.validateNew(); }
-
-        this.arg.userDb.setSchema(this.packageConfigSchema);
         
 		this.state = (await this.arg.userDb.find({
             selector: {
@@ -54,8 +52,7 @@ export class PodConfig {
 		this.state = await this.arg.userDb.rel.parseRelDocs('packageConfig', this.state);
 		this.state = this.state.packageConfigs[0];
         this.validateState();
-        
-        this.db.setSchema(this.podConfigSchema);
+
         let  saved = (await this.db.find({
             selector: {
                 "_id": {"$regex": "^podConfig"},
@@ -81,8 +78,7 @@ export class PodConfig {
         if (!this.state) { await this.load(); } // TODO: USE THIS PATTERN!
         if (this.isSaved) { return; }
 
-        let read = this.state;
-        this.db.setSchema(this.podConfigSchema);		
+        let read = this.state;		
         this.state = undefined;
 
         let result;
@@ -130,9 +126,6 @@ export class PodConfig {
     private validateNew() {
         this.arg = new this.newDeployConfigModel(this.arg);
     }
-
-    private packageConfigSchema = [{ singular: 'packageConfig', plural: 'packageConfigs' }];
-    private podConfigSchema = [{ singular: 'podConfig', plural: 'podConfigs' }];
 
     private validateState() {
         assert(!!this.state);

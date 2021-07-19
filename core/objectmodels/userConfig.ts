@@ -26,7 +26,6 @@ export class UserConfig {
 		// ValidateLoad?
 		// if (this.validate) { this.validateNew(); }
 		
-		this.db.setSchema(this.userConfigSchema);
 		this.state = (await this.db.find({
 			selector: { data: this.arg },
 			limit: 1
@@ -39,8 +38,7 @@ export class UserConfig {
 		
 	async save() {
 		if (this.validate) { this.validateNew(); }
-		
-		this.db.setSchema(this.userConfigSchema);
+
 		this.state = { ...this.state, ...await this.db.rel.save('userConfig', this.state || this.arg) };
 		this.validateState();
 	}
@@ -114,16 +112,6 @@ export class UserConfig {
 	private validateNew() {		
 		this.arg = new this.newUserConfigInstance(this.arg);
 	}
-	
-	private userConfigSchema:any = [
-		{
-			singular: 'userConfig', plural: 'userConfigs', 
-			relations: {
-				nodeConfigs: {hasMany: 'nodeConfig'}
-			}
-		},
-		{singular: 'nodeConfig', plural: 'nodeConfigs', relations: {userConfig: {belongsTo: 'userConfig'}}}
-	  ];
 
 	private validateState() {
 		assert(!!this.state);

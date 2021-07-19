@@ -46,7 +46,6 @@ export class PodConfig {
 
             let saved;
             saved = [change.doc];
-            self.db.setSchema(self.podConfigSchema);
             saved = await self.db.rel.parseRelDocs('podConfig', saved);
             saved = saved.podConfigs[0];
             self.change = diff(self.state, saved);
@@ -69,7 +68,6 @@ export class PodConfig {
     async load() {
         if (this.validate) { this.validateNew(); }
         
-        this.db.setSchema(this.podConfigSchema);
         let  saved = (await this.db.find({
             selector: {
                 "_id": this.arg.id
@@ -83,9 +81,8 @@ export class PodConfig {
 
     async save() {
         if (this.validate) { this.validateNew(); }
-		if (!this.state) { this.init(); }
-
-		this.db.setSchema(this.podConfigSchema);
+        if (!this.state) { this.init(); }
+        
 		this.state = { ...this.state, ...await this.db.rel.save('podConfig', this.state) };
 
 		this.validateState();
@@ -106,8 +103,6 @@ export class PodConfig {
     private validateNew() {
         this.arg = new this.newDeployConfigModel(this.arg);
     }
-
-    private podConfigSchema = [{ singular: 'podConfig', plural: 'podConfigs' }];
 
     private validateState() {
         assert(!!this.state);

@@ -9,12 +9,12 @@ export class PackageConfig {
 	db: any;
 	arg: any;
 	validate: boolean;
-    state: any;
-    change: any;
-    isSaved = false;
+  state: any;
+  change: any;
+  isSaved = false;
 	string: string;
-    watcher: any;
-    eventEmitter = new EventEmitter();
+  watcher: any;
+  eventEmitter = new EventEmitter();
     
 	/**
 	 * Creates an instance of user.
@@ -28,40 +28,39 @@ export class PackageConfig {
 		this.validate = validate;
 	}
 
-    // Fragile, could change before load but don't want it to run before load. should be easy with a flag :)
-    async init() {
-        await this.load();
+  // Fragile, could change before load but don't want it to run before load. should be easy with a flag :)
+  async init() {
+    await this.load();
 
-        var self = this;
-        this.watcher = this.db.changes({
-            since: 'now',
-            live: true,
-            include_docs: true,
-            selector: {
-                "_id": this.db.rel.makeDocID({
-                    id: this.state.id,
-                    type: 'packageConfig'
-				})
-            }
-        }).on('change', async function (change) {
-            if (change.deleted) {
-                // TODO: self-destruct?
-                self.eventEmitter.emit("delete");
-                return;
-            }
+    var self = this;
+    this.watcher = this.db.changes({
+      since: 'now',
+      live: true,
+      include_docs: true,
+      selector: {
+        "_id": this.db.rel.makeDocID({
+          id: this.state.id,
+          type: 'packageConfig'
+        })
+      }
+    }).on('change', async function (change) {
+      if (change.deleted) {
+        // TODO: self-destruct?
+        self.eventEmitter.emit("delete");
+        return;
+      }
 
-            let saved;
-            saved = [change.doc];
-            self.db.setSchema(self.packageConfigSchema);
-            saved = await self.db.rel.parseRelDocs('packageConfig', saved);
-            saved = saved.packageConfigs[0];
-            self.change = diff(self.state, saved);
-            self.state = saved;
-            
-            self.validateState();            
-            self.eventEmitter.emit('change', self.change);
-        });
-    }
+      let saved;
+      saved = [change.doc];
+      saved = await self.db.rel.parseRelDocs('packageConfig', saved);
+      saved = saved.packageConfigs[0];
+      self.change = diff(self.state, saved);
+      self.state = saved;
+      
+      self.validateState();            
+      self.eventEmitter.emit('change', self.change);
+    });
+  }
 	
 	/**
 	 * Parses user.
@@ -72,58 +71,53 @@ export class PackageConfig {
 		if (this.validate) { this.validateNew(); }
 	}
 	
-    async load() {
-        if (this.validate) { this.validateNew(); }
-
-        this.db.setSchema(this.packageConfigSchema);
+  async load() {
+    if (this.validate) { this.validateNew(); }
         
 		this.state = (await this.db.find({
-            selector: {
-                "_id": {"$regex": "^packageConfig"},
-                data: {
-                    'mode': this.arg.mode,
-                    'name': this.arg.name
-                }
-            },
-            limit: 1
+      selector: {
+        "_id": {"$regex": "^packageConfig"},
+        data: {
+          'mode': this.arg.mode,
+          'name': this.arg.name
+        }
+      },
+      limit: 1
 		})).docs;
 		this.state = await this.db.rel.parseRelDocs('packageConfig', this.state);
 		this.state = this.state.packageConfigs[0];
-        this.validateState();
+    this.validateState();
 	}
 
-    async save() {
-        if (this.validate) { this.validateNew(); }
-		if (!this.state) { this.init(); }
+  async save() {
+    if (this.validate) { this.validateNew(); }
+    if (!this.state) { this.init(); }
 
-		this.db.setSchema(this.packageConfigSchema);
-		this.state = { ...this.state, ...await this.db.rel.save('packageConfig', this.state) };
+    this.state = { ...this.state, ...await this.db.rel.save('packageConfig', this.state) };
 
-		this.validateState();
+    this.validateState();
 	}
 
 	toString() {
-		this.string = JSON.stringify(this.state);
-    }
+	  this.string = JSON.stringify(this.state);
+  }
     
-    async delete(numPods: number) {
-        this.state.numPods -= numPods;
-        await this.save();
+  async delete(numPods: number) {
+    this.state.numPods -= numPods;
+    await this.save();
 	}
 
-    private newDeployConfigModel = ObjectModel({
-        mode: [DeploymentMode.Core, DeploymentMode.Edge, DeploymentMode.Browser],
-        name: String
-    });
+  private newDeployConfigModel = ObjectModel({
+    mode: [DeploymentMode.Core, DeploymentMode.Edge, DeploymentMode.Browser],
+    name: String
+  });
 
-    private validateNew() {
-        this.arg = new this.newDeployConfigModel(this.arg);
-    }
+  private validateNew() {
+      this.arg = new this.newDeployConfigModel(this.arg);
+  }
 
-    private packageConfigSchema = [{ singular: 'packageConfig', plural: 'packageConfigs' }];
-
-    private validateState() {
-        assert(!!this.state);
-    }
+  private validateState() {
+      assert(!!this.state);
+  }
 	
 }

@@ -33,6 +33,7 @@ export class PodConfigManager {
       password: this.user.state.password
     });
     await this.userDb.load();
+    this.userDb.state.setSchema(this.userDbSchema);
 
     this.userConfig = new UserConfig({ db: this.userDb.state, arg: { name: this.user.state.name} });
     await this.userConfig.init();
@@ -52,7 +53,8 @@ export class PodConfigManager {
       password: this.nodeUser.arg.password
     });
     await this.nodeDb.load();
-
+    this.nodeDb.state.setSchema(this.nodeDbSchema);
+    
     this.nodeConfig = new NodeConfig(
       {
         db: this.nodeDb.state,
@@ -223,4 +225,25 @@ export class PodConfigManager {
       this.delete(packId);
     });
   }
+
+  private userDbSchema = [
+    { singular: 'packageConfig', plural: 'packageConfigs' },
+    {
+		  singular: 'userConfig', plural: 'userConfigs', 
+		  relations: {
+			  nodeConfigs: {hasMany: 'nodeConfig'}
+		  }
+		},
+		{singular: 'nodeConfig', plural: 'nodeConfigs', relations: {userConfig: {belongsTo: 'userConfig'}}}
+  ];
+  private nodeDbSchema = [
+    { singular: 'podConfig', plural: 'podConfigs' },
+    {
+		  singular: 'userConfig', plural: 'userConfigs', 
+		  relations: {
+			  nodeConfigs: {hasMany: 'nodeConfig'}
+		  }
+		},
+		{singular: 'nodeConfig', plural: 'nodeConfigs', relations: {userConfig: {belongsTo: 'userConfig'}}}
+  ];
 }

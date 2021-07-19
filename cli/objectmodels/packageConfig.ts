@@ -8,8 +8,8 @@ import { ProvisionStatus } from '../../shared/objectmodels/provisionStatus';
 
 export class PackageConfig {
 	db: any;
-    arg: any;
-    attachment: Buffer;
+  arg: any;
+  attachment: Buffer;
 	validate: boolean;
 	state: any;
 	string: string;
@@ -22,8 +22,8 @@ export class PackageConfig {
 	 */
 	constructor(arg = { db: undefined, arg: undefined},  validate = false) {
 		this.db = arg.db;
-        this.arg = arg.arg;
-        this.attachment = arg.arg.attachment; // Extra, data-filtered property!
+    this.arg = arg.arg;
+    this.attachment = arg.arg.attachment; // Extra, data-filtered property!
 		this.validate = validate;
 	}
 
@@ -35,14 +35,13 @@ export class PackageConfig {
 	 */
 	parse(arg: string) {
 		this.arg = JSON.parse(arg);
-        if (this.validate) { this.validateNew(); }
+    if (this.validate) { this.validateNew(); }
 	}
 	
 	async load() {
 		if (this.state) {return;}
-        if (this.validate) { this.validateNew(); }
+    if (this.validate) { this.validateNew(); }
 
-        this.db.setSchema(this.packageConfigSchema);
 		this.state = (await this.db.find({
 			selector: { data: {name: this.arg.name} },
 			limit: 1
@@ -50,25 +49,24 @@ export class PackageConfig {
 		this.state = await this.db.rel.parseRelDocs('packageConfig', this.state);
 		this.state = this.state.packageConfigs[0];
         
-        this.validateState();
-        
-        this.state.attachment = await this.db.rel.getAttachment('packageConfig', this.state.id, 'package.zip.pgp');
+    this.validateState();
+    
+    this.state.attachment = await this.db.rel.getAttachment('packageConfig', this.state.id, 'package.zip.pgp');
 	}
 	
 	async save() {
-        if (this.validate) { this.validateNew(); }
+    if (this.validate) { this.validateNew(); }
 
-		this.db.setSchema(this.packageConfigSchema);
-        this.state = await this.db.rel.save('packageConfig', this.state || this.arg);
-        
-        await this.db.rel.putAttachment('packageConfig', this.state, 'package.zip.pgp', this.arg.attachment, 'text/plain');
+    this.state = await this.db.rel.save('packageConfig', this.state || this.arg);
+    
+    await this.db.rel.putAttachment('packageConfig', this.state, 'package.zip.pgp', this.arg.attachment, 'text/plain');
 
 		this.validateState();
 	}
 
 	toString() {
-        this.validateState();
-        this.string = JSON.stringify(this.state);
+    this.validateState();
+    this.string = JSON.stringify(this.state);
 	}
 	
 	async delete() {
@@ -77,23 +75,23 @@ export class PackageConfig {
 
 	// :() Constructor type?
 	protected newUserModel = ObjectModel({
-        // Relational
-        name: String,
-        
-        // Config
-        mode: [DeploymentMode.Core, DeploymentMode.Edge, DeploymentMode.Browser],
-        availability: [Availability.Off, Availability.Tag, Availability.Any],
-        security: [Security.Private, Security.Friends, Security.Public],
+    // Relational
+    name: String,
+    
+    // Config
+    mode: [DeploymentMode.Core, DeploymentMode.Edge, DeploymentMode.Browser],
+    availability: [Availability.Off, Availability.Tag, Availability.Any],
+    security: [Security.Private, Security.Friends, Security.Public],
 		tags: ArrayModel(String),
 		maxPods: Number,
 		numPods: Number,
 		status: [ProvisionStatus.Init, ProvisionStatus.Up, ProvisionStatus.Error, ProvisionStatus.Stop]
 		
     }).defaultTo({
-        // Require name
-        // Require mode
-        availability: Availability.Any,
-        security: Security.Private,
+    // Require name
+    // Require mode
+    availability: Availability.Any,
+    security: Security.Private,
 		tags: [],
 		maxPods: 0,
 		numPods: 0,
@@ -111,8 +109,6 @@ export class PackageConfig {
 	protected validateNew() {		
 		this.arg = new this.newUserModel(this.arg);
 	}
-
-    private packageConfigSchema = [{ singular: 'packageConfig', plural: 'packageConfigs' }];
 
 	protected validateState() {
 		assert(!!this.state);

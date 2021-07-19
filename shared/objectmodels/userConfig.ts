@@ -38,7 +38,6 @@ export class UserConfig {
 				return;
 			}
 
-			self.db.setSchema(self.userConfigSchema);
 			let parsedChange = await self.db.rel.parseRelDocs('userConfig', [change.doc]);
 			parsedChange = parsedChange.userConfigs[0];
 			self.state = parsedChange;
@@ -55,8 +54,7 @@ export class UserConfig {
 	async load() {
 		if (this.state) { return; }
 		if (this.validate) { this.validateNew(); }
-		
-		this.db.setSchema(this.userConfigSchema);
+
 		this.state = (await this.db.find({
 			selector: { data: this.arg },
 			limit: 1
@@ -70,7 +68,6 @@ export class UserConfig {
 	async save() {
 		if (this.validate) { this.validateNew(); }
 		
-		this.db.setSchema(this.userConfigSchema);
 		this.state = { ...this.state, ...await this.db.rel.save('userConfig', this.state) }; // TODO: USE THIS PATTERN!
 		this.validateState();
 	}
@@ -91,16 +88,6 @@ export class UserConfig {
 	private validateNew() {		
 		assert(!!this.state);
 	}
-	
-	private userConfigSchema:any = [
-		{
-			singular: 'userConfig', plural: 'userConfigs', 
-			relations: {
-				nodeConfigs: {hasMany: 'nodeConfig'}
-			}
-		},
-		{singular: 'nodeConfig', plural: 'nodeConfigs', relations: {userConfig: {belongsTo: 'userConfig'}}}
-	];
 
 	private stateUserConfigInstance = ObjectModel({
 		id: String,
