@@ -2,9 +2,6 @@ import { EventEmitter } from 'events';
 import assert from "assert";
 import { ObjectModel } from "objectmodel";
 
-import FlatPromise from "flat-promise";
-import promiseRetry from 'promise-retry';
-
 import path from 'path';
 import fs from 'fs-extra';
 const openpgp = require('openpgp'); // Only works with require :(
@@ -14,6 +11,7 @@ const execShellCommand = require("../../cli/execShellCommand");
 import { DeploymentMode } from '../../shared/objectmodels/deploymentMode';
 import { ProvisionStatus } from "../../shared/objectmodels/provisionStatus";
 import { PodEnv } from './podEnv';
+import { Util } from '../../shared/util';
 
 export class Pod { 
     db: any;
@@ -119,32 +117,20 @@ export class Pod {
   }
 
   private async saveConfig(overwrite) {
-    let promise = new FlatPromise();
     this.isSaveConfig = true;
-    var self = this;
-    promiseRetry(
-      async function (retry) {
-        try {
-          self.state = {
-            ...self.state,
-            ...(await self.db.rel.save('podConfig', {
-                ...self.state, ...overwrite
-            }))
-          };
-        } catch (error) {
-          retry(error)
-        }
-      },
-      {retries: 7}
-    ).then(
-      () => {
-        promise.resolve()
-      },
-      (error) => {
-        promise.reject(error);
+    
+    await Util.retry(async (retry) => {
+      try {
+        this.state = {
+          ...this.state,
+          ...(await this.db.rel.save('podConfig', {
+              ...this.state, ...overwrite
+          }))
+        };
+      } catch (error) {
+        retry(error)
       }
-    );
-    await promise.promise;
+    }, 7);
 
     this.isSaveConfig = false;
   }

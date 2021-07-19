@@ -1,8 +1,6 @@
 // TODO: 
 // If it cannot find its configuration in load() first
 // Save config in the Save() function :P Which will use the PUT server/node/nodeid
-import FlatPromise from "flat-promise";
-import promiseRetry from 'promise-retry';
 
 import { ObjectModel } from "objectmodel"
 import { v4 as uuidv4 } from 'uuid';
@@ -13,6 +11,7 @@ import assert from 'assert';
 import updateDotenv from 'update-dotenv';
 
 import { User } from '../../shared/objectmodels/user';
+import { Util } from "../../shared/util";
 
 export class NodeUser extends User {
     nodeConfig: any;
@@ -42,27 +41,14 @@ export class NodeUser extends User {
   // This might fail on the edge because the server isn't up yet...
   // So retry this function until it succeeds.
   async load() {
-    let promise = new FlatPromise();
-    var self = this;
-		promiseRetry(
-			async function (retry) {
-				try {
-          await self.loadInternal();
-        } catch (error) {
-          retry(error)
-        }
-			},
-			{retries: 8}
-		).then(
-			() => {
-				promise.resolve()
-			},
-			(error) => {
-				promise.reject(error);
-			}
-		);
-      await promise.promise;
-    }
+    await Util.retry(async (retry) => {
+      try {
+        await this.loadInternal();
+      } catch (error) {
+        retry(error)
+      }
+    }, 8);
+  }
 
 	private async loadInternal() {
 		if (this.state) {return;}

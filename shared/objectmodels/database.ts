@@ -6,6 +6,7 @@ import rel from 'relational-pouch';
 import assert from 'assert';
 import promiseRetry from 'promise-retry';
 import nano from 'nano';
+import { Util } from "../util";
 
 PouchDB
   // .plugin(someadapter)
@@ -50,21 +51,9 @@ export class Database {
 		let address = `http://${this.username}:${this.password}@${process.env.STARK_DB_HOST}:5984`;
 		let server = nano(address);
 
-		let promise = new FlatPromise();
-		promiseRetry(
-			function (retry) {
-				return server.db.get(dbName).catch(retry); // Maybe use nano.use??
-			},
-			{retries: 7}
-		).then(
-			() => {
-				promise.resolve()
-			},
-			(error) => {
-				promise.reject(error);
-			}
-		);
-		await promise.promise;
+    await Util.retry(async (retry) => {
+      return server.db.get(dbName).catch(retry); // Maybe use nano.use??
+    }, 8);
 
 		this.state = new PouchDB(`${address}/${this.dbName}`, {
 			skip_setup: true
