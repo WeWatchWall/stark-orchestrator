@@ -1,6 +1,4 @@
 import { EventEmitter } from 'events';
-import FlatPromise from "flat-promise";
-import promiseRetry from 'promise-retry';
 
 import assert from "assert";
 import { ObjectModel } from "objectmodel";
@@ -8,6 +6,7 @@ import { ObjectModel } from "objectmodel";
 import { DeploymentMode } from './deploymentMode';
 import { PodConfig } from './podConfig';
 import { PackageConfig } from './packageConfig';
+import { Util } from '../util';
 
 export class PodBalancer {
   dbs: any;
@@ -41,32 +40,19 @@ export class PodBalancer {
 
     var self = this;
     this.state.packageConfig.eventEmitter.on('change', async function (change) {
-      let promise = new FlatPromise();
-      promiseRetry(
-        async function (retry) {
-          if (self.isDeletedPackage) { return; }
+      await Util.retry(async (retry) => {
+        if (self.isDeletedPackage) { return; }
 
-          try {
-            await self.changeNumPods(change);
-          } catch (error) {
-            retry(error)
-          }
-        },
-        {retries: 8}
-      ).then(
-        () => {
-          promise.resolve()
-        },
-        (error) => {
-          promise.reject(error);
+        try {
+          await self.changeNumPods(change);
+        } catch (error) {
+          retry(error)
         }
-      );
-      
-      await promise.promise;
+      }, 8);
     });
     
     this.state.podConfig.eventEmitter.on('delete', function () {
-      this.eventEmitter.emit("delete");
+      self.eventEmitter.emit("delete");
     });
   }
 	
@@ -133,8 +119,15 @@ export class PodBalancer {
 
     this.validateState();
 
-    this.state.packageConfig.state.numPods += this.state.podConfig.state.numPods;
-    await this.state.packageConfig.save(); // TODO: DANGER MAY COLLIDE
+    await Util.retry(async (retry) => {
+      try {
+        await this.state.packageConfig.load();
+        this.state.packageConfig.state.numPods += this.state.podConfig.state.numPods;
+        await this.state.packageConfig.save();
+      } catch (error) {
+        retry(error)
+      }
+    }, 8);
   }
 
   private isAvailable(): boolean {
@@ -146,7 +139,6 @@ export class PodBalancer {
     return true;
   }
 
-  
   async save() {
     if (this.validate) { this.validateNew(); }
     if (!this.state) { this.init(); }
@@ -158,8 +150,8 @@ export class PodBalancer {
 
     if (numPods === maxPods) { return; }
     if (pods === 0 && increment === -1) { return; }
-    if (pods === 1 && increment === -1) { await PodBalancer.delay(3000); }
-    if (pods > 1 && increment === 1) { await PodBalancer.delay(3000); }
+    if (pods === 1 && increment === -1) { await Util.delay(3000); }
+    if (pods > 1 && increment === 1) { await Util.delay(3000); }
 
     try {
       this.state.packageConfig.state.numPods += increment;
@@ -169,8 +161,15 @@ export class PodBalancer {
       throw error;
     }
 
-    this.state.podConfig.state.numPods += increment;
-    await this.state.podConfig.save();   // TODO: DANGER MAY COLLIDE
+    await Util.retry(async (retry) => {
+      try {
+        await this.state.podConfig.load();
+        this.state.podConfig.state.numPods += increment;
+        await this.state.podConfig.save();
+      } catch (error) {
+        retry(error)
+      }
+    }, 8);
     
     this.validateState();
   }
@@ -181,15 +180,25 @@ export class PodBalancer {
     if (this.state.packageConfig.state.maxPods) { return; }
     if (this.state.podConfig.state.numPods) { return; }
     
-    this.state.podConfig.state.numPods = 1;
-    await this.state.podConfig.save();  // TODO: DANGER MAY COLLIDE
+    await Util.retry(async (retry) => {
+      try {
+        await this.state.podConfig.load();
+        this.state.podConfig.state.numPods = 1;
+        await this.state.podConfig.save();
+      } catch (error) {
+        retry(error)
+      }
+    }, 8);
 
-    this.state.packageConfig.state.numPods++;
-    await this.state.packageConfig.save();  // TODO: DANGER MAY COLLIDE
-  }
-
-  private static delay(ms: number) {
-      return new Promise( resolve => setTimeout(resolve, ms) );
+    await Util.retry(async (retry) => {
+      try {
+        await this.state.packageConfig.load();
+        this.state.packageConfig.state.numPods++;
+        await this.state.packageConfig.save();
+      } catch (error) {
+        retry(error)
+      }
+    }, 8);
   }
 
 	toString() {
@@ -201,7 +210,6 @@ export class PodBalancer {
 
     let numPods = this.state.podConfig.state.numPods;
     this.state.packageConfig.delete(numPods);
-    debugger;
 	}
 
   private newDeployConfigModel = ObjectModel({

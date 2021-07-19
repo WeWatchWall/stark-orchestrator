@@ -46,7 +46,7 @@ export class PackageConfig {
         }).on('change', async function (change) {
             if (change.deleted) {
                 // TODO: self-destruct?
-                this.eventEmitter.emit("delete");
+                self.eventEmitter.emit("delete");
                 return;
             }
 
@@ -73,7 +73,6 @@ export class PackageConfig {
 	}
 	
     async load() {
-        if (this.state) { return; }
         if (this.validate) { this.validateNew(); }
 
         this.db.setSchema(this.packageConfigSchema);

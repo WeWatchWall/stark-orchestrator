@@ -2,6 +2,7 @@ import { Availability } from "../../shared/objectmodels/availability";
 import { Database } from "../../shared/objectmodels/database";
 import { NodeUser } from "../../shared/objectmodels/nodeUser";
 import { UserConfig } from "../../shared/objectmodels/userConfig";
+import { Util } from "../../shared/util";
 import { NodeConfig } from "../objectmodels/nodeConfig";
 import { PodConfig } from "../objectmodels/podConfig";
 
@@ -151,11 +152,17 @@ export class PodConfigManager {
     /* #endregion */
 
     /* #region  Get, add pod name, and save the NodeConfig. */
-    await this.nodeConfig.load();
-    let podConfigs = new Set(this.nodeConfig.state.podConfigs);
-    podConfigs.add(podName);
-    this.nodeConfig.state.podConfigs = Array.from(podConfigs);
-    await this.nodeConfig.save();  // TODO: DANGER MAY COLLIDE
+    await Util.retry(async (retry) => {
+      try {
+        await this.nodeConfig.load();
+        let podConfigs = new Set(this.nodeConfig.state.podConfigs);
+        podConfigs.add(podName);
+        this.nodeConfig.state.podConfigs = Array.from(podConfigs);
+        await this.nodeConfig.save();
+      } catch (error) {
+        retry(error)
+      }
+    }, 8);
     /* #endregion */
   }
 
@@ -188,11 +195,17 @@ export class PodConfigManager {
     /* #endregion */
 
     /* #region  Get, remove pod name, and save the NodeConfig. */
-    await this.nodeConfig.load();
-    let podConfigs = new Set(this.nodeConfig.state.podConfigs);
-    podConfigs.delete(podName);
-    this.nodeConfig.state.podConfigs = Array.from(podConfigs);
-    await this.nodeConfig.save();  // TODO: DANGER MAY COLLIDE
+    await Util.retry(async (retry) => {
+      try {
+        await this.nodeConfig.load();
+        let podConfigs = new Set(this.nodeConfig.state.podConfigs);
+        podConfigs.delete(podName);
+        this.nodeConfig.state.podConfigs = Array.from(podConfigs);
+        await this.nodeConfig.save();
+      } catch (error) {
+        retry(error)
+      }
+    }, 8);
     /* #endregion */
 
     podConfig.delete();
