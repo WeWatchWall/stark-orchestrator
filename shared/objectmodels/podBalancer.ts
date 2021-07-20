@@ -128,6 +128,8 @@ export class PodBalancer {
         retry(error)
       }
     }, 8);
+
+    await this.changeNumPods({numPods: true});
   }
 
   private isAvailable(): boolean {
