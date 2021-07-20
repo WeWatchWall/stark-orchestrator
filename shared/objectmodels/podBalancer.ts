@@ -70,8 +70,7 @@ export class PodBalancer {
     }
 
     if (change.hasOwnProperty('maxPods') || change.hasOwnProperty('numPods')) {
-      console.log(JSON.stringify(change));
-      await this.save();
+      while (!await this.save()) { }
     }
   }
   
@@ -125,7 +124,6 @@ export class PodBalancer {
         await this.state.packageConfig.load();
         this.state.packageConfig.state.numPods += this.state.podConfig.state.numPods;
         await this.state.packageConfig.save();
-        console.log("Load add!");
       } catch (error) {
         retry(error)
       }
@@ -141,7 +139,7 @@ export class PodBalancer {
     return true;
   }
 
-  async save() {
+  async save(): Promise<boolean> {
     if (this.validate) { this.validateNew(); }
     if (!this.state) { await this.init(); }
 
@@ -150,15 +148,14 @@ export class PodBalancer {
     let pods =  this.state.podConfig.state.numPods;
     let increment = numPods < maxPods ? 1 : -1;
 
-    if (numPods === maxPods) { return; }
-    if (pods === 0 && increment === -1) { return; }
+    if (numPods === maxPods) { return true; }
+    if (pods === 0 && increment === -1) { return true; }
     if (pods === 1 && increment === -1) { await Util.delay(3000); }
     if (pods > 1 && increment === 1) { await Util.delay(3000); }
 
     try {
       this.state.packageConfig.state.numPods += increment;
       await this.state.packageConfig.save();
-      console.log("ADD!!!");
     } catch (error) {
       this.state.packageConfig.state.numPods -= increment;
       throw error;
@@ -175,6 +172,7 @@ export class PodBalancer {
     }, 8);
     
     this.validateState();
+    return false;
   }
 
   private async adjustPositiveAvailability() {
