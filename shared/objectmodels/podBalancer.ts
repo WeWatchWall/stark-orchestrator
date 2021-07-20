@@ -70,6 +70,7 @@ export class PodBalancer {
     }
 
     if (change.hasOwnProperty('maxPods') || change.hasOwnProperty('numPods')) {
+      console.log(JSON.stringify(change));
       await this.save();
     }
   }
@@ -124,6 +125,7 @@ export class PodBalancer {
         await this.state.packageConfig.load();
         this.state.packageConfig.state.numPods += this.state.podConfig.state.numPods;
         await this.state.packageConfig.save();
+        console.log("Load add!");
       } catch (error) {
         retry(error)
       }
@@ -141,7 +143,7 @@ export class PodBalancer {
 
   async save() {
     if (this.validate) { this.validateNew(); }
-    if (!this.state) { this.init(); }
+    if (!this.state) { await this.init(); }
 
     let numPods = this.state.packageConfig.state.numPods;
     let maxPods = this.state.packageConfig.state.maxPods;
@@ -156,6 +158,7 @@ export class PodBalancer {
     try {
       this.state.packageConfig.state.numPods += increment;
       await this.state.packageConfig.save();
+      console.log("ADD!!!");
     } catch (error) {
       this.state.packageConfig.state.numPods -= increment;
       throw error;

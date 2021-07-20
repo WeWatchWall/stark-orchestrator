@@ -93,13 +93,14 @@ export class PodNumManager {
       .on('change', async function (change) {
         let doc = change.doc;
 
-        if (change.deleted) {
+        if (change.deleted || !change.doc._attachments) {
           return;
         }
 
         let newPodName = doc.data.name;
         if (!self.podBalancers[newPodName]) {
-          self.add(doc);
+          self.podBalancers[newPodName] = 'init';
+          await self.add(doc);
           return;
         }
       });
@@ -122,8 +123,8 @@ export class PodNumManager {
     });
 
     var self = this;
-    balancer.eventEmitter.on('delete', function () {
-      self.delete(balancer.arg.name);
+    balancer.eventEmitter.on('delete', async function () {
+      await self.delete(balancer.arg.name);
     });
 
     await balancer.init();
