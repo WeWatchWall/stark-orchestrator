@@ -30,6 +30,7 @@ export class PodManager {
     }).on('change', async function (change) {
       if (change.deleted) { return; } 
       let newPodName = change.doc.data.name;
+      
       if (!self.podConfigs[newPodName] && change.doc._attachments) {
         self.podConfigs[newPodName] = 'init';
         await self.add(newPodName);

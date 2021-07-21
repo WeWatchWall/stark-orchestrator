@@ -106,7 +106,7 @@ export class Pod {
               await self.saveConfig({status: ProvisionStatus.Error, error: error});
           });
 
-          await processEnv.save();
+          processEnv.save();
           await this.saveConfig({status: ProvisionStatus.Up});
         } catch (error) {
           await this.saveConfig({ status: ProvisionStatus.Error, error: error });

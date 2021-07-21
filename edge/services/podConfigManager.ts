@@ -107,8 +107,8 @@ export class PodConfigManager {
 
         let newPodName = doc.data.name;
         if (!self.podConfigs[newPodName] && self.isAvailable(doc)) {
-          this.packConfigsId[doc._id] = 'init';
-          this.podConfigs[doc.data.name] = 'init';
+          self.packConfigsId[doc._id] = 'init';
+          self.podConfigs[doc.data.name] = 'init';
 
           await self.add(doc);
           return;
