@@ -30,7 +30,7 @@ export class Pod {
     this.validate = validate;
 	}
 
-    parse(arg: string) {
+  parse(arg: string) {
 		this.arg = JSON.parse(arg);
 		if (this.validate) { this.validateNew(); }
 	}

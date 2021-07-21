@@ -32,7 +32,7 @@ export class NodeBootstrap {
     
     // The admin key should exist on the core node after I add the node. 
     // this.user.state.key
-    this.user.load();
+    await this.user.load();
 
     this.database = new Database({ arg: { username: this.nodeUser.state.name }, username: process.env.STARK_NODE_NAME, password: process.env.STARK_NODE_PASSWORD });
     await this.database.load();

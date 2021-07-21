@@ -26,35 +26,35 @@ export class PodConfig {
 		this.validate = validate;
 	}
 
-    // Fragile, could change before load but don't want it to run before load. should be easy with a flag :)
-    async init() {
-        var self = this;
-        this.watcher = this.db.changes({
-            since: 'now',
-            live: true,
-            include_docs: true,
-            selector: {
-                "_id": this.arg.id
-            }
-        }).on('change', async function (change) {
-            if (change.deleted) {
-                // TODO: self-destruct?
-                self.eventEmitter.emit("delete");
-                self.delete();
-                return;
-            }
+  // Fragile, could change before load but don't want it to run before load. should be easy with a flag :)
+  async init() {
+      var self = this;
+      this.watcher = this.db.changes({
+        since: 'now',
+        live: true,
+        include_docs: true,
+        selector: {
+            "_id": this.arg.id
+        }
+      }).on('change', async function (change) {
+        if (change.deleted) {
+            // TODO: self-destruct?
+            self.eventEmitter.emit("delete");
+            self.delete();
+            return;
+        }
 
-            let saved;
-            saved = [change.doc];
-            saved = await self.db.rel.parseRelDocs('podConfig', saved);
-            saved = saved.podConfigs[0];
-            self.change = diff(self.state, saved);
-            self.state = saved;
-            
-            self.validateState();            
-			self.eventEmitter.emit('change', self.change);
-        });
-    }
+        let saved;
+        saved = [change.doc];
+        saved = await self.db.rel.parseRelDocs('podConfig', saved);
+        saved = saved.podConfigs[0];
+        self.change = diff(self.state, saved);
+        self.state = saved;
+        
+        self.validateState();            
+        self.eventEmitter.emit('change', self.change);
+      });
+  }
 	
 	/**
 	 * Parses user.
@@ -65,23 +65,23 @@ export class PodConfig {
 		if (this.validate) { this.validateNew(); }
 	}
 	
-    async load() {
-        if (this.validate) { this.validateNew(); }
-        
-        let  saved = (await this.db.find({
-            selector: {
-                "_id": this.arg.id
-            },
-            limit: 1
-        })).docs;
-        saved = await this.db.rel.parseRelDocs('podConfig', saved);
-        this.state = saved.podConfigs[0];
-        this.validateState();
+  async load() {
+    if (this.validate) { this.validateNew(); }
+    
+    let  saved = (await this.db.find({
+        selector: {
+            "_id": this.arg.id
+        },
+        limit: 1
+    })).docs;
+    saved = await this.db.rel.parseRelDocs('podConfig', saved);
+    this.state = saved.podConfigs[0];
+    this.validateState();
 	}
 
-    async save() {
-        if (this.validate) { this.validateNew(); }
-        if (!this.state) { this.init(); }
+  async save() {
+    if (this.validate) { this.validateNew(); }
+    if (!this.state) { this.init(); }
         
 		this.state = { ...this.state, ...await this.db.rel.save('podConfig', this.state) };
 
@@ -92,20 +92,20 @@ export class PodConfig {
 		this.string = JSON.stringify(this.state);
 	}
 
-    async delete() {
-        // NOOP
+  async delete() {
+    // NOOP
 	}
 
-    private newDeployConfigModel = ObjectModel({
-        id: String
-    });
+  private newDeployConfigModel = ObjectModel({
+      id: String
+  });
 
-    private validateNew() {
-        this.arg = new this.newDeployConfigModel(this.arg);
-    }
+  private validateNew() {
+      this.arg = new this.newDeployConfigModel(this.arg);
+  }
 
-    private validateState() {
-        assert(!!this.state);
-    }
+  private validateState() {
+      assert(!!this.state);
+  }
 	
 }

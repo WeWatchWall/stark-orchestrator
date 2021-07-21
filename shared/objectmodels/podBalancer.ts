@@ -212,7 +212,7 @@ export class PodBalancer {
     if (this.isDeletedPackage) { return; }
 
     let numPods = this.state.podConfig.state.numPods;
-    this.state.packageConfig.delete(numPods);
+    await this.state.packageConfig.delete(numPods);
 	}
 
   private newDeployConfigModel = ObjectModel({

@@ -31,7 +31,8 @@ export class PodManager {
       if (change.deleted) { return; } 
       let newPodName = change.doc.data.name;
       if (!self.podConfigs[newPodName] && change.doc._attachments) {
-        self.add(newPodName);
+        self.podConfigs[newPodName] = 'init';
+        await self.add(newPodName);
       }
     });
   }

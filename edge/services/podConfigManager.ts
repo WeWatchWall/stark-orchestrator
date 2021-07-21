@@ -101,18 +101,21 @@ export class PodConfigManager {
         let doc = change.doc;
 
         if (change.deleted) {
-          self.delete(doc._id);
+          await self.delete(doc._id);
           return;
         }
 
         let newPodName = doc.data.name;
-        if (!self.podConfigs[newPodName]) {
-          self.add(doc);
+        if (!self.podConfigs[newPodName] && self.isAvailable(doc)) {
+          this.packConfigsId[doc._id] = 'init';
+          this.podConfigs[doc.data.name] = 'init';
+
+          await self.add(doc);
           return;
         }
 
-        if (!self.isAvailable(doc)) {
-          self.delete(doc._id);
+        if (self.podConfigs[newPodName] && !self.isAvailable(doc)) {
+          await self.delete(doc._id);
           return;
         }
       });
@@ -131,8 +134,6 @@ export class PodConfigManager {
   async add(packageDoc) {
     let podId = packageDoc._id;
     let podName = packageDoc.data.name;
-
-    if (!this.isAvailable(packageDoc)) { return; }
 
     /* #region  Create and save the PodConfig. */
     let podConfig = new PodConfig(
@@ -210,7 +211,7 @@ export class PodConfigManager {
     }, 8);
     /* #endregion */
 
-    podConfig.delete();
+    await podConfig.delete();
 
     /* #region  Accounting. */
     this.packConfigsId[podId] = undefined;
@@ -221,8 +222,8 @@ export class PodConfigManager {
   private async deleteAll() {
     let packIds = [...Object.keys(this.packConfigsId)]; // Copying an array with the spread operator :)
 
-    packIds.forEach(packId => {
-      this.delete(packId);
+    packIds.forEach(async (packId) => {
+      await this.delete(packId);
     });
   }
 
