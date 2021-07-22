@@ -60,6 +60,7 @@ export class NodeConfig {
 			}
 		}).on('change', async function (change) {
 			if (change.deleted) {
+        self.eventEmitter.emit('delete');
         await self.delete();
         return;
 			}

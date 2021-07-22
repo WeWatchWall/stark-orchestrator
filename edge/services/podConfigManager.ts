@@ -19,7 +19,6 @@ export class PodConfigManager {
   packConfigsId = {};
 
   addWatcher: any;
-  isDeleting = false;
 
   constructor(user: any) {
     this.user = user;
@@ -121,12 +120,8 @@ export class PodConfigManager {
       });
     /* #endregion */
 
-    this.nodeConfig.eventEmitter.on('change', async (nodeConfig) => {
-      if (!self.isDeleting && nodeConfig.availability === Availability.Off) {
-        self.isDeleting = true;
-        await self.deleteAll();
-        self.isDeleting = false;
-      }
+    this.nodeConfig.eventEmitter.on('delete', async () => {
+      await self.deleteAll();
     });
   }
 

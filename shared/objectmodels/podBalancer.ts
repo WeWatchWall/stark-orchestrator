@@ -134,8 +134,9 @@ export class PodBalancer {
 
   private isAvailable(): boolean {
     if (!this.argValid.userConfig.state.enablePods) { return false; }
-    if (!this.state.packageConfig.state.attachments) { return false; }
+    if (!this.argValid.nodeConfig.state.availability) { return false; }
     if (!this.state.packageConfig.state.availability) { return false; }
+    if (!this.state.packageConfig.state.attachments) { return false; }
     if (!this.state.packageConfig.state.maxPods) { return false; }
 
     return true;
@@ -179,6 +180,7 @@ export class PodBalancer {
 
   private async adjustPositiveAvailability() {
     if (!this.argValid.userConfig.state.enablePods) { return; }
+    if (!this.argValid.nodeConfig.state.availability) { return; }
     if (!this.state.packageConfig.state.availability) { return; }
     if (this.state.packageConfig.state.maxPods) { return; }
     if (this.state.podConfig.state.numPods) { return; }
@@ -217,6 +219,7 @@ export class PodBalancer {
 
   private newDeployConfigModel = ObjectModel({
     userConfig: Object,
+    nodeConfig: Object,
     id: String,
     name: String,
     mode: [DeploymentMode.Core, DeploymentMode.Edge, DeploymentMode.Browser]

@@ -116,6 +116,7 @@ export class PodNumManager {
       },
       arg: {
         userConfig: this.userConfig,
+        nodeConfig: this.nodeConfig,
         id: podDoc._id,
         name: podDoc.data.name,
         mode: podDoc.data.mode
