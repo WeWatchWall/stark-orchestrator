@@ -128,7 +128,7 @@ export class UserRegistration {
     /* #endregion */
 
     /* #region  SAVE USER CONFIG */
-    let database = new Database({ arg: { username: user.arg.name }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
+    let database = new Database({ arg: { username: user.argValid.name }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
     await database.load();
     database.state.setSchema(this.userDbSchema);
 
@@ -176,7 +176,7 @@ export class UserRegistration {
       pack = await this.packageRegistrationService.add({
         db: database.state,
         isAdmin: true,
-        username: user.arg.name,
+        username: user.argValid.name,
         arg: {
           name: adminEdgeConfig,
           security: Security.Private,

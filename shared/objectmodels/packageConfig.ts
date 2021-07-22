@@ -6,11 +6,14 @@ import { diff } from 'deep-object-diff';
 import { DeploymentMode } from "./deploymentMode";
 
 export class PackageConfig {
-	db: any;
+  db: any;
+  
 	arg: any;
-	validate: boolean;
+  argValid: any;
   state: any;
   change: any;
+  validate: boolean;
+  
   isSaved = false;
 	string: string;
   watcher: any;
@@ -68,18 +71,18 @@ export class PackageConfig {
 	 */
 	parse(arg: string) {
 		this.arg = JSON.parse(arg);
-		if (this.validate) { this.validateNew(); }
+		this.validateNew();
 	}
 	
   async load() {
-    if (this.validate) { this.validateNew(); }
+    this.validateNew();
         
 		this.state = (await this.db.find({
       selector: {
         "_id": {"$regex": "^packageConfig"},
         data: {
-          'mode': this.arg.mode,
-          'name': this.arg.name
+          'mode': this.argValid.mode,
+          'name': this.argValid.name
         }
       },
       limit: 1
@@ -90,7 +93,7 @@ export class PackageConfig {
 	}
 
   async save() {
-    if (this.validate) { this.validateNew(); }
+    this.validateNew();
     if (!this.state) { this.init(); }
 
     this.state = { ...this.state, ...await this.db.rel.save('packageConfig', this.state) };
@@ -113,11 +116,11 @@ export class PackageConfig {
   });
 
   private validateNew() {
-      this.arg = new this.newDeployConfigModel(this.arg);
+    this.argValid = this.validate ? new this.newDeployConfigModel(this.arg) : this.arg;
   }
 
   private validateState() {
-      assert(!!this.state);
+    assert(!!this.state);
   }
 	
 }

@@ -5,11 +5,15 @@ import { DeploymentMode } from "../../shared/objectmodels/deploymentMode";
 import { ProvisionStatus } from "../../shared/objectmodels/provisionStatus";
 
 export class PodConfig {
-	db: any;
-	arg: any;
+  db: any;
+  
+  arg: any;
+  argValid: any;
+  state: any;
 	validate: boolean;
-    state: any;
-    isSaved = false;
+  
+
+  isSaved = false;
 	string: string;
 	
 	/**
@@ -24,7 +28,7 @@ export class PodConfig {
 		this.validate = validate;
 	}
 
-    init() { throw new Error("This method is not implemented."); }
+  init() { throw new Error("This method is not implemented."); }
 	
 	/**
 	 * Parses user.
@@ -32,103 +36,103 @@ export class PodConfig {
 	 */
 	parse(arg: string) {
 		this.arg = JSON.parse(arg);
-		if (this.validate) { this.validateNew(); }
+		this.validateNew();
 	}
 	
-    async load() {
-        if (this.state) { return; }
-        if (this.validate) { this.validateNew(); }
+  async load() {
+    if (this.state) { return; }
+    this.validateNew();
         
-		this.state = (await this.arg.userDb.find({
-            selector: {
-                "_id": {"$regex": "^packageConfig"},
-                data: {
-                    'mode': this.arg.mode,
-                    'name': this.arg.name
-                }
-            },
-            limit: 1
-		})).docs;
-		this.state = await this.arg.userDb.rel.parseRelDocs('packageConfig', this.state);
-		this.state = this.state.packageConfigs[0];
-        this.validateState();
-
-        let  saved = (await this.db.find({
-            selector: {
-                "_id": {"$regex": "^podConfig"},
-                data: {
-                    'mode': this.arg.mode,
-                    'name': this.arg.name
-                }
-            },
-            limit: 1
-        })).docs;
-        saved = await this.db.rel.parseRelDocs('podConfig', saved);
-        this.isSaved = !!saved.podConfigs[0];
-
-        if (this.isSaved) {
-            this.state = saved.podConfigs[0];
-            return;
+		this.state = (await this.argValid.userDb.find({
+      selector: {
+        "_id": {"$regex": "^packageConfig"},
+        data: {
+          'mode': this.argValid.mode,
+          'name': this.argValid.name
         }
+      },
+      limit: 1
+		})).docs;
+		this.state = await this.argValid.userDb.rel.parseRelDocs('packageConfig', this.state);
+		this.state = this.state.packageConfigs[0];
+    this.validateState();
 
-        this.state.attachment = await this.arg.userDb.rel.getAttachment('packageConfig', this.state.id, 'package.zip.pgp');
+    let  saved = (await this.db.find({
+      selector: {
+        "_id": {"$regex": "^podConfig"},
+        data: {
+          'mode': this.argValid.mode,
+          'name': this.argValid.name
+        }
+      },
+      limit: 1
+    })).docs;
+    saved = await this.db.rel.parseRelDocs('podConfig', saved);
+    this.isSaved = !!saved.podConfigs[0];
+
+    if (this.isSaved) {
+      this.state = saved.podConfigs[0];
+      return;
+    }
+
+    this.state.attachment = await this.argValid.userDb.rel.getAttachment('packageConfig', this.state.id, 'package.zip.pgp');
 	}
 
-    async save() {
-        if (!this.state) { await this.load(); } // TODO: USE THIS PATTERN!
-        if (this.isSaved) { return; }
+  async save() {
+    if (!this.state) { await this.load(); } // TODO: USE THIS PATTERN!
+    if (this.isSaved) { return; }
 
-        let read = this.state;		
-        this.state = undefined;
+    let read = this.state;		
+    this.state = undefined;
 
-        let result;
-        result = await this.db.rel.save('podConfig', {
-            ...read, ...{
-                id: undefined,
-                rev: undefined,
-                attachment: undefined,
-                attachments: undefined,
-               
-                availability: undefined, 
-                security: undefined,
-                tags: undefined,
-                status: ProvisionStatus.Init,
-                maxPods: undefined,
-                numPods: 1,
-                error: 'empty'
-            }
-        });
-        await this.db.rel.putAttachment('podConfig', result, 'package.zip.pgp', read.attachment, 'text/plain');
-        this.state = result;
+    let result;
+    result = await this.db.rel.save('podConfig', {
+      ...read, ...{
+        id: undefined,
+        rev: undefined,
+        attachment: undefined,
+        attachments: undefined,
+        
+        availability: undefined, 
+        security: undefined,
+        tags: undefined,
+        status: ProvisionStatus.Init,
+        maxPods: undefined,
+        numPods: 1,
+        error: 'empty'
+      }
+    });
+    await this.db.rel.putAttachment('podConfig', result, 'package.zip.pgp', read.attachment, 'text/plain');
+    this.state = result;
 
-        this.validateState();
-        this.isSaved = true;
+    this.validateState();
+    this.isSaved = true;
 	}
 
 	toString() {
 		this.string = JSON.stringify(this.state);
 	}
 
-    async delete() {
-        this.state = await this.db.get(this.db.rel.makeDocID({
-            id: this.state.id,
-            type: 'podConfig'
-        }));
-        await this.db.remove(this.state);
+  async delete() {
+    this.state = await this.db.get(this.db.rel.makeDocID({
+      id: this.state.id,
+      type: 'podConfig'
+    }));
+    await this.db.remove(this.state);
 	}
 
-    private newDeployConfigModel = ObjectModel({
-        userDb: Object,
-        mode: [DeploymentMode.Core, DeploymentMode.Edge, DeploymentMode.Browser],
-        name: String
-    });
+  private newDeployConfigModel = ObjectModel({
+    userDb: Object,
+    mode: [DeploymentMode.Core, DeploymentMode.Edge, DeploymentMode.Browser],
+    name: String
+  });
 
-    private validateNew() {
-        this.arg = new this.newDeployConfigModel(this.arg);
-    }
+  private validateNew() {
+    this.argValid = this.validate ? new this.newDeployConfigModel(this.arg) : this.arg;
+  }
 
-    private validateState() {
-        assert(!!this.state);
-    }
+  private validateState() {
+    assert(!!this.state);
+  }
 	
 }

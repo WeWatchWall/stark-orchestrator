@@ -1,10 +1,13 @@
 import { ObjectModel } from "objectmodel";
 
 export class DatabaseSecurity {
-	db: any;
-	arg: any;
+  db: any;
+  
+  arg: any;
+  argValid: any;
+  state: any;
 	validate: boolean;
-	state: any;
+	
 	string: string;
 	
 	/**
@@ -19,7 +22,7 @@ export class DatabaseSecurity {
 		this.validate = validate;
 	}
 
-    init() { throw new Error("This method is not implemented."); }
+  init() { throw new Error("This method is not implemented."); }
 	
 	/**
 	 * Parses user.
@@ -27,29 +30,29 @@ export class DatabaseSecurity {
 	 */
 	parse(arg: string) {
 		this.arg = JSON.parse(arg);
-		if (this.validate) { this.validateNew(); }
+		this.validateNew();
 	}
 	
-    async load() {
-        if (this.state) { return; }
-        if (this.validate) { this.validateNew(); }
+  async load() {
+    if (this.state) { return; }
+    this.validateNew();
 
-        // TODO: FAILS? NP for now!
-        await this.db.security().fetch();
-        this.state = this.db.security();
+    // TODO: FAILS? NP for now!
+    await this.db.security().fetch();
+    this.state = this.db.security();
 
-        // Just re-create it using the available info :()
-        this.state.admins.add({
-            names: [this.arg.nodeUsername]
-        });
-        this.state.members.add({
-            names: [this.arg.nodeUsername]
-        });
+    // Just re-create it using the available info :()
+    this.state.admins.add({
+        names: [this.argValid.nodeUsername]
+    });
+    this.state.members.add({
+        names: [this.argValid.nodeUsername]
+    });
 	}
 
     async save() {
         this.state.members.add({
-            names: [this.arg.username]
+            names: [this.argValid.username]
         });
 
         await this.state.save();
@@ -63,13 +66,13 @@ export class DatabaseSecurity {
         throw new Error("This method is not implemented.");
 	}
 
-    private newDatabaseSecurityModel = ObjectModel({
-        username: String,
-        nodeUsername: String
-    });
+  private newDatabaseSecurityModel = ObjectModel({
+      username: String,
+      nodeUsername: String
+  });
 
-    private validateNew() {
-        this.arg = new this.newDatabaseSecurityModel(this.arg);
-    }
+  private validateNew() {
+    this.argValid = this.validate ? new this.newDatabaseSecurityModel(this.arg) : this.arg;
+  }
 	
 }

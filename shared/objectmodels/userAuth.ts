@@ -24,8 +24,8 @@ export class UserAuth extends UserUnauth {
 	}
 
 	async save() { 
-		if (this.validate) { this.validateNew(); }
-        // TODO through PUT server/user/userId OPTIONAL AUTH
+		this.validateNew();
+    // TODO through PUT server/user/userId OPTIONAL AUTH
 	}
 	
 	

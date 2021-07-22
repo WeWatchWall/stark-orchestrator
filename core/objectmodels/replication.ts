@@ -8,9 +8,11 @@ PouchDB.plugin(require('pouchdb-authentication'));
 
 export class Replication {
 	arg: any;
-	validate: boolean;
-	isLoaded: boolean;
-	state: any;
+  argValid: any;
+  state: any;
+  validate: boolean;
+
+  isLoaded: boolean;
 	string: string;
 	
 	
@@ -20,10 +22,7 @@ export class Replication {
 		this.validate = validate;
 	}
 	
-	init(): void { 
-		throw new Error("This method is not implemented.");
-		
-	}
+	init(): void { throw new Error("This method is not implemented."); }
 
 	parse(arg: string) {
 		this.arg = JSON.parse(arg);
@@ -32,23 +31,20 @@ export class Replication {
 		
 	async load() {
 		// if (this.isLoaded) {return;}
-		
-		if (this.validate) { 
-			this.validateNew();
-		}
+		this.validateNew();
 
 		let db = new PouchDB(`http://${process.env.STARK_USER_NAME}:${process.env.STARK_USER_PASSWORD}@${process.env.STARK_DB_HOST}:5984/_replicator`, {
 			skip_setup: true
 		});
 
-		let selector = this.arg.id ? 
+		let selector = this.argValid.id ? 
 			{
-				_id: this.arg.id,
-				_rev: this.arg.rev
+				_id: this.argValid.id,
+				_rev: this.argValid.rev
 			} :
 			{
-				source: { $regex: this.arg.source },
-				target: { $regex: this.arg.target }
+				source: { $regex: this.argValid.source },
+				target: { $regex: this.argValid.target }
 			};
 
 		let state = (await db.find({
@@ -77,15 +73,15 @@ export class Replication {
 
 		// This is the task which can be cancelled :P
 		this.state = await server.db.replication.enable(
-			this.arg.source,
-			this.arg.target,
+			this.argValid.source,
+			this.argValid.target,
 			{
 				...{
 					continuous: true,
 					source: undefined,
 					target: undefined
 				},
-				...this.arg
+				...this.argValid
 			}
 		);
 		
@@ -121,8 +117,8 @@ export class Replication {
 		}
 	);
 	
-	private validateNew() {		
-		this.arg = new this.newReplicationModel(this.arg);
+  private validateNew() {
+    this.argValid = this.validate ? new this.newReplicationModel(this.arg) : this.arg;
 	}
 
 	private validateState() {

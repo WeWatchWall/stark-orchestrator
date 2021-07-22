@@ -48,9 +48,9 @@ export class PodConfigManager {
     this.nodeUser.init();
 
     this.nodeDb = new Database({
-      arg: { username: this.nodeUser.arg.name },
-      username: this.nodeUser.arg.name,
-      password: this.nodeUser.arg.password
+      arg: { username: this.nodeUser.argValid.name },
+      username: this.nodeUser.argValid.name,
+      password: this.nodeUser.argValid.password
     });
     await this.nodeDb.load();
     this.nodeDb.state.setSchema(this.nodeDbSchema);
@@ -194,7 +194,7 @@ export class PodConfigManager {
   async delete(podId: string) {
     /* #region  Get pod by Id and retrieve its name. */
     let podConfig = this.packConfigsId[podId];
-    let podName = podConfig.arg.name;
+    let podName = podConfig.argValid.name;
     /* #endregion */
 
     /* #region  Get, remove pod name, and save the NodeConfig. */

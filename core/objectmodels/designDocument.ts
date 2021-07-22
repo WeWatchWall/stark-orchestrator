@@ -2,11 +2,14 @@ import { ObjectModel } from "objectmodel";
 import assert from "assert";
 
 export class DesignDocument {
-	arg: any;
-	validate: boolean;
-	db: any;
+  db: any;
+
+  arg: any;
+  argValid: any;
+  state: any;
+  validate: boolean;
+	
 	string: string;
-	state: any;
 		
 	constructor(arg = { db: undefined, arg: undefined},  validate = false) {
 		this.db = arg.db;
@@ -25,19 +28,19 @@ export class DesignDocument {
 
 	parse(arg: string) {
 		this.arg = JSON.parse(arg);
-		if (this.validate) { this.validateNew(); }
+		this.validateNew();
 	}
 	
 	// Maybe using nano instead of pouch.find: https://github.com/apache/couchdb-nano
 	async load() { throw new Error("This method is not implemented."); }
 		
 	async save() {
-		if (this.validate) { this.validateNew(); }
-        let current = this.state || this.arg;
+		this.validateNew();
+    let current = this.state || this.argValid;
 
-        this.state = { ...current, ...await this.db.put(current) };
-        // Fixed. Clearly this saves id to the wrong property. id -> _id.
-        this.state = { ...this.state, ...{_id: this.state.id, id: undefined}};
+    this.state = { ...current, ...await this.db.put(current) };
+    // Fixed. Clearly this saves id to the wrong property. id -> _id.
+    this.state = { ...this.state, ...{_id: this.state.id, id: undefined}};
 		this.validateState();
 	}
 	
@@ -63,8 +66,8 @@ export class DesignDocument {
 		}
 	);
 		
-	private validateNew() {		
-		this.arg = new this.newDesignDocumentInstance(this.arg);
+  private validateNew() {
+    this.argValid = this.validate ? new this.newDesignDocumentInstance(this.arg) : this.arg;
 	}
 
 	private validateState() {

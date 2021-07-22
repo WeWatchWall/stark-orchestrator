@@ -7,12 +7,15 @@ import { Availability } from "../../shared/objectmodels/availability";
 import { Security } from "../../shared/objectmodels/security";
 
 export class NodeConfig {
-	db: any;
-	userConfig: UserConfig;
-	arg: any;
+  db: any;
+	
+  arg: any;
+  argValid: any;
+  state: any;
 	validate: boolean;
-	state: any;
-	string: string;
+  
+  string: string;
+  userConfig: UserConfig;
 	
 	constructor(arg = { db: undefined, userConfig: undefined, arg: undefined}, validate = false) {
 		this.db = arg.db;
@@ -33,10 +36,10 @@ export class NodeConfig {
 	}
 	
 	async save() {
-		if (this.validate) { this.validateNew() };
+		this.validateNew();
 
-		let arg = this.state || this.arg;
-		this.state = { ...arg, ...await this.db.rel.save('nodeConfig', arg) };	
+		let argValid = this.state || this.argValid;
+		this.state = { ...argValid, ...await this.db.rel.save('nodeConfig', argValid) };	
 		
 		// Accounting for the users' nodeConfigs.
 		this.userConfig.load();
@@ -110,8 +113,8 @@ export class NodeConfig {
 		}
 	);
 
-	private validateNew() {
-		this.arg = new this.newNodeConfigModel(this.arg);
+  private validateNew() {
+    this.argValid = this.validate ? new this.newNodeConfigModel(this.arg) : this.arg;
 	}
 
 	private validateState() {

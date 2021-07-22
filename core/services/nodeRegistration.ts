@@ -113,7 +113,7 @@ export class NodeRegistration {
 			db: nodeDatabase.state,
 			arg: {
 				username: arg.username,
-				nodeUsername: nodeUser.arg.name
+				nodeUsername: nodeUser.argValid.name
 			}
 		}, true);
 		await databaseSecurity.load();

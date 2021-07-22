@@ -17,11 +17,12 @@ export abstract class PackageServer {
   static OutDir = `./packages-dist`;
 
   arg;
+  argValid;
+  state;
   validate: boolean;
   
   packageDir: string;
   watcher;
-  state;
   string: string;
 
   constructor(arg = { arg: undefined }, validate = false) { 
@@ -37,7 +38,7 @@ export abstract class PackageServer {
 	 */
 	parse(arg: string) {
 		this.arg = JSON.parse(arg);
-		if (this.validate) { this.validateNew(); }
+		this.validateNew();
 	}
   
   // ABSTRACT
@@ -46,7 +47,7 @@ export abstract class PackageServer {
 	}
     
   protected async _load() {
-    if (this.validate) { this.validateNew(); }
+    this.validateNew();
 
     // From https://github.com/Stuk/jszip/issues/386
     this.state = PackageServer.getZipOfFolder(this.packageDir);
@@ -78,8 +79,8 @@ export abstract class PackageServer {
     await this.watcher.close();
   }
   
-	protected validateNew() {		
-		this.arg = new this.newPackageModel(this.arg);
+  protected validateNew() {
+    this.argValid = this.validate ? new this.newPackageModel(this.arg) : this.arg;
 	}
 
   protected newPackageModel = ObjectModel({

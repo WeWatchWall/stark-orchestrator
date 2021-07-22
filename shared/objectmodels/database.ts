@@ -1,4 +1,3 @@
-import FlatPromise from "flat-promise";
 import { ObjectModel } from 'objectmodel';
 import PouchDB from 'pouchdb';
 import find from 'pouchdb-find';
@@ -16,12 +15,14 @@ PouchDB
   .plugin(rel);
 
 export class Database {
-	arg: any;
+  arg: any;
+  argValid: any;
+  state: any;
+  validate: boolean;
+
 	username: String;
-	password: String;
-	validate: boolean;
-    dbName: string;
-	state: any;
+	password: String; 
+  dbName: string;
 	string: string;
 	
 	constructor(arg = { arg: {}, username: undefined, password: undefined},  validate = false) {
@@ -41,10 +42,8 @@ export class Database {
 	}
 	
 	async load() { 
-		if (this.validate) {
-			this.validateNew();
-		}
-		let dbName = `userdb-${Buffer.from(this.arg.username, 'utf8').toString('hex')}`;
+		this.validateNew();
+		let dbName = `userdb-${Buffer.from(this.argValid.username, 'utf8').toString('hex')}`;
 		this.dbName = dbName;
 		
 		// skip_setup: true, auth: { username: "admin", password: "mLHhxiForA1ebt7V1lT1" }
@@ -84,8 +83,8 @@ export class Database {
 		}
 	);
 	
-	private validateNew() {		
-		this.arg = new this.newDatabaseModel(this.arg);
+  private validateNew() {
+    this.argValid = this.validate ? new this.newDatabaseModel(this.arg) : this.arg;
 	}
 	
 	private validateState() {

@@ -14,15 +14,18 @@ import { PodEnv } from './podEnv';
 import { Util } from '../../shared/util';
 
 export class Pod { 
-    db: any;
-    arg: any;
-    validate: boolean;
-    state: any;
-    processes: Array<PodEnv> = [];
-    watcher: any;
-    eventEmitter = new EventEmitter();
-    isSaveConfig = false;
-    packageDir: string;
+  db: any;
+  
+  arg: any;
+  argValid: any;
+  validate: boolean;
+  state: any;
+  
+  processes: Array<PodEnv> = [];
+  watcher: any;
+  eventEmitter = new EventEmitter();
+  isSaveConfig = false;
+  packageDir: string;
 
   constructor(arg = { db: undefined, arg: undefined},  validate = false) {
     this.db = arg.db;
@@ -32,20 +35,20 @@ export class Pod {
 
   parse(arg: string) {
 		this.arg = JSON.parse(arg);
-		if (this.validate) { this.validateNew(); }
+		this.validateNew();
 	}
 
   init() { throw new Error("This method is not implemented."); }
 
   async load() {
     if (this.state) { return; }
-    if (this.validate) { this.validateNew(); }
+    this.validateNew();
 
-    this.packageDir = path.join(`./packages-run`, this.arg.name);
+    this.packageDir = path.join(`./packages-run`, this.argValid.name);
 
     // Get the initial state.
     this.state = (await this.db.find({
-      selector: { data: this.arg },
+      selector: { data: this.argValid },
       limit: 1
     })).docs;
     let podId = this.state[0]._id;
@@ -185,7 +188,7 @@ export class Pod {
   });
 
   private validateNew() {
-    this.arg = new this.newPodConfigModel(this.arg);
+    this.argValid = this.validate ? new this.newPodConfigModel(this.arg) : this.arg;
   }
     
   private validateState() {

@@ -7,9 +7,9 @@ import { PackageServer } from "./packageServer";
 export class PackageLocal extends PackageServer { 
   async load() {
 		if (this.watcher) { return; }
-		if (this.validate) { this.validateNew(); }
+		this.validateNew();
 
-    this.packageDir = `${PackageServer.PackagesDir}/${this.arg.name}`;
+    this.packageDir = `${PackageServer.PackagesDir}/${this.argValid.name}`;
     !(await fs.exists(this.packageDir)) && (await fs.mkdir(this.packageDir));
     
     this.watcher = chokidar.watch(this.packageDir,
@@ -30,6 +30,6 @@ export class PackageLocal extends PackageServer {
   async save() {
     this.validateState();
     
-    await fs.writeFile(`${PackageServer.OutDir}/${this.arg.name}.zip.pgp`, this.state);
+    await fs.writeFile(`${PackageServer.OutDir}/${this.argValid.name}.zip.pgp`, this.state);
   }
 } 

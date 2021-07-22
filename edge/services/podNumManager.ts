@@ -44,9 +44,9 @@ export class PodNumManager {
     this.nodeUser.init();
 
     this.nodeDb = new Database({
-        arg: { username: this.nodeUser.arg.name },
-        username: this.nodeUser.arg.name,
-        password: this.nodeUser.arg.password
+        arg: { username: this.nodeUser.argValid.name },
+        username: this.nodeUser.argValid.name,
+        password: this.nodeUser.argValid.password
     });
     await this.nodeDb.load();
     this.nodeDb.state.setSchema(this.nodeDbSchema);
@@ -124,7 +124,7 @@ export class PodNumManager {
 
     var self = this;
     balancer.eventEmitter.on('delete', async function () {
-      await self.delete(balancer.arg.name);
+      await self.delete(balancer.argValid.name);
     });
 
     await balancer.init();

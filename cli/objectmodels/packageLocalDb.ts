@@ -14,9 +14,9 @@ export class PackageLocalDb extends PackageServer {
 
   async load() { 
     if (this.watcher) { return; }
-    if (this.validate) { this.validateNew(); }
+    this.validateNew();
 
-    this.packageDir = `${PackageServer.PackagesDir}/${this.arg.name}`;
+    this.packageDir = `${PackageServer.PackagesDir}/${this.argValid.name}`;
     !(await fs.exists(this.packageDir)) && (await fs.mkdir(this.packageDir));
     
     this.watcher = chokidar.watch(this.packageDir,
@@ -35,12 +35,12 @@ export class PackageLocalDb extends PackageServer {
     }, 2000));
 
     await promise.promise;
-    this.arg.packageConfig.arg.attachment = this.state.buffer;
+    this.argValid.packageConfig.argValid.attachment = this.state.buffer;
   }
 
   async save() {
     this.validateState();       
-    await this.arg.packageConfig.save();
+    await this.argValid.packageConfig.save();
   }
 
   protected newPackageModel = ObjectModel({

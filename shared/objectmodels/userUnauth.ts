@@ -8,7 +8,7 @@ export class UserUnauth extends User {
 			name: process.env.STARK_USER_NAME,
             password: process.env.STARK_USER_PASSWORD
 		};
-		if (this.validate) { this.validateNew(); }
+		this.validateNew();
 	}
 	
 	protected newUserModel = ObjectModel({

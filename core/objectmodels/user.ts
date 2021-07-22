@@ -2,10 +2,13 @@ import FlatPromise from "flat-promise";
 import assert from "assert";
 
 export abstract class User {
-	db: any;
-	arg: any;
-	validate: boolean;
-	state: any;
+  db: any;
+  
+  arg: any;
+  argValid: any;
+  state: any;
+  validate: boolean;
+  
 	string: string;
 	
 	/**
@@ -28,12 +31,12 @@ export abstract class User {
 	 */
 	parse(arg: string) {
 		this.arg = JSON.parse(arg);
-		if (this.validate) { this.validateNew(); }
+		this.validateNew();
 	}
 	
 	async load() {
 		if (this.state) {return;}
-		//  if (this.validate) { this.validateNew(); }
+		//  this.validateNew();
 		
 		this.state = await this.db.getUser(this.arg.name);
 		this.validateState();
@@ -41,12 +44,10 @@ export abstract class User {
 	
 	async save() {
 		// Won't work if I load -> then I save but this doesn't happen...
-		if (this.validate) { 
-			this.validateNew();
-		}
+		this.validateNew();
 
 		let savestate = new FlatPromise();
-		this.state = this.db.signUp(this.arg.name, this.arg.password, (err, state) => { 
+		this.state = this.db.signUp(this.argValid.name, this.argValid.password, (err, state) => { 
 			if (err) {
 				savestate.reject(err);
 				return;
@@ -82,8 +83,8 @@ export abstract class User {
 	// :() Constructor type?
 	protected abstract newUserModel: new (arg0: any) => any;
 
-	protected validateNew() {		
-		this.arg = new this.newUserModel(this.arg);
+  protected validateNew() {
+    this.argValid = this.validate ? new this.newUserModel(this.arg) : this.arg;
 	}
 
 	protected validateState() {

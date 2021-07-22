@@ -20,7 +20,7 @@ export class NodeUser extends User {
       password: process.env.STARK_NODE_PASSWORD
     }
 
-    if (this.validate) { super.validateNew() };
+    super.validateNew();
   }
 
 	async load() {

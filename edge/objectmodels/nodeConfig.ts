@@ -8,10 +8,13 @@ import { Availability } from "../../shared/objectmodels/availability";
 import { Security } from "../../shared/objectmodels/security";
 
 export class NodeConfig {
-	db: any;
-	arg: any;
-	validate: boolean;
+  db: any;
+  
+  arg: any;
+  argValid: any;
 	state: any;
+  validate: boolean;
+	
 	string: string;
 	watcher: any;
 	eventEmitter = new EventEmitter();
@@ -27,12 +30,12 @@ export class NodeConfig {
 		let mode = JSON.parse(process.env.STARK_MODES);
 		this.arg.mode = mode[0] ? DeploymentMode.Core : DeploymentMode.Edge; // Browser will be hard-coded?;
         
-		if (this.validate) { this.validateNew() };
+		this.validateNew();
 	}
 	
 	parse(arg: string) {
 		this.arg = JSON.parse(arg);
-		if (this.validate) { this.validateNew() };
+		this.validateNew();
 	}
 
   async load() {
@@ -51,14 +54,14 @@ export class NodeConfig {
 			include_docs: true,
 			selector: {
 				"_id": self.db.rel.makeDocID({
-						id: self.state.id,
-						type: 'nodeConfig'
+          id: self.state.id,
+          type: 'nodeConfig'
 				})
 			}
 		}).on('change', async function (change) {
 			if (change.deleted) {
-					await self.delete();
-					return;
+        await self.delete();
+        return;
 			}
 
 			let parsedChange = await self.db.rel.parseRelDocs('nodeConfig', [change.doc]);
@@ -71,7 +74,7 @@ export class NodeConfig {
 	}
 	
 	async save() {
-		if (this.validate) { this.validateNew(); }
+		this.validateNew();
 		if (this.state) { this.validateState(); }
 
 		this.state = { ...this.state, ...await this.db.rel.save('nodeConfig', this.state) };
@@ -80,7 +83,7 @@ export class NodeConfig {
 	}
 	
     toString() {
-        this.validateState();
+    this.validateState();
 		this.string = JSON.stringify(this.state);
 	}
 	
@@ -104,8 +107,8 @@ export class NodeConfig {
 		}
 	);
 
-	private validateNew() {
-		this.arg = new this.newNodeConfigModel(this.arg);
+  private validateNew() {
+    this.argValid = this.validate ? new this.newNodeConfigModel(this.arg) : this.arg;
 	}
     	
 	private stateNodeConfigModel = ObjectModel({
@@ -154,6 +157,6 @@ export class NodeConfig {
 	);
     
 	private validateState() {
-		this.state = new this.stateNodeConfigModel(this.state);
+		new this.stateNodeConfigModel(this.state);
 	}
 }

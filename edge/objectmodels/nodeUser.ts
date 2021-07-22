@@ -1,4 +1,5 @@
-// TODO: 
+// TODO:
+// Validate load()
 // If it cannot find its configuration in load() first
 // Save config in the Save() function :P Which will use the PUT server/node/nodeid
 
@@ -35,7 +36,7 @@ export class NodeUser extends User {
         symbols: false
     });
 
-    if (this.validate) { super.validateNew() };
+    super.validateNew();
   }
 
   // This might fail on the edge because the server isn't up yet...

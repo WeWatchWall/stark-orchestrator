@@ -8,11 +8,14 @@ import { ProvisionStatus } from '../../shared/objectmodels/provisionStatus';
 
 export class PackageConfig {
 	db: any;
+  
   arg: any;
+  argValid: any;
+  state: any;
+  validate: boolean;
+
+  string: string;
   attachment: Buffer;
-	validate: boolean;
-	state: any;
-	string: string;
 	
 	/**
 	 * Creates an instance of user.
@@ -35,15 +38,15 @@ export class PackageConfig {
 	 */
 	parse(arg: string) {
 		this.arg = JSON.parse(arg);
-    if (this.validate) { this.validateNew(); }
+    this.validateNew();
 	}
 	
 	async load() {
-		if (this.state) {return;}
-    if (this.validate) { this.validateNew(); }
+		if (this.state) { return; }
+    this.validateNew();
 
 		this.state = (await this.db.find({
-			selector: { data: {name: this.arg.name} },
+			selector: { data: {name: this.argValid.name} },
 			limit: 1
 		})).docs;
 		this.state = await this.db.rel.parseRelDocs('packageConfig', this.state);
@@ -55,7 +58,7 @@ export class PackageConfig {
 	}
 	
 	async save() {
-    if (this.validate) { this.validateNew(); }
+    this.validateNew();
 
     this.state = await this.db.rel.save('packageConfig', this.state || this.arg);
     
@@ -70,7 +73,6 @@ export class PackageConfig {
 	}
 	
 	async delete() {
-		
 	}
 
 	// :() Constructor type?
@@ -106,8 +108,8 @@ export class PackageConfig {
 		}
 	);
 
-	protected validateNew() {		
-		this.arg = new this.newUserModel(this.arg);
+	protected validateNew() {
+    this.argValid = this.validate ? new this.newUserModel(this.arg) : this.arg;
 	}
 
 	protected validateState() {

@@ -10,13 +10,15 @@ import { Util } from '../util';
 
 export class PodBalancer {
   dbs: any;
-	arg: any;
-	validate: boolean;
+
+  arg: any;
+  argValid: any;
   state: { podConfig: any, packageConfig: any };
   change: any;
+	validate: boolean;
+
   isDeletedPackage = false;
-	string: string;
-  
+	string: string;  
   eventEmitter = new EventEmitter();
     
 	/**
@@ -80,37 +82,35 @@ export class PodBalancer {
 	 */
 	parse(arg: string) {
 		this.arg = JSON.parse(arg);
-		if (this.validate) { this.validateNew(); }
+		this.validateNew();
 	}
 	
   async load() {
     if (this.state) { return; }
-    if (this.validate) { this.validateNew(); }
+    this.validateNew();
 
     let podConfig = new PodConfig(
       {
         db: this.dbs.nodeDb,
         arg: {
-          id: this.arg.id
+          id: this.argValid.id
         },
       },
       true
     );
     await podConfig.init();
-    await podConfig.load();
 
     let packageConfig = new PackageConfig(
       {
         db: this.dbs.userDb,
         arg: {
-          name: this.arg.name,
-          mode: this.arg.mode
+          name: this.argValid.name,
+          mode: this.argValid.mode
         },
       },
       true
     );
     await packageConfig.init();
-    await packageConfig.load();
 
     this.state = {
       podConfig: podConfig,
@@ -133,7 +133,7 @@ export class PodBalancer {
   }
 
   private isAvailable(): boolean {
-    if (!this.arg.userConfig.state.enablePods) { return false; }
+    if (!this.argValid.userConfig.state.enablePods) { return false; }
     if (!this.state.packageConfig.state.attachments) { return false; }
     if (!this.state.packageConfig.state.availability) { return false; }
     if (!this.state.packageConfig.state.maxPods) { return false; }
@@ -142,7 +142,7 @@ export class PodBalancer {
   }
 
   async save(): Promise<boolean> {
-    if (this.validate) { this.validateNew(); }
+    this.validateNew();
     if (!this.state) { await this.init(); }
 
     let numPods = this.state.packageConfig.state.numPods;
@@ -178,7 +178,7 @@ export class PodBalancer {
   }
 
   private async adjustPositiveAvailability() {
-    if (!this.arg.userConfig.state.enablePods) { return; }
+    if (!this.argValid.userConfig.state.enablePods) { return; }
     if (!this.state.packageConfig.state.availability) { return; }
     if (this.state.packageConfig.state.maxPods) { return; }
     if (this.state.podConfig.state.numPods) { return; }
@@ -223,7 +223,7 @@ export class PodBalancer {
   });
 
   private validateNew() {
-      this.arg = new this.newDeployConfigModel(this.arg);
+    this.argValid = this.validate ? new this.newDeployConfigModel(this.arg) : this.arg;
   }
 
   private validateState() {

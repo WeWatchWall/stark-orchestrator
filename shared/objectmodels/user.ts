@@ -1,8 +1,11 @@
 export abstract class User {
-	server: any;
-	arg: any;
-	validate: boolean;
+  server: any;
+  
+  arg: any;
+  argValid: any;
 	state: any;
+  validate: boolean;
+  
 	string: string;
 	
 	/**
@@ -25,44 +28,43 @@ export abstract class User {
 	 */
 	parse(arg: string) {
 		this.arg = JSON.parse(arg);
-		if (this.validate) { this.validateNew(); }
+		this.validateNew();
 	}
 	
 	async load() {
 		if (this.state) {return;}
-
-        this.state = {
-            name: process.env.STARK_USER_NAME,
-            password: process.env.STARK_USER_PASSWORD,
-            key: process.env.STARK_USER_KEY
+    this.state = {
+      name: process.env.STARK_USER_NAME,
+      password: process.env.STARK_USER_PASSWORD,
+      key: process.env.STARK_USER_KEY
 		}
 		
 		this.validateState();
 	}
 
-    async save() {
-        throw new Error("This method is not implemented.");
+  async save() {
+    throw new Error("This method is not implemented.");
 	}
 
 	toString() {
 		this.string = JSON.stringify(this.state);
 	}
 	
-    async delete() {
-        throw new Error("This method is not implemented.");
+  async delete() {
+    throw new Error("This method is not implemented.");
 	}
 
 	// :() Constructor type?
 	protected abstract newUserModel: new (arg0: any) => any;
 
-    protected validateNew() {
-        this.arg = new this.newUserModel(this.arg);
-    }
+  protected validateNew() {
+    this.argValid = this.validate ? new this.newUserModel(this.arg) : this.arg;
+  }
 
-    protected abstract stateUserModel: new (arg0: any) => any;
+  protected abstract stateUserModel: new (arg0: any) => any;
 
 	protected validateState() {
-		this.arg = new this.stateUserModel(this.state);
+		new this.stateUserModel(this.state);
 	}
 	
 }

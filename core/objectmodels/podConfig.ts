@@ -5,10 +5,13 @@ import { DeploymentMode } from "../../shared/objectmodels/deploymentMode";
 import { ProvisionStatus } from "../../shared/objectmodels/provisionStatus";
 
 export class PodConfig {
-	db: any;
+  db: any;
+  
 	arg: any;
-	validate: boolean;
-	state: any;
+  argValid: any;
+  state: any;
+  validate: boolean;
+  
 	string: string;
 	
 	/**
@@ -23,7 +26,7 @@ export class PodConfig {
 		this.validate = validate;
 	}
 
-    init() { throw new Error("This method is not implemented."); }
+  init() { throw new Error("This method is not implemented."); }
 	
 	/**
 	 * Parses user.
@@ -31,27 +34,27 @@ export class PodConfig {
 	 */
 	parse(arg: string) {
 		this.arg = JSON.parse(arg);
-		if (this.validate) { this.validateNew(); }
+		this.validateNew();
 	}
 	
   async load() {
     if (this.state) { return; }
-    if (this.validate) { this.validateNew(); }
+    this.validateNew();
 
-    this.state = (await this.arg.userDb.find({
+    this.state = (await this.argValid.userDb.find({
       selector: {
         data: {
           'availability': Availability.Any,
-          'mode': this.arg.mode
+          'mode': this.argValid.mode
         }
       }
     })).docs;
-    this.state = await this.arg.userDb.rel.parseRelDocs('packageConfig', this.state);
+    this.state = await this.argValid.userDb.rel.parseRelDocs('packageConfig', this.state);
     this.state = this.state.packageConfigs;
     this.validateState();
 
     for (let packageConfig of this.state) {
-      packageConfig.attachment = await this.arg.userDb.rel.getAttachment('packageConfig', packageConfig.id, 'package.zip.pgp');
+      packageConfig.attachment = await this.argValid.userDb.rel.getAttachment('packageConfig', packageConfig.id, 'package.zip.pgp');
     }
 	}
 
@@ -100,7 +103,7 @@ export class PodConfig {
   });
 
   private validateNew() {
-    this.arg = new this.newDeployConfigModel(this.arg);
+    this.argValid = this.validate ? new this.newDeployConfigModel(this.arg) : this.arg;
   }
 
   private validateState() {

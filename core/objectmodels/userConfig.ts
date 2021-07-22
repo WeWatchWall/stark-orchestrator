@@ -3,11 +3,14 @@ import assert from "assert";
 import validator from "email-validator";
 
 export class UserConfig {
-	arg: any;
-	validate: boolean;
-	db: any;
-	string: string;
+  db: any;
+
+  arg: any;
+  argValid: any;
 	state: any;
+  validate: boolean;
+	
+  string: string;
 		
 	constructor(arg = { db: undefined, arg: undefined},  validate = false) {
 		this.db = arg.db;
@@ -19,12 +22,12 @@ export class UserConfig {
 
 	parse(arg: string) {
 		this.arg = JSON.parse(arg);
-		if (this.validate) { this.validateNew(); }
+		this.validateNew();
 	}
 	
 	async load() {
 		// ValidateLoad?
-		// if (this.validate) { this.validateNew(); }
+		// this.validateNew();
 		
 		this.state = (await this.db.find({
 			selector: { data: this.arg },
@@ -37,7 +40,7 @@ export class UserConfig {
 	}
 		
 	async save() {
-		if (this.validate) { this.validateNew(); }
+		this.validateNew();
 
 		this.state = { ...this.state, ...await this.db.rel.save('userConfig', this.state || this.arg) };
 		this.validateState();
@@ -109,8 +112,8 @@ export class UserConfig {
 		}
 	);
 		
-	private validateNew() {		
-		this.arg = new this.newUserConfigInstance(this.arg);
+  private validateNew() {
+    this.argValid = this.validate ? new this.newUserConfigInstance(this.arg) : this.arg;
 	}
 
 	private validateState() {

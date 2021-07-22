@@ -4,11 +4,14 @@ import assert from "assert"
 import validator from "email-validator";
 
 export class UserConfig {
-	arg: any;
+  db: any;
+  
+  arg: any;
+  argValid: any;
+  state: any;
 	validate: boolean;
-	db: any;
+	
 	string: string;
-	state: any;
 	watcher: any;
 	eventEmitter = new EventEmitter();
 
@@ -53,7 +56,7 @@ export class UserConfig {
 	
 	async load() {
 		if (this.state) { return; }
-		if (this.validate) { this.validateNew(); }
+		this.validateNew();
 
 		this.state = (await this.db.find({
 			selector: { data: this.arg },
@@ -66,7 +69,7 @@ export class UserConfig {
 	}
 
 	async save() {
-		if (this.validate) { this.validateNew(); }
+		this.validateNew();
 		
 		this.state = { ...this.state, ...await this.db.rel.save('userConfig', this.state) }; // TODO: USE THIS PATTERN!
 		this.validateState();
@@ -85,8 +88,9 @@ export class UserConfig {
 	// TODO: Not allowed. Will validate args later...
 	private newUserConfigInstance;
 		
-	private validateNew() {		
-		assert(!!this.state);
+  private validateNew() {
+    if (this.validate) { assert(!!this.state); }
+    this.argValid = this.arg;
 	}
 
 	private stateUserConfigInstance = ObjectModel({
@@ -135,7 +139,7 @@ export class UserConfig {
 
 	private validateState() {
 		assert(!!this.state);
-		// TODO: use this: this.state = new this.stateUserConfigInstance(this.state);
+		// TODO: use this: new this.stateUserConfigInstance(this.state);
 	}
 
 }

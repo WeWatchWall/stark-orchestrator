@@ -5,77 +5,79 @@ import path from 'path';
 import fs from 'fs-extra';
 const { NodeVM } = require('vm2');
 
-
 // TODO: SCALING UP+DOWN with UPDATE
 
 export class PodEnv {
-    static PackagesDir = `./packages-run`;
-    db: any;
+  static PackagesDir = `./packages-run`;
+  db: any;
+
 	arg: any;
-	validate: boolean;
+  argValid: any;
+  validate: boolean;
 	state: any;
-	string: string;
-    packageDir: any;
+	
+  string: string;
+  packageDir: any;
     
 	constructor(arg = { arg: undefined},  validate = false) {
 		this.arg = arg.arg;
 		this.validate = validate;
 	}
 
-    init() { throw new Error("This method is not implemented."); }
+  init() { throw new Error("This method is not implemented."); }
 
 	parse(arg: string) {
 		this.arg = JSON.parse(arg);
-		if (this.validate) { this.validateNew(); }
+		this.validateNew();
 	}
 	
-    async load() {
-        if (this.state) { return; }
-        if (this.validate) { this.validateNew(); }
-        this.packageDir = `${PodEnv.PackagesDir}/${this.arg.name}`;
+  async load() {
+    if (this.state) { return; }
+    this.validateNew();
+    this.packageDir = `${PodEnv.PackagesDir}/${this.argValid.name}`;
 
-        if (!(await fs.exists(this.packageDir))) {
-            throw new Error(`Input Error. The specified package does not exist in ${this.packageDir}`);
-        }
+    if (!(await fs.exists(this.packageDir))) {
+      throw new Error(`Input Error. The specified package does not exist in ${this.packageDir}`);
+    }
 
-        this.state = true;
+    this.state = true;
 	}
 
-    async save() {
-        if (!this.state) { await this.load(); } // TODO: USE THIS PATTERN!
-        this.validateState();
+  async save() {
+    if (!this.state) { await this.load(); } // TODO: USE THIS PATTERN!
+    this.validateState();
 
-        
-        // TODO: SANDBOX WITH (SCAFFOLD FILES) + (SEPARATE PROCESS OR THREAD) + (ARGUMENTS for VM2)
-        const vm = new NodeVM({
-            console: 'inherit',
-            sandbox: {},
-            require: {
-                external: {
-                    modules: ['*'],
-                    transitive: true
-                },
-                builtin: ['*'],
-                root: `${path.join(this.packageDir)}`,
-                mock: {
-                    fs: {
-                        readFileSync() { return 'Nice try!'; }
-                    }
-                }
-            }
-        });
+    
+    // TODO: SANDBOX WITH (SCAFFOLD FILES) + (SEPARATE PROCESS OR THREAD) + (ARGUMENTS for VM2)
+    const vm = new NodeVM({
+      console: 'inherit',
+      sandbox: {},
+      require: {
+        external: {
+          modules: ['*'],
+          transitive: true
+        },
+        builtin: ['*'],
+        root: `${path.join(this.packageDir)}`,
+        mock: {
+          fs: {
+            readFileSync() { return 'Nice try!'; }
+          }
+        }
+      }
+    });
 
-        let functionInSandbox = vm.run(
-            `
-                module.exports = function(arg) {
-                    console.log(process.cwd());
-                    const app = require('./dist/index.js');
-                    app(arg);
-                }            
-            `,
-            path.join(this.packageDir, 'stark_bootstrap.js')
-        );
-        functionInSandbox(this.arg.name);
+    let functionInSandbox = vm.run(
+      `
+      module.exports = function(arg) {
+        console.log(process.cwd());
+        const app = require('./dist/index.js');
+        app(arg);
+      }            
+      `,
+      path.join(this.packageDir, 'stark_bootstrap.js')
+    );
+    functionInSandbox(this.argValid.name);
 	}
 
 	toString() {
@@ -88,16 +90,16 @@ export class PodEnv {
     async delete() {
 	}
 
-    private newPodEnvModel = ObjectModel({
-        name: String
-    });
+  private newPodEnvModel = ObjectModel({
+    name: String
+  });
 
-    private validateNew() {
-        this.arg = new this.newPodEnvModel(this.arg);
-    }
+  private validateNew() {
+    this.argValid = this.validate ? new this.newPodEnvModel(this.arg) : this.arg;
+  }
 
-    private validateState() {
-        assert(!!this.state);
-    }
+  private validateState() {
+    assert(!!this.state);
+  }
 	
 }
