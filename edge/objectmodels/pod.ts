@@ -54,8 +54,9 @@ export class Pod {
     
     await this.saveConfig({ status: ProvisionStatus.Init });
     await this.saveInstall();
-    await this.save(this.state);
-
+    await this.save();
+    await this.saveConfig({ status: ProvisionStatus.Up });
+    
     var self = this;
     this.watcher = this.db.changes({
       since: 'now',
@@ -66,27 +67,27 @@ export class Pod {
       }
     }).on('change', async function (change) {
       if (change.deleted) {
-          await self.delete(true);
-          return;
+        await self.delete(true);
+        return;
       }
-
-      if (self.isSaveConfig) { return; }
 
       let parsedChange = await self.db.rel.parseRelDocs('podConfig', [change.doc]);
       parsedChange = parsedChange.podConfigs[0];
-      await self.save(parsedChange);
+      let prevState = self.state;
+      self.state = parsedChange;
+
+      if (prevState.attachments["package.zip.pgp"].revpos !== parsedChange.attachments["package.zip.pgp"].revpos) {
+        await self.delete();
+        await self.saveInstall();
+      }
+
+      await self.save();     
     });
   }
 
   // NOTE: Is called by load, when the podConfig changes.
-  async save(update) {
+  async save() {
     this.validateState();
-
-    if (this.state.attachments["package.zip.pgp"].revpos !== update.attachments["package.zip.pgp"].revpos) {
-      await this.delete();
-      await this.saveInstall();
-    }
-    this.state = update;
 
     if (this.state.status === ProvisionStatus.Stop) { await this.delete(); return; }
 
@@ -107,17 +108,14 @@ export class Pod {
           });
 
           processEnv.save();
-          await this.saveConfig({status: ProvisionStatus.Up});
         } catch (error) {
           await this.saveConfig({ status: ProvisionStatus.Error, error: error });
         }
-          
       }
     }
   }
 
   private async saveConfig(overwrite) {
-    this.isSaveConfig = true;
     
     await Util.retry(async (retry) => {
       try {
@@ -130,9 +128,7 @@ export class Pod {
       } catch (error) {
         retry(error)
       }
-    }, 7);
-
-    this.isSaveConfig = false;
+    }, 8);
   }
 
   private async saveInstall() { 

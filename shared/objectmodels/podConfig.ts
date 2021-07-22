@@ -101,7 +101,8 @@ export class PodConfig {
   });
 
   private validateNew() {
-      this.arg = new this.newDeployConfigModel(this.arg);
+    // TODO: this.arg = 
+    new this.newDeployConfigModel(this.arg);
   }
 
   private validateState() {

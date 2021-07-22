@@ -70,7 +70,7 @@ export class PodBalancer {
     }
 
     if (change.hasOwnProperty('maxPods') || change.hasOwnProperty('numPods')) {
-      while (!await this.save()) { }
+      while (!await this.save()) {  }
     }
   }
   

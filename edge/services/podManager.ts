@@ -16,7 +16,7 @@ export class PodManager {
     !(await fs.exists(PodManager.PackagesDir)) && (await fs.mkdir(PodManager.PackagesDir));
 
     for (let bootstrapPod of this.nodeBootstrap.nodeConfig.state.podConfigs) {
-      this.add(bootstrapPod);
+      await this.add(bootstrapPod);
     }
 
     var self = this;
