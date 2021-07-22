@@ -58,7 +58,6 @@ export class Pod {
     await this.saveConfig({ status: ProvisionStatus.Init });
     await this.saveInstall();
     await this.save();
-    await this.saveConfig({ status: ProvisionStatus.Up });
     
     var self = this;
     this.watcher = this.db.changes({
@@ -84,7 +83,7 @@ export class Pod {
         await self.saveInstall();
       }
 
-      await self.save();     
+      await self.save();
     });
   }
 
@@ -111,6 +110,7 @@ export class Pod {
           });
 
           processEnv.save();
+          await self.saveConfig({ status: ProvisionStatus.Up });
         } catch (error) {
           await this.saveConfig({ status: ProvisionStatus.Error, error: error });
         }
