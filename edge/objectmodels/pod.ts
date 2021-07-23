@@ -120,6 +120,7 @@ export class Pod {
 
   private async saveConfig(overwrite) {
     
+    // TODO: Replace with upsert: https://pouchdb.com/guides/conflicts.html#two-types-of-conflicts
     await Util.retry(async (retry) => {
       try {
         this.state = {

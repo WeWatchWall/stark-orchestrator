@@ -150,6 +150,7 @@ export class PodConfigManager {
     /* #endregion */
 
     /* #region  Get, add pod name, and save the NodeConfig. */
+    // TODO: Replace with upsert: https://pouchdb.com/guides/conflicts.html#two-types-of-conflicts
     await Util.retry(async (retry) => {
       try {
         await this.nodeConfig.load();
@@ -193,6 +194,7 @@ export class PodConfigManager {
     /* #endregion */
 
     /* #region  Get, remove pod name, and save the NodeConfig. */
+    // TODO: Replace with upsert: https://pouchdb.com/guides/conflicts.html#two-types-of-conflicts
     await Util.retry(async (retry) => {
       try {
         await this.nodeConfig.load();

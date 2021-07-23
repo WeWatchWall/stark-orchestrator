@@ -42,6 +42,7 @@ export class PodBalancer {
 
     var self = this;
     this.state.packageConfig.eventEmitter.on('change', async function (change) {
+      // TODO: Replace with upsert: https://pouchdb.com/guides/conflicts.html#two-types-of-conflicts
       await Util.retry(async (retry) => {
         if (self.isDeletedPackage) { return; }
 
@@ -119,6 +120,7 @@ export class PodBalancer {
 
     this.validateState();
 
+    // TODO: Replace with upsert: https://pouchdb.com/guides/conflicts.html#two-types-of-conflicts
     await Util.retry(async (retry) => {
       try {
         await this.state.packageConfig.load();
@@ -164,6 +166,7 @@ export class PodBalancer {
       throw error;
     }
 
+    // TODO: Replace with upsert: https://pouchdb.com/guides/conflicts.html#two-types-of-conflicts
     await Util.retry(async (retry) => {
       try {
         await this.state.podConfig.load();
@@ -185,6 +188,7 @@ export class PodBalancer {
     if (this.state.packageConfig.state.maxPods) { return; }
     if (this.state.podConfig.state.numPods) { return; }
     
+    // TODO: Replace with upsert: https://pouchdb.com/guides/conflicts.html#two-types-of-conflicts
     await Util.retry(async (retry) => {
       try {
         await this.state.podConfig.load();
@@ -195,6 +199,7 @@ export class PodBalancer {
       }
     }, 8);
 
+    // TODO: Replace with upsert: https://pouchdb.com/guides/conflicts.html#two-types-of-conflicts
     await Util.retry(async (retry) => {
       try {
         await this.state.packageConfig.load();
