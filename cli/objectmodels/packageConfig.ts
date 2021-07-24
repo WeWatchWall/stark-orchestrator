@@ -30,7 +30,7 @@ export class PackageConfig {
 		this.validate = validate;
 	}
 
-    init(): void { throw new Error("This method is not implemented."); }
+  init(): void { throw new Error("This method is not implemented."); }
 	
 	/**
 	 * Parses user.
@@ -60,7 +60,7 @@ export class PackageConfig {
 	async save() {
     this.validateNew();
 
-    this.state = await this.db.rel.save('packageConfig', this.state || this.arg);
+    this.state = await this.db.rel.save('packageConfig', this.state || this.argValid);
     
     await this.db.rel.putAttachment('packageConfig', this.state, 'package.zip.pgp', this.arg.attachment, 'text/plain');
 
@@ -77,35 +77,35 @@ export class PackageConfig {
 
 	// :() Constructor type?
 	protected newUserModel = ObjectModel({
-    // Relational
-    name: String,
-    
-    // Config
-    mode: [DeploymentMode.Core, DeploymentMode.Edge, DeploymentMode.Browser],
-    availability: [Availability.Off, Availability.Tag, Availability.Any],
-    security: [Security.Private, Security.Friends, Security.Public],
-		tags: ArrayModel(String),
-		maxPods: Number,
-		numPods: Number,
-		status: [ProvisionStatus.Init, ProvisionStatus.Up, ProvisionStatus.Error, ProvisionStatus.Stop]
+      // Relational
+      name: String,
+      
+      // Config
+      mode: [DeploymentMode.Core, DeploymentMode.Edge, DeploymentMode.Browser],
+      availability: [Availability.Off, Availability.Tag, Availability.Any],
+      security: [Security.Private, Security.Friends, Security.Public],
+      tags: ArrayModel(String),
+      maxPods: Number,
+      numPods: Number,
+      status: [ProvisionStatus.Init, ProvisionStatus.Up, ProvisionStatus.Error, ProvisionStatus.Stop]
 		
     }).defaultTo({
-    // Require name
-    // Require mode
-    availability: Availability.Any,
-    security: Security.Private,
-		tags: [],
-		maxPods: 0,
-		numPods: 0,
-		status: ProvisionStatus.Init
-    }).assert(
-		newUser => {
-			// TODO
-			return newUser &&
-			
-				// Alphanumeric string that may include _ and - having a length of 3 to 20 characters.
-				RegExp('^[a-zA-Z0-9-_]{3,50}$').test(newUser.name);
-		}
+      // Require name
+      // Require mode
+      availability: Availability.Any,
+      security: Security.Private,
+      tags: [],
+      maxPods: 0,
+      numPods: 0,
+      status: ProvisionStatus.Init
+      }).assert(
+      newUser => {
+        // TODO
+        return newUser &&
+        
+          // Alphanumeric string that may include _ and - having a length of 3 to 20 characters.
+          RegExp('^[a-zA-Z0-9-_]{3,50}$').test(newUser.name);
+      }
 	);
 
 	protected validateNew() {

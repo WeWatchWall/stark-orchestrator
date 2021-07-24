@@ -35,7 +35,7 @@ export class PackageLocalDb extends PackageServer {
     }, 2000));
 
     await promise.promise;
-    this.argValid.packageConfig.argValid.attachment = this.state.buffer;
+    this.argValid.packageConfig.arg.attachment = this.state.buffer;
   }
 
   async save() {
