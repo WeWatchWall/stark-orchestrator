@@ -26,7 +26,7 @@ export class PackageConfig {
   constructor(arg = { db: undefined, arg: undefined},  validate = false) {
     this.db = arg.db;
     this.arg = arg.arg;
-    this.attachment = arg.arg.attachment; // Extra, data-filtered property!
+    this.attachment = arg.arg.attachment; // Extra, data-filtered property! for memory?
     this.validate = validate;
   }
 
@@ -54,7 +54,7 @@ export class PackageConfig {
         
     this.validateState();
     
-    this.state.attachment = await this.db.rel.getAttachment('packageConfig', this.state.id, 'package.zip.pgp');
+    this.attachment = await this.db.rel.getAttachment('packageConfig', this.state.id, 'package.zip.pgp');
   }
   
   async save() {
@@ -62,7 +62,7 @@ export class PackageConfig {
 
     this.state = await this.db.rel.save('packageConfig', this.state || this.argValid);
     
-    await this.db.rel.putAttachment('packageConfig', this.state, 'package.zip.pgp', this.arg.attachment, 'text/plain');
+    await this.db.rel.putAttachment('packageConfig', this.state, 'package.zip.pgp', this.attachment || this.arg.attachment, 'text/plain');
 
     this.validateState();
   }

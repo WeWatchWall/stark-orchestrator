@@ -155,8 +155,8 @@ export class PodBalancer {
 
     if (numPods === maxPods) { return true; }
     if (pods === 0 && increment === -1) { return true; }
-    if (pods === 1 && increment === -1) { await Util.delay(3000); }
-    if (pods > 1 && increment === 1) { await Util.delay(3000); }
+    if (pods === 1 && increment === -1) { await Util.delay(3e3); }
+    if (pods > 1 && increment === 1) { await Util.delay(3e3); }
 
     try {
       this.state.packageConfig.state.numPods += increment;

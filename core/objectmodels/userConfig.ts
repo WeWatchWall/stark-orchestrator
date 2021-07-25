@@ -42,7 +42,7 @@ export class UserConfig {
   async save() {
     this.validateNew();
 
-    this.state = { ...this.state, ...await this.db.rel.save('userConfig', this.state || this.arg) };
+    this.state = { ...this.state, ...await this.db.rel.save('userConfig', this.state || this.argValid) };
     this.validateState();
   }
   

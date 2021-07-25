@@ -59,7 +59,7 @@ export class NodeRegistration {
     );
     await nodeUser.save();
 
-    let nodeDatabase = new Database({ arg: { username: nodeUser.arg.name }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
+    let nodeDatabase = new Database({ arg: { username: nodeUser.argValid.name }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
     await nodeDatabase.load();
     nodeDatabase.state.setSchema(this.nodeDbSchema);
     

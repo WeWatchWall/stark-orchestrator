@@ -43,6 +43,7 @@ export class PodConfig {
 
     this.state = (await this.argValid.userDb.find({
       selector: {
+        "_id": {"$regex": "^packageConfig"},
         data: {
           'availability': Availability.Any,
           'mode': this.argValid.mode

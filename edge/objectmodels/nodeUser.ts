@@ -76,7 +76,7 @@ export class NodeUser extends User {
   async save() {
     const result = await fetch(`https://${this.server}:${process.env.STARK_PORT}/nodes/nodeDb`, {
       method: 'put',
-      body: JSON.stringify({...this.arg, ...this.nodeConfig}),
+      body: JSON.stringify({...this.argValid, ...this.nodeConfig}),
       headers: { 'Content-Type': 'application/json' },
       agent: new https.Agent({
           rejectUnauthorized: false,
@@ -86,14 +86,14 @@ export class NodeUser extends User {
     assert(result.status === 201);
 
     this.state = {
-      name: this.arg.name,
-      password: this.arg.password
+      name: this.argValid.name,
+      password: this.argValid.password
     };
 
     this.validateState();
     await updateDotenv({
-      STARK_NODE_NAME: this.arg.name,
-      STARK_NODE_PASSWORD: this.arg.password
+      STARK_NODE_NAME: this.argValid.name,
+      STARK_NODE_PASSWORD: this.argValid.password
     });
   }
 

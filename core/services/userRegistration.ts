@@ -20,7 +20,7 @@ export class UserRegistration {
   status = false;
   isInit = false;
   static db = new PouchDB(`http://${process.env.STARK_USER_NAME}:${process.env.STARK_USER_PASSWORD}@${process.env.STARK_DB_HOST}:5984/_users`, {
-      skip_setup: true
+    skip_setup: true
   });
   packageRegistrationService: PackageRegistration;
 
@@ -28,39 +28,45 @@ export class UserRegistration {
     this.packageRegistrationService = packageRegistrationService;
   }
 
-  async init() { 
+  async init() {
     if (this.status) { return; }
 
     /* #region  ADMIN USER */
     let adminUser = new UserAdmin();
     adminUser.init();
-      
+
     try {
       // 2. initialize the admin user with its own deployment key
       await this.add(adminUser.arg);
       this.isInit = true;
     } catch (error) {
       if (error.status !== 409) {
-          throw error;
+        throw error;
       }
 
       // OK to timeout
       let promise = new FlatPromise();
-      setTimeout(() => { 
-          promise.resolve();
+      setTimeout(() => {
+        promise.resolve();
       }, 3e3);
       await promise.promise;
     }
     /* #endregion */
 
-    /* #region  ADMIN KEY */
+    /* #region  ADMIN CONFIG & KEY */
     let adminDatabase = new Database({ arg: { username: UserAdmin.AdminName }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
     await adminDatabase.load();
     adminDatabase.state.setSchema(this.userDbSchema);
 
     // Might load before it exists but after the DB becomes available, but not likely!!
-    let adminConfig = new UserConfig({ db: adminDatabase.state, arg: { name: UserAdmin.AdminName} });
+    let adminConfig = new UserConfig({ db: adminDatabase.state, arg: { name: UserAdmin.AdminName } });
     await adminConfig.load();
+    adminConfig.state = { ...adminConfig.state, ...{
+      enableUsers: true,
+      enableAllNodes: true,
+      corePackageConfigs: ['stark-core-config']
+    }};
+    await adminConfig.save();
 
     await updateDotenv({
       STARK_USER_KEY: adminConfig.state.key
@@ -68,9 +74,10 @@ export class UserRegistration {
     /* #endregion */
 
     if (!this.isInit) { return; }
+    
     /* #region BOOTSTRAP ADMIN PACKAGES */
     let pack; // : PackageDb (not : PackageDb | PackageLocal)
-    for (let adminEdgeConfig of adminConfig.state.packageConfigs) { 
+    for (let adminEdgeConfig of adminConfig.state.packageConfigs) {
       pack = await this.packageRegistrationService.add({
         db: adminDatabase.state,
         username: process.env.STARK_USER_NAME,
@@ -84,7 +91,7 @@ export class UserRegistration {
       await pack.delete();
     }
 
-    for (let adminCoreConfig of adminConfig.state.corePackageConfigs) { 
+    for (let adminCoreConfig of adminConfig.state.corePackageConfigs) {
       pack = await this.packageRegistrationService.add({
         db: adminDatabase.state,
         username: process.env.STARK_USER_NAME,
@@ -98,8 +105,8 @@ export class UserRegistration {
       await pack.delete();
     }
     /* #endregion */
-      
-    this.status = true;        
+
+    this.status = true;
   }
 
   async add(arg): Promise<void> {
@@ -112,16 +119,16 @@ export class UserRegistration {
       await adminDatabase.load();
       adminDatabase.state.setSchema(this.userDbSchema);
 
-      adminConfig = new UserConfig({ db: adminDatabase.state, arg: { name: UserAdmin.AdminName} });
+      adminConfig = new UserConfig({ db: adminDatabase.state, arg: { name: UserAdmin.AdminName } });
       await adminConfig.load();
-            
-      if (!adminConfig.state.enableUsers) { return; }    
+
+      if (!adminConfig.state.enableUsers) { return; }
     }
-        
+
     let user = new UserUser({
-        db: UserRegistration.db,
-        arg: arg
-      },
+      db: UserRegistration.db,
+      arg: arg
+    },
       true
     );
     await user.save();
@@ -139,16 +146,38 @@ export class UserRegistration {
       true
     );
     designDocument.init();
-    await designDocument.save();    
+    await designDocument.save();
 
     let userConfig = new UserConfig({
-        db: database.state,
-        arg: { ...arg, ...{password: undefined, dbName: database.dbName} }
-      },
+      db: database.state,
+      arg: { ...arg, ...{ password: undefined, dbName: database.dbName } }
+    },
       true
     );
     await userConfig.save();
     await userConfig.load(); // Might merge with save, shrug...
+    /* #endregion */
+
+    /* #region  Setup services databases. */
+    let userServices = new UserUser({
+        db: UserRegistration.db,
+        arg: {...arg, ...{ name: `services-${arg.name}` }}
+      },
+      true
+    );
+    await userServices.save();
+
+    let servicesDatabase = new Database({ arg: { username: userServices.argValid.name }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
+    await servicesDatabase.load();
+
+    let servicesDesignDocument = new DesignDocument({
+        db: servicesDatabase.state,
+        arg: undefined
+      },
+      true
+    );
+    servicesDesignDocument.init();
+    await servicesDesignDocument.save();
     /* #endregion */
 
     if (arg.name === UserAdmin.AdminName) { return; }
@@ -165,7 +194,7 @@ export class UserRegistration {
         db: adminDatabase.state,
         userKey: userConfig.state.key,
         arg: {
-          name: adminEdgeConfig                                       
+          name: adminEdgeConfig
         }
       });
 
@@ -187,8 +216,8 @@ export class UserRegistration {
       pack.save();
     }
     /* #endregion */
-      
-      
+
+
     /* #region  TODO: CLEANUP */
     //     if (arg.name === UserAdmin.AdminName) { return; }
 
@@ -206,30 +235,30 @@ export class UserRegistration {
     //         id: databaseReplication.state.id,
     //         rev: databaseReplication.state.rev
     //     };
-        
+
     //     await userConfig.save();
     /* #endregion */
   }
 
-  
+
   private userDbSchema = [
     { singular: 'packageConfig', plural: 'packageConfigs' },
     {
-      singular: 'userConfig', plural: 'userConfigs', 
+      singular: 'userConfig', plural: 'userConfigs',
       relations: {
-        nodeConfigs: {hasMany: 'nodeConfig'}
+        nodeConfigs: { hasMany: 'nodeConfig' }
       }
     },
-    {singular: 'nodeConfig', plural: 'nodeConfigs', relations: {userConfig: {belongsTo: 'userConfig'}}}
+    { singular: 'nodeConfig', plural: 'nodeConfigs', relations: { userConfig: { belongsTo: 'userConfig' } } }
   ];
   private nodeDbSchema = [
     { singular: 'podConfig', plural: 'podConfigs' },
     {
-      singular: 'userConfig', plural: 'userConfigs', 
+      singular: 'userConfig', plural: 'userConfigs',
       relations: {
-        nodeConfigs: {hasMany: 'nodeConfig'}
+        nodeConfigs: { hasMany: 'nodeConfig' }
       }
     },
-    {singular: 'nodeConfig', plural: 'nodeConfigs', relations: {userConfig: {belongsTo: 'userConfig'}}}
+    { singular: 'nodeConfig', plural: 'nodeConfigs', relations: { userConfig: { belongsTo: 'userConfig' } } }
   ];
 }
