@@ -8,28 +8,28 @@ import { DeploymentMode } from "./deploymentMode";
 export class PackageConfig {
   db: any;
   
-	arg: any;
+  arg: any;
   argValid: any;
   state: any;
   change: any;
   validate: boolean;
   
   isSaved = false;
-	string: string;
+  string: string;
   watcher: any;
   eventEmitter = new EventEmitter();
     
-	/**
-	 * Creates an instance of user.
-	 * @param [arg.db]
-	 * @param [arg.arg]
-	 * @param [validate] Is necessary because the arg could be used to load (future).
-	 */
-	constructor(arg = { db: undefined, arg: undefined},  validate = false) {
-		this.db = arg.db;
-		this.arg = arg.arg;
-		this.validate = validate;
-	}
+  /**
+   * Creates an instance of user.
+   * @param [arg.db]
+   * @param [arg.arg]
+   * @param [validate] Is necessary because the arg could be used to load (future).
+   */
+  constructor(arg = { db: undefined, arg: undefined},  validate = false) {
+    this.db = arg.db;
+    this.arg = arg.arg;
+    this.validate = validate;
+  }
 
   // Fragile, could change before load but don't want it to run before load. should be easy with a flag :)
   async init() {
@@ -64,20 +64,20 @@ export class PackageConfig {
       self.eventEmitter.emit('change', self.change);
     });
   }
-	
-	/**
-	 * Parses user.
-	 * @param arg 
-	 */
-	parse(arg: string) {
-		this.arg = JSON.parse(arg);
-		this.validateNew();
-	}
-	
+  
+  /**
+   * Parses user.
+   * @param arg 
+   */
+  parse(arg: string) {
+    this.arg = JSON.parse(arg);
+    this.validateNew();
+  }
+  
   async load() {
     this.validateNew();
         
-		this.state = (await this.db.find({
+    this.state = (await this.db.find({
       selector: {
         "_id": {"$regex": "^packageConfig"},
         data: {
@@ -86,11 +86,11 @@ export class PackageConfig {
         }
       },
       limit: 1
-		})).docs;
-		this.state = await this.db.rel.parseRelDocs('packageConfig', this.state);
-		this.state = this.state.packageConfigs[0];
+    })).docs;
+    this.state = await this.db.rel.parseRelDocs('packageConfig', this.state);
+    this.state = this.state.packageConfigs[0];
     this.validateState();
-	}
+  }
 
   async save() {
     this.validateNew();
@@ -99,16 +99,16 @@ export class PackageConfig {
     this.state = { ...this.state, ...await this.db.rel.save('packageConfig', this.state) };
 
     this.validateState();
-	}
+  }
 
-	toString() {
-	  this.string = JSON.stringify(this.state);
+  toString() {
+    this.string = JSON.stringify(this.state);
   }
     
   async delete(numPods: number) {
     this.state.numPods -= numPods;
     await this.save();
-	}
+  }
 
   private newDeployConfigModel = ObjectModel({
     mode: [DeploymentMode.Core, DeploymentMode.Edge, DeploymentMode.Browser],
@@ -122,5 +122,5 @@ export class PackageConfig {
   private validateState() {
     assert(!!this.state);
   }
-	
+  
 }

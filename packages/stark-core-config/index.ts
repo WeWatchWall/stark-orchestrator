@@ -1,5 +1,5 @@
 module.exports = function(arg) {
-	let fs = require('fs-extra');
+  let fs = require('fs-extra');
   
   setInterval(() => {
     console.log(process.cwd());

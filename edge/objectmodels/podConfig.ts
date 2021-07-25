@@ -10,40 +10,40 @@ export class PodConfig {
   arg: any;
   argValid: any;
   state: any;
-	validate: boolean;
+  validate: boolean;
   
 
   isSaved = false;
-	string: string;
-	
-	/**
-	 * Creates an instance of user.
-	 * @param [arg.db]
-	 * @param [arg.arg]
-	 * @param [validate] Is necessary because the arg could be used to load (future).
-	 */
-	constructor(arg = { db: undefined, arg: undefined},  validate = false) {
-		this.db = arg.db;
-		this.arg = arg.arg;
-		this.validate = validate;
-	}
+  string: string;
+  
+  /**
+   * Creates an instance of user.
+   * @param [arg.db]
+   * @param [arg.arg]
+   * @param [validate] Is necessary because the arg could be used to load (future).
+   */
+  constructor(arg = { db: undefined, arg: undefined},  validate = false) {
+    this.db = arg.db;
+    this.arg = arg.arg;
+    this.validate = validate;
+  }
 
   init() { throw new Error("This method is not implemented."); }
-	
-	/**
-	 * Parses user.
-	 * @param arg 
-	 */
-	parse(arg: string) {
-		this.arg = JSON.parse(arg);
-		this.validateNew();
-	}
-	
+  
+  /**
+   * Parses user.
+   * @param arg 
+   */
+  parse(arg: string) {
+    this.arg = JSON.parse(arg);
+    this.validateNew();
+  }
+  
   async load() {
     if (this.state) { return; }
     this.validateNew();
         
-		this.state = (await this.argValid.userDb.find({
+    this.state = (await this.argValid.userDb.find({
       selector: {
         "_id": {"$regex": "^packageConfig"},
         data: {
@@ -52,9 +52,9 @@ export class PodConfig {
         }
       },
       limit: 1
-		})).docs;
-		this.state = await this.argValid.userDb.rel.parseRelDocs('packageConfig', this.state);
-		this.state = this.state.packageConfigs[0];
+    })).docs;
+    this.state = await this.argValid.userDb.rel.parseRelDocs('packageConfig', this.state);
+    this.state = this.state.packageConfigs[0];
     this.validateState();
 
     let  saved = (await this.db.find({
@@ -76,13 +76,13 @@ export class PodConfig {
     }
 
     this.state.attachment = await this.argValid.userDb.rel.getAttachment('packageConfig', this.state.id, 'package.zip.pgp');
-	}
+  }
 
   async save() {
     if (!this.state) { await this.load(); } // TODO: USE THIS PATTERN!
     if (this.isSaved) { return; }
 
-    let read = this.state;		
+    let read = this.state;    
     this.state = undefined;
 
     let result;
@@ -107,11 +107,11 @@ export class PodConfig {
 
     this.validateState();
     this.isSaved = true;
-	}
+  }
 
-	toString() {
-		this.string = JSON.stringify(this.state);
-	}
+  toString() {
+    this.string = JSON.stringify(this.state);
+  }
 
   async delete() {
     this.state = await this.db.get(this.db.rel.makeDocID({
@@ -119,7 +119,7 @@ export class PodConfig {
       type: 'podConfig'
     }));
     await this.db.remove(this.state);
-	}
+  }
 
   private newDeployConfigModel = ObjectModel({
     userDb: Object,
@@ -134,5 +134,5 @@ export class PodConfig {
   private validateState() {
     assert(!!this.state);
   }
-	
+  
 }

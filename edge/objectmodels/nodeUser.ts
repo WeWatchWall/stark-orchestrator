@@ -18,15 +18,15 @@ export class NodeUser extends User {
     nodeConfig: any;
 
     /**
-	 * Creates an instance of user.
-	 * @param [arg.db]
-	 * @param [arg.arg]
-	 * @param [validate] Is necessary because the arg could be used to load (future).
-	 */
-	constructor(arg = { server: undefined, nodeConfig: undefined, arg: undefined},  validate = false) {
+   * Creates an instance of user.
+   * @param [arg.db]
+   * @param [arg.arg]
+   * @param [validate] Is necessary because the arg could be used to load (future).
+   */
+  constructor(arg = { server: undefined, nodeConfig: undefined, arg: undefined},  validate = false) {
     super(arg, validate);
     this.nodeConfig = arg.nodeConfig;
-	}
+  }
     
   init(): void {
     this.arg.name = `nodeDb-${uuidv4()}`;
@@ -51,8 +51,8 @@ export class NodeUser extends User {
     }, 8);
   }
 
-	private async loadInternal() {
-		if (this.state) {return;}
+  private async loadInternal() {
+    if (this.state) {return;}
 
     let loaded = false;
     try {
@@ -71,7 +71,7 @@ export class NodeUser extends User {
       this.init();
       await this.save();
     }
-	}
+  }
 
   async save() {
     const result = await fetch(`https://${this.server}:${process.env.STARK_PORT}/nodes/nodeDb`, {
@@ -95,17 +95,17 @@ export class NodeUser extends User {
       STARK_NODE_NAME: this.arg.name,
       STARK_NODE_PASSWORD: this.arg.password
     });
-	}
+  }
 
   toString() {
     this.validateState();
-		this.string = JSON.stringify(this.state);
-	}
+    this.string = JSON.stringify(this.state);
+  }
     
     // AUTH!! Or through a database...
     async delete() {
         throw new Error("This method is not implemented.");
-	}
+  }
 
     protected newUserModel = ObjectModel({
       name: String,

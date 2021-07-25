@@ -11,26 +11,26 @@ export class PodEnv {
   static PackagesDir = `./packages-run`;
   db: any;
 
-	arg: any;
+  arg: any;
   argValid: any;
   validate: boolean;
-	state: any;
-	
+  state: any;
+  
   string: string;
   packageDir: any;
     
-	constructor(arg = { arg: undefined},  validate = false) {
-		this.arg = arg.arg;
-		this.validate = validate;
-	}
+  constructor(arg = { arg: undefined},  validate = false) {
+    this.arg = arg.arg;
+    this.validate = validate;
+  }
 
   init() { throw new Error("This method is not implemented."); }
 
-	parse(arg: string) {
-		this.arg = JSON.parse(arg);
-		this.validateNew();
-	}
-	
+  parse(arg: string) {
+    this.arg = JSON.parse(arg);
+    this.validateNew();
+  }
+  
   async load() {
     if (this.state) { return; }
     this.validateNew();
@@ -41,7 +41,7 @@ export class PodEnv {
     }
 
     this.state = true;
-	}
+  }
 
   async save() {
     if (!this.state) { await this.load(); } // TODO: USE THIS PATTERN!
@@ -78,17 +78,17 @@ export class PodEnv {
       path.join(this.packageDir, 'stark_bootstrap.js')
     );
     functionInSandbox(this.argValid.name);
-	}
+  }
 
-	toString() {
-		this.string = JSON.stringify(this.state);
-	}
+  toString() {
+    this.string = JSON.stringify(this.state);
+  }
     
     // TODO!! Store the sandbox so that I can cancel that while I'm scaling down!!
     // If I reach 0, and I call delete again, then I delete the install package,
     // So that I can call load automatically again...:()
     async delete() {
-	}
+  }
 
   private newPodEnvModel = ObjectModel({
     name: String
@@ -101,5 +101,5 @@ export class PodEnv {
   private validateState() {
     assert(!!this.state);
   }
-	
+  
 }

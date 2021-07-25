@@ -6,8 +6,8 @@ import { PackageServer } from "./packageServer";
 
 export class PackageLocal extends PackageServer { 
   async load() {
-		if (this.watcher) { return; }
-		this.validateNew();
+    if (this.watcher) { return; }
+    this.validateNew();
 
     this.packageDir = `${PackageServer.PackagesDir}/${this.argValid.name}`;
     !(await fs.exists(this.packageDir)) && (await fs.mkdir(this.packageDir));
@@ -25,7 +25,7 @@ export class PackageLocal extends PackageServer {
       await this.save();
     }, 2000));
                 
-	}
+  }
   
   async save() {
     this.validateState();

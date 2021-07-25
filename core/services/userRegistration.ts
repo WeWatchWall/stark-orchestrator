@@ -24,9 +24,9 @@ export class UserRegistration {
   });
   packageRegistrationService: PackageRegistration;
 
-	constructor(packageRegistrationService: PackageRegistration) {
-		this.packageRegistrationService = packageRegistrationService;
-	}
+  constructor(packageRegistrationService: PackageRegistration) {
+    this.packageRegistrationService = packageRegistrationService;
+  }
 
   async init() { 
     if (this.status) { return; }
@@ -215,21 +215,21 @@ export class UserRegistration {
   private userDbSchema = [
     { singular: 'packageConfig', plural: 'packageConfigs' },
     {
-		  singular: 'userConfig', plural: 'userConfigs', 
-		  relations: {
-			  nodeConfigs: {hasMany: 'nodeConfig'}
-		  }
-		},
-		{singular: 'nodeConfig', plural: 'nodeConfigs', relations: {userConfig: {belongsTo: 'userConfig'}}}
+      singular: 'userConfig', plural: 'userConfigs', 
+      relations: {
+        nodeConfigs: {hasMany: 'nodeConfig'}
+      }
+    },
+    {singular: 'nodeConfig', plural: 'nodeConfigs', relations: {userConfig: {belongsTo: 'userConfig'}}}
   ];
   private nodeDbSchema = [
     { singular: 'podConfig', plural: 'podConfigs' },
     {
-		  singular: 'userConfig', plural: 'userConfigs', 
-		  relations: {
-			  nodeConfigs: {hasMany: 'nodeConfig'}
-		  }
-		},
-		{singular: 'nodeConfig', plural: 'nodeConfigs', relations: {userConfig: {belongsTo: 'userConfig'}}}
+      singular: 'userConfig', plural: 'userConfigs', 
+      relations: {
+        nodeConfigs: {hasMany: 'nodeConfig'}
+      }
+    },
+    {singular: 'nodeConfig', plural: 'nodeConfigs', relations: {userConfig: {belongsTo: 'userConfig'}}}
   ];
 }

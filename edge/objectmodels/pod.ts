@@ -31,12 +31,12 @@ export class Pod {
     this.db = arg.db;
     this.arg = arg.arg;
     this.validate = validate;
-	}
+  }
 
   parse(arg: string) {
-		this.arg = JSON.parse(arg);
-		this.validateNew();
-	}
+    this.arg = JSON.parse(arg);
+    this.validateNew();
+  }
 
   init() { throw new Error("This method is not implemented."); }
 

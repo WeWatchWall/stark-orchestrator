@@ -8,26 +8,26 @@ export class PodConfig {
   
   arg: any;
   argValid: any;
-	state: any;
+  state: any;
   change: any;
   validate: boolean;
   
   isSaved = false;
-	string: string;
+  string: string;
   watcher: any;
   eventEmitter = new EventEmitter();
     
-	/**
-	 * Creates an instance of user.
-	 * @param [arg.db]
-	 * @param [arg.arg]
-	 * @param [validate] Is necessary because the arg could be used to load (future).
-	 */
-	constructor(arg = { db: undefined, arg: undefined},  validate = false) {
-		this.db = arg.db;
-		this.arg = arg.arg;
-		this.validate = validate;
-	}
+  /**
+   * Creates an instance of user.
+   * @param [arg.db]
+   * @param [arg.arg]
+   * @param [validate] Is necessary because the arg could be used to load (future).
+   */
+  constructor(arg = { db: undefined, arg: undefined},  validate = false) {
+    this.db = arg.db;
+    this.arg = arg.arg;
+    this.validate = validate;
+  }
 
   // Fragile, could change before load but don't want it to run before load. should be easy with a flag :)
   async init() {
@@ -60,16 +60,16 @@ export class PodConfig {
       self.eventEmitter.emit('change', self.change);
     });
   }
-	
-	/**
-	 * Parses user.
-	 * @param arg 
-	 */
-	parse(arg: string) {
-		this.arg = JSON.parse(arg);
-		this.validateNew();
-	}
-	
+  
+  /**
+   * Parses user.
+   * @param arg 
+   */
+  parse(arg: string) {
+    this.arg = JSON.parse(arg);
+    this.validateNew();
+  }
+  
   async load() {
     this.validateNew();
     
@@ -82,24 +82,24 @@ export class PodConfig {
     saved = await this.db.rel.parseRelDocs('podConfig', saved);
     this.state = saved.podConfigs[0];
     this.validateState();
-	}
+  }
 
   async save() {
     this.validateNew();
     if (!this.state) { this.init(); }
         
-		this.state = { ...this.state, ...await this.db.rel.save('podConfig', this.state) };
+    this.state = { ...this.state, ...await this.db.rel.save('podConfig', this.state) };
 
-		this.validateState();
-	}
+    this.validateState();
+  }
 
-	toString() {
-		this.string = JSON.stringify(this.state);
-	}
+  toString() {
+    this.string = JSON.stringify(this.state);
+  }
 
   async delete() {
     // NOOP
-	}
+  }
 
   private newDeployConfigModel = ObjectModel({
     id: String
@@ -112,5 +112,5 @@ export class PodConfig {
   private validateState() {
     assert(!!this.state);
   }
-	
+  
 }

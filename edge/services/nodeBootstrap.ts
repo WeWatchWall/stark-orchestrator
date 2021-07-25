@@ -45,11 +45,11 @@ export class NodeBootstrap {
   private nodeDbSchema = [
     { singular: 'podConfig', plural: 'podConfigs' },
     {
-		  singular: 'userConfig', plural: 'userConfigs', 
-		  relations: {
-			  nodeConfigs: {hasMany: 'nodeConfig'}
-		  }
-		},
-		{singular: 'nodeConfig', plural: 'nodeConfigs', relations: {userConfig: {belongsTo: 'userConfig'}}}
+      singular: 'userConfig', plural: 'userConfigs', 
+      relations: {
+        nodeConfigs: {hasMany: 'nodeConfig'}
+      }
+    },
+    {singular: 'nodeConfig', plural: 'nodeConfigs', relations: {userConfig: {belongsTo: 'userConfig'}}}
   ];
 }

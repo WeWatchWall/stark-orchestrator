@@ -15,27 +15,27 @@ export class PodBalancer {
   argValid: any;
   state: { podConfig: any, packageConfig: any };
   change: any;
-	validate: boolean;
+  validate: boolean;
 
   isDeletedPackage = false;
-	string: string;  
+  string: string;  
   eventEmitter = new EventEmitter();
     
-	/**
-	 * Creates an instance of user.
-	 * @param [arg.db]
-	 * @param [arg.arg]
-	 * @param [validate] Is necessary because the arg could be used to load (future).
-	 */
-	constructor(arg = { dbs: undefined, arg: undefined},  validate = false) {
+  /**
+   * Creates an instance of user.
+   * @param [arg.db]
+   * @param [arg.arg]
+   * @param [validate] Is necessary because the arg could be used to load (future).
+   */
+  constructor(arg = { dbs: undefined, arg: undefined},  validate = false) {
     this.dbs = {
       userDb: arg.dbs.userDb,
       nodeDb: arg.dbs.nodeDb
     };
     
-		this.arg = arg.arg;
-		this.validate = validate;
-	}
+    this.arg = arg.arg;
+    this.validate = validate;
+  }
 
   async init() {
     await this.load();
@@ -58,7 +58,7 @@ export class PodBalancer {
       self.eventEmitter.emit("delete");
     });
   }
-	
+  
   private async changeNumPods(change) {
     if (change.deleted) {
       // TODO: self-destruct?
@@ -77,15 +77,15 @@ export class PodBalancer {
     }
   }
   
-	/**
-	 * Parses user.
-	 * @param arg 
-	 */
-	parse(arg: string) {
-		this.arg = JSON.parse(arg);
-		this.validateNew();
-	}
-	
+  /**
+   * Parses user.
+   * @param arg 
+   */
+  parse(arg: string) {
+    this.arg = JSON.parse(arg);
+    this.validateNew();
+  }
+  
   async load() {
     if (this.state) { return; }
     this.validateNew();
@@ -211,16 +211,16 @@ export class PodBalancer {
     }, 8);
   }
 
-	toString() {
-		this.string = JSON.stringify(this.state);
-	}
+  toString() {
+    this.string = JSON.stringify(this.state);
+  }
 
   async delete() {
     if (this.isDeletedPackage) { return; }
 
     let numPods = this.state.podConfig.state.numPods;
     await this.state.packageConfig.delete(numPods);
-	}
+  }
 
   private newDeployConfigModel = ObjectModel({
     userConfig: Object,

@@ -31,20 +31,20 @@ export abstract class PackageServer {
   }
 
   init(): void { throw new Error("This method is not implemented."); }
-	
-	/**
-	 * Parses user.
-	 * @param arg 
-	 */
-	parse(arg: string) {
-		this.arg = JSON.parse(arg);
-		this.validateNew();
-	}
+  
+  /**
+   * Parses user.
+   * @param arg 
+   */
+  parse(arg: string) {
+    this.arg = JSON.parse(arg);
+    this.validateNew();
+  }
   
   // ABSTRACT
-	async load() {
-		throw new Error("This method is not implemented."); 
-	}
+  async load() {
+    throw new Error("This method is not implemented."); 
+  }
     
   protected async _load() {
     this.validateNew();
@@ -64,7 +64,7 @@ export abstract class PackageServer {
   // ABSTRACT
   async save() {
     throw new Error("This method is not implemented.");
-	}
+  }
 
   toString() {
       this.validateState();
@@ -72,7 +72,7 @@ export abstract class PackageServer {
           isWatch: !!this.watcher,
           isLoaded: !!this.state
       });
-	}
+  }
 
   async delete() {
     if (!this.state) { return; }
@@ -81,7 +81,7 @@ export abstract class PackageServer {
   
   protected validateNew() {
     this.argValid = this.validate ? new this.newPackageModel(this.arg) : this.arg;
-	}
+  }
 
   protected newPackageModel = ObjectModel({
       name: String

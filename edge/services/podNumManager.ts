@@ -149,21 +149,21 @@ export class PodNumManager {
   private userDbSchema = [
     { singular: 'packageConfig', plural: 'packageConfigs' },
     {
-		  singular: 'userConfig', plural: 'userConfigs', 
-		  relations: {
-			  nodeConfigs: {hasMany: 'nodeConfig'}
-		  }
-		},
-		{singular: 'nodeConfig', plural: 'nodeConfigs', relations: {userConfig: {belongsTo: 'userConfig'}}}
+      singular: 'userConfig', plural: 'userConfigs', 
+      relations: {
+        nodeConfigs: {hasMany: 'nodeConfig'}
+      }
+    },
+    {singular: 'nodeConfig', plural: 'nodeConfigs', relations: {userConfig: {belongsTo: 'userConfig'}}}
   ];
   private nodeDbSchema = [
     { singular: 'podConfig', plural: 'podConfigs' },
     {
-		  singular: 'userConfig', plural: 'userConfigs', 
-		  relations: {
-			  nodeConfigs: {hasMany: 'nodeConfig'}
-		  }
-		},
-		{singular: 'nodeConfig', plural: 'nodeConfigs', relations: {userConfig: {belongsTo: 'userConfig'}}}
+      singular: 'userConfig', plural: 'userConfigs', 
+      relations: {
+        nodeConfigs: {hasMany: 'nodeConfig'}
+      }
+    },
+    {singular: 'nodeConfig', plural: 'nodeConfigs', relations: {userConfig: {belongsTo: 'userConfig'}}}
   ];
 }
