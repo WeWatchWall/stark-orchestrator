@@ -105,8 +105,8 @@ export class NodeConfig {
   }).assert(
     newNodeConfig => {
       return newNodeConfig &&
-        RegExp('^[a-zA-Z0-9_-]{3,50}$').test(newNodeConfig.username) &&  
-        RegExp('^[a-zA-Z0-9_-]{3,50}$').test(newNodeConfig.name) &&  
+        RegExp('^[a-zA-Z0-9_-]{3,75}$').test(newNodeConfig.username) &&  
+        RegExp('^[a-zA-Z0-9_-]{3,75}$').test(newNodeConfig.name) &&  
         newNodeConfig.name.indexOf('nodeDb-') > -1 &&
         newNodeConfig.dbName.indexOf('userdb-') > -1;
       

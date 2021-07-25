@@ -78,7 +78,7 @@ export class Database {
     newDatabase => {
       // TODO
             return newDatabase
-                && RegExp('^[a-z0-9_-]{3,50}$').test(newDatabase.username);
+                && RegExp('^[a-z0-9_-]{3,75}$').test(newDatabase.username);
         
     }
   );

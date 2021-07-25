@@ -48,11 +48,13 @@ export class NodeRegistration {
 
     if (!userConfig.state.enableNodes) { return; }
 
+    let usersDb = new PouchDB(`http://${process.env.STARK_USER_NAME}:${process.env.STARK_USER_PASSWORD}@${process.env.STARK_DB_HOST}:5984/_users`, {
+      skip_setup: true
+    });
+
     let nodeUser = new NodeUser(
       {
-        db: new PouchDB(`http://${process.env.STARK_USER_NAME}:${process.env.STARK_USER_PASSWORD}@${process.env.STARK_DB_HOST}:5984/_users`, {
-          skip_setup: true
-        }),
+        db: usersDb,
         arg: arg
       },
       true
@@ -143,6 +145,41 @@ export class NodeRegistration {
     await nodeConfig.save();
     // Frees the memory here and saves the packages to the DB.
     await podConfig.save();
+
+    
+    /* #region  Setup services databases. */
+    let nodeServices = new NodeUser({
+        db: usersDb,
+        arg: {...arg, ...{ name: `services-${arg.name}` }}
+      },
+      true
+    );
+    await nodeServices.save();
+
+    let servicesDatabase = new Database({ arg: { username: nodeServices.argValid.name }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
+    await servicesDatabase.load();
+
+    let servicesDesignDocument = new DesignDocument({
+        db: servicesDatabase.state,
+        arg: undefined
+      },
+      true
+    );
+    servicesDesignDocument.init();
+    await servicesDesignDocument.save();
+
+    let servicesDatabaseSecurity = new DatabaseSecurity({
+      db: servicesDatabase.state,
+      arg: {
+        username: arg.username,
+        nodeUsername: nodeServices.argValid.name
+      }
+    }, true);
+    await servicesDatabaseSecurity.load();
+    await servicesDatabaseSecurity.save();
+
+    /* #endregion */
+
   }
   
   private userDbSchema = [

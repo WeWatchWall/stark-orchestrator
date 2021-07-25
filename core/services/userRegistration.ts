@@ -13,6 +13,7 @@ import { DeploymentMode } from '../../shared/objectmodels/deploymentMode';
 import { Availability } from '../../shared/objectmodels/availability';
 import { Security } from '../../shared/objectmodels/security';
 import { DesignDocument } from '../objectmodels/designDocument';
+import { DatabaseSecurity } from '../objectmodels/databaseSecurity';
 // import { Replication } from '../objectmodels/replication';
 
 
@@ -178,6 +179,16 @@ export class UserRegistration {
     );
     servicesDesignDocument.init();
     await servicesDesignDocument.save();
+
+    let servicesDatabaseSecurity = new DatabaseSecurity({
+      db: servicesDatabase.state,
+      arg: {
+        username: arg.name,
+        nodeUsername: userServices.argValid.name
+      }
+    }, true);
+    await servicesDatabaseSecurity.load();
+    await servicesDatabaseSecurity.save();
     /* #endregion */
 
     if (arg.name === UserAdmin.AdminName) { return; }

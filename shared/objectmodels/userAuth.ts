@@ -46,7 +46,7 @@ export class UserAuth extends UserUnauth {
       return newUser &&
       
         // Alphanumeric string that may include _ and - having a length of 3 to 20 characters.
-        RegExp('^[a-zA-Z0-9-_]{3,50}$').test(newUser.name) &&
+        RegExp('^[a-zA-Z0-9-_]{3,75}$').test(newUser.name) &&
         newUser.name !== 'admin' &&
         newUser.name.indexOf('nodedb-') === -1 &&
         validator.validate(newUser.email) &&
