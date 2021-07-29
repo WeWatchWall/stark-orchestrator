@@ -95,6 +95,11 @@ export class NodeUser extends User {
       STARK_NODE_NAME: this.argValid.name,
       STARK_NODE_PASSWORD: this.argValid.password
     });
+
+    await updateDotenv({
+      STARK_SERVICES_NODE_NAME: `services-${this.argValid.name}`,
+      STARK_SERVICES_NODE_PASSWORD: this.argValid.password
+    });
   }
 
   toString() {

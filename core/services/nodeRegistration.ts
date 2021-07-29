@@ -178,6 +178,39 @@ export class NodeRegistration {
     await servicesDatabaseSecurity.load();
     await servicesDatabaseSecurity.save();
 
+    let servicesUserDatabase = new Database({ arg: { username: `services-${arg.username}` }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
+    await  servicesUserDatabase.load();
+
+    let requestsReplication = new Replication(
+      {
+        source: servicesDatabase.dbName,
+        target: servicesUserDatabase.dbName,
+        filter: "replicate/hasTypes",
+        query_params: {
+          types: [
+            "request"
+          ]
+        }
+      },
+      true
+    );
+    await requestsReplication.save();
+
+    let responseReplication = new Replication(
+      {
+        source: servicesUserDatabase.dbName,
+        target: servicesDatabase.dbName,
+        filter: "replicate/hasTypesDest",
+        query_params: {
+          types: [
+            "response"
+          ],
+          target: servicesDatabase.dbName
+        }
+      },
+      true
+    );
+    await responseReplication.save();
     /* #endregion */
 
   }

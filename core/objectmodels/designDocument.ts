@@ -17,14 +17,15 @@ export class DesignDocument {
     this.validate = validate;
   }
   
-    init(): void {
-        this.arg = {
-            _id: "_design/replicate",
-            filters: {
-                "hasTypes": "function (doc, req) {    var delimiterIndex = doc._id.substr(0, doc._id.indexOf('_'));    if (doc._id.indexOf('_design') > -1 || delimiterIndex === -1) {        return false;    }    if (req.query.types.indexOf(delimiterIndex) === -1) {        return !!req.query.isNegative;    }    return !req.query.isNegative;}"
-            }
-        };
-    }
+  init(): void {
+    this.arg = {
+      _id: "_design/replicate",
+      filters: {
+        "hasTypes": "function (doc, req) {    var delimiterIndex = doc._id.substr(0, doc._id.indexOf('_'));    if (doc._id.indexOf('_design') > -1 || delimiterIndex === -1) {        return false;    }    if (req.query.types.indexOf(delimiterIndex) === -1) {        return !!req.query.isNegative;    }    return !req.query.isNegative;}",
+        "hasTypesDest": "function (doc, req) {    var delimiterIndex = doc._id.substr(0, doc._id.indexOf('_'));    if (doc._id.indexOf('_design') > -1 || delimiterIndex === -1) {        return false;    }        if (req.query.types.indexOf(delimiterIndex) > -1 && doc.data && doc.data.target && doc.data.target === req.query.target) {        return !req.query.isNegative;    }    return !!req.query.isNegative;}"
+      }
+    };
+  }
 
   parse(arg: string) {
     this.arg = JSON.parse(arg);
@@ -60,8 +61,8 @@ export class DesignDocument {
     newDesignDocument => {
       
       return newDesignDocument &&
-                newDesignDocument._id &&
-                newDesignDocument._id.startsWith('_design/');
+        newDesignDocument._id &&
+        newDesignDocument._id.startsWith('_design/');
         
     }
   );
