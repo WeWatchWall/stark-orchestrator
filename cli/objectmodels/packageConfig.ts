@@ -87,8 +87,9 @@ export class PackageConfig {
       tags: ArrayModel(String),
       maxPods: Number,
       numPods: Number,
-      status: [ProvisionStatus.Init, ProvisionStatus.Up, ProvisionStatus.Error, ProvisionStatus.Stop]
-    
+      status: [ProvisionStatus.Init, ProvisionStatus.Up, ProvisionStatus.Error, ProvisionStatus.Stop],
+      isService: Boolean,
+      services: ArrayModel(String)
     }).defaultTo({
       // Require name
       // Require mode
@@ -97,15 +98,17 @@ export class PackageConfig {
       tags: [],
       maxPods: 0,
       numPods: 0,
-      status: ProvisionStatus.Init
-      }).assert(
-      newUser => {
-        // TODO
-        return newUser &&
-        
-          // Alphanumeric string that may include _ and - having a length of 3 to 20 characters.
-          RegExp('^[a-zA-Z0-9-_]{3,75}$').test(newUser.name);
-      }
+      status: ProvisionStatus.Init,
+      isService: false,
+      services: []
+    }).assert(
+    newUser => {
+      // TODO
+      return newUser &&
+      
+        // Alphanumeric string that may include _ and - having a length of 3 to 20 characters.
+        RegExp('^[a-zA-Z0-9-_]{3,75}$').test(newUser.name);
+    }
   );
 
   protected validateNew() {
