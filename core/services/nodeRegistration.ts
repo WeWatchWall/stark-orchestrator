@@ -185,11 +185,12 @@ export class NodeRegistration {
       {
         source: servicesDatabase.dbName,
         target: servicesUserDatabase.dbName,
-        filter: "replicate/hasTypes",
+        filter: "replicate/hasTypesSrc",
         query_params: {
           types: [
             "request"
-          ]
+          ],
+          source: servicesDatabase.dbName
         }
       },
       true
