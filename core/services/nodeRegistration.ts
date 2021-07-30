@@ -82,7 +82,8 @@ export class NodeRegistration {
         filter: "replicate/hasTypes",
         query_params: {
           types: [
-            "nodeConfig"
+            "nodeConfig",
+            "podConfig"
           ]
         }
       },
@@ -131,7 +132,8 @@ export class NodeRegistration {
       db: nodeDatabase.state,
       arg: {
         userDb: userDatabase.state,
-        mode: arg.mode
+        mode: arg.mode,
+        node: nodeConfig.state.name
       }
     }, true);
     await podConfig.load();

@@ -137,7 +137,8 @@ export class PodConfigManager {
         arg: {
           userDb: this.userDb.state,
           name: podName,
-          mode: this.nodeConfig.state.mode
+          mode: this.nodeConfig.state.mode,
+          node: this.nodeConfig.state.name
         },
       },
       true
