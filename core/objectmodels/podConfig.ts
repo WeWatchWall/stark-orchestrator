@@ -79,7 +79,6 @@ export class PodConfig {
           tags: undefined,
           status: ProvisionStatus.Init,
           maxPods: undefined,
-          node: this.argValid.node,
           numPods: 1,
           error: 'empty'
         }
@@ -101,8 +100,7 @@ export class PodConfig {
 
   private newDeployConfigModel = ObjectModel({
     userDb: Object,
-    mode: [DeploymentMode.Core, DeploymentMode.Edge, DeploymentMode.Browser],
-    node: String
+    mode: [DeploymentMode.Core, DeploymentMode.Edge, DeploymentMode.Browser]
   });
 
   private validateNew() {
