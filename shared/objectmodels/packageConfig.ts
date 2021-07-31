@@ -122,5 +122,8 @@ export class PackageConfig {
   private validateState() {
     assert(!!this.state);
   }
-  
+ 
+  updateNumPods() {
+    this.state.numPods = Object.values(this.state.nodePods).reduce((a:number, b:number) => a + b, 0);
+  }
 }
