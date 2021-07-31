@@ -42,13 +42,13 @@ export class NodeConfig {
     this.state = { ...argValid, ...await this.db.rel.save('nodeConfig', argValid) };  
     
     // Accounting for the users' nodeConfigs.
-    this.userConfig.load();
+    await this.userConfig.load();
 
     let userNodeConfigs = new Set(this.userConfig.state.nodeConfigs);
     userNodeConfigs.add(this.state.id);
     this.userConfig.state.nodeConfigs = Array.from(userNodeConfigs);
 
-    this.userConfig.save();
+    await this.userConfig.save();
   }
   
   toString() {

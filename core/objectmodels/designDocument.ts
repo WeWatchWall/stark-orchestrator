@@ -21,9 +21,49 @@ export class DesignDocument {
     this.arg = {
       _id: "_design/replicate",
       filters: {
-        "hasTypes": "function (doc, req) {    var delimiterIndex = doc._id.substr(0, doc._id.indexOf('_'));    if (doc._id.indexOf('_design') > -1 || delimiterIndex === -1) {        return false;    }    if (req.query.types.indexOf(delimiterIndex) === -1) {        return !!req.query.isNegative;    }    return !req.query.isNegative;}",
-        "hasTypesSrc": "function (doc, req) {    var delimiterIndex = doc._id.substr(0, doc._id.indexOf('_'));    if (doc._id.indexOf('_design') > -1 || delimiterIndex === -1) {        return false;    }        if (req.query.types.indexOf(delimiterIndex) > -1 && doc.data && doc.data.source && doc.data.source === req.query.source) {        return !req.query.isNegative;    }    return !!req.query.isNegative;}",
-        "hasTypesDest": "function (doc, req) {    var delimiterIndex = doc._id.substr(0, doc._id.indexOf('_'));    if (doc._id.indexOf('_design') > -1 || delimiterIndex === -1) {        return false;    }        if (req.query.types.indexOf(delimiterIndex) > -1 && doc.data && doc.data.target && doc.data.target === req.query.target) {        return !req.query.isNegative;    }    return !!req.query.isNegative;}"
+        "hasTypes": function (doc, req) {
+          var delimiterIndex = doc._id.substr(0, doc._id.indexOf('_'));
+          if (doc._id.indexOf('_design') > -1 || delimiterIndex === -1) {
+            return false;
+          }
+          if (req.query.types.indexOf(delimiterIndex) === -1) {
+            return !!req.query.isNegative;
+          }
+          return !req.query.isNegative;
+        }.toString(),
+
+        "hasTypesSrc": function (doc, req) {
+          var delimiterIndex = doc._id.substr(0, doc._id.indexOf('_'));
+          if (doc._id.indexOf('_design') > -1 || delimiterIndex === -1) {
+            return false;
+          }
+          if (req.query.types.indexOf(delimiterIndex) > -1 && doc.data && doc.data.source && doc.data.source === req.query.source) {
+            return !req.query.isNegative;
+          }
+          return !!req.query.isNegative;
+        }.toString(),
+
+        "hasTypesSrcRemote": function (doc, req) {
+          var delimiterIndex = doc._id.substr(0, doc._id.indexOf('_'));
+          if (doc._id.indexOf('_design') > -1 || delimiterIndex === -1) {
+            return false;
+          }
+          if (req.query.types.indexOf(delimiterIndex) > -1 && doc.data && doc.data.source && doc.data.source === req.query.source && doc.data.isRemote) {
+            return !req.query.isNegative;
+          }
+          return !!req.query.isNegative;
+        }.toString(),
+
+        "hasTypesDest": function (doc, req) {
+          var delimiterIndex = doc._id.substr(0, doc._id.indexOf('_'));
+          if (doc._id.indexOf('_design') > -1 || delimiterIndex === -1) {
+            return false;
+          }
+          if (req.query.types.indexOf(delimiterIndex) > -1 && doc.data && doc.data.target && doc.data.target === req.query.target) {
+            return !req.query.isNegative;
+          }
+          return !!req.query.isNegative;
+        }.toString()
       }
     };
   }

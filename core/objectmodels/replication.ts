@@ -62,13 +62,14 @@ export class Replication {
   }
   
   async save() {
-    // Prevent duplicates.
-    try {
-      await this.load();
-      await this.delete();
-    } catch {
-    }
-
+    // // Prevent duplicates.
+    // try {
+    //   await this.load();
+    //   await this.delete();
+    // } catch {
+    // }
+    this.validateNew();
+    
     let server = nano(`http://${process.env.STARK_USER_NAME}:${process.env.STARK_USER_PASSWORD}@${process.env.STARK_DB_HOST}:5984`);
 
     // This is the task which can be cancelled :P

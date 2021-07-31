@@ -202,7 +202,24 @@ export class NodeRegistration {
     );
     await requestsReplication.save();
 
-    let responseReplication = new Replication(
+    
+    let responseSrcReplication = new Replication(
+      {
+        source: servicesDatabase.dbName,
+        target: servicesUserDatabase.dbName,
+        filter: "replicate/hasTypesSrcRemote",
+        query_params: {
+          types: [
+            "response"
+          ],
+          source: servicesDatabase.dbName
+        }
+      },
+      true
+    );
+    await responseSrcReplication.save();
+
+    let responseEndReplication = new Replication(
       {
         source: servicesUserDatabase.dbName,
         target: servicesDatabase.dbName,
@@ -216,7 +233,7 @@ export class NodeRegistration {
       },
       true
     );
-    await responseReplication.save();
+    await responseEndReplication.save();
     /* #endregion */
 
   }
