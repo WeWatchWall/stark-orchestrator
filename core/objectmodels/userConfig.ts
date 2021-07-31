@@ -82,7 +82,7 @@ export class UserConfig {
     nodeConfigs: ArrayModel(String),
     corePackageConfigs: [ArrayModel(String)],
     packageConfigs: ArrayModel(String),
-    
+    numRouters: Number
     // sharedReads: [ArrayModel(String)],
     // sharedWrites: [ArrayModel(String)]    
   })
@@ -95,7 +95,8 @@ export class UserConfig {
     enablePods: true,
     
     nodeConfigs: [],
-    packageConfigs: ['stark-edge-config']
+    packageConfigs: ['stark-edge-config'],
+    numRouters: 0
     // sharedReads: [],
     // sharedWrites: []
   })

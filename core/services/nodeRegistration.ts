@@ -148,6 +148,11 @@ export class NodeRegistration {
 
     
     /* #region  Setup services databases. */
+    
+    // TODO: Move routers to trusted core/edge pod, reset when status -> 0, update per core/edge pod num;
+    userConfig.state.numRouters += 1;
+    await userConfig.save();
+
     let nodeServices = new NodeUser({
         db: usersDb,
         arg: {...arg, ...{ name: `services-${arg.name}` }}

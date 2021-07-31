@@ -121,6 +121,7 @@ export class UserConfig {
     nodeConfigs: ArrayModel(String),
     corePackageConfigs: [ArrayModel(String)],
     packageConfigs: ArrayModel(String),
+    numRouters: Number
     
     // sharedReads: [ArrayModel(String)],
     // sharedWrites: [ArrayModel(String)]    
