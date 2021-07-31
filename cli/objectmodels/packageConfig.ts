@@ -89,7 +89,8 @@ export class PackageConfig {
       numPods: Number,
       status: [ProvisionStatus.Init, ProvisionStatus.Up, ProvisionStatus.Error, ProvisionStatus.Stop],
       isService: Boolean,
-      services: ArrayModel(String)
+      services: ArrayModel(String),
+      nodePods: Object
     }).defaultTo({
       // Require name
       // Require mode
@@ -100,7 +101,8 @@ export class PackageConfig {
       numPods: 0,
       status: ProvisionStatus.Init,
       isService: false,
-      services: []
+      services: [],
+      nodePods: {}
     }).assert(
     newUser => {
       // TODO

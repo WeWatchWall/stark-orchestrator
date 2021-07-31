@@ -124,6 +124,7 @@ export class PodBalancer {
     await Util.retry(async (retry) => {
       try {
         await this.state.packageConfig.load();
+        this.state.packageConfig.state.nodePods[this.argValid.nodeConfig.state.name] = this.state.podConfig.state.numPods;
         this.state.packageConfig.state.numPods += this.state.podConfig.state.numPods;
         await this.state.packageConfig.save();
       } catch (error) {
@@ -159,10 +160,11 @@ export class PodBalancer {
     if (pods > 1 && increment === 1) { await Util.delay(3e3); }
 
     try {
+      await this.state.packageConfig.load();
+      this.state.packageConfig.state.nodePods[this.argValid.nodeConfig.state.name] += increment;
       this.state.packageConfig.state.numPods += increment;
       await this.state.packageConfig.save();
     } catch (error) {
-      this.state.packageConfig.state.numPods -= increment;
       throw error;
     }
 

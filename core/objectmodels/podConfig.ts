@@ -79,6 +79,7 @@ export class PodConfig {
           tags: undefined,
           status: ProvisionStatus.Init,
           maxPods: undefined,
+          nodePods: undefined,
           numPods: 1,
           error: 'empty'
         }
