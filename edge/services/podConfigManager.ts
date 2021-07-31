@@ -16,7 +16,7 @@ export class PodConfigManager {
   nodeDb: any;
 
   podConfigs = {};
-  packConfigsId = {};
+  podConfigsId = {};
 
   addWatcher: any;
 
@@ -106,7 +106,7 @@ export class PodConfigManager {
 
         let newPodName = doc.data.name;
         if (!self.podConfigs[newPodName] && self.isAvailable(doc)) {
-          self.packConfigsId[doc._id] = 'init';
+          self.podConfigsId[doc._id] = 'init';
           self.podConfigs[doc.data.name] = 'init';
 
           await self.add(doc);
@@ -144,7 +144,7 @@ export class PodConfigManager {
     );
     await podConfig.save();
     
-    this.packConfigsId[podId] = podConfig;
+    this.podConfigsId[podId] = podConfig;
     this.podConfigs[podName] = podConfig;
 
     /* #endregion */
@@ -186,10 +186,9 @@ export class PodConfigManager {
     return true;
   }
 
-  // TODO: Retrieve by Id.
   async delete(podId: string) {
     /* #region  Get pod by Id and retrieve its name. */
-    let podConfig = this.packConfigsId[podId];
+    let podConfig = this.podConfigsId[podId];
     let podName = podConfig.argValid.name;
     /* #endregion */
 
@@ -211,13 +210,13 @@ export class PodConfigManager {
     await podConfig.delete();
 
     /* #region  Accounting. */
-    this.packConfigsId[podId] = undefined;
+    this.podConfigsId[podId] = undefined;
     this.podConfigs[podName] = undefined;
     /* #endregion */
   }
 
   private async deleteAll() {
-    let packIds = [...Object.keys(this.packConfigsId)]; // Copying an array with the spread operator :)
+    let packIds = [...Object.keys(this.podConfigsId)]; // Copying an array with the spread operator :)
 
     packIds.forEach(async (packId) => {
       await this.delete(packId);
