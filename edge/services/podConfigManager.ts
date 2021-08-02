@@ -91,6 +91,7 @@ export class PodConfigManager {
       .changes({
         since: "now",
         live: true,
+        retry: true,
         include_docs: true,
         selector: {
           _id: { $regex: "^packageConfig" }

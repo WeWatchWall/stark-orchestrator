@@ -51,6 +51,7 @@ export class NodeConfig {
     this.watcher = this.db.changes({
       since: 'now',
       live: true,
+      retry: true,
       include_docs: true,
       selector: {
         "_id": self.db.rel.makeDocID({

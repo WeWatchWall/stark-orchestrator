@@ -79,6 +79,7 @@ export class Replication {
       {
         ...{
           continuous: true,
+          retry: true,
           source: undefined,
           target: undefined
         },

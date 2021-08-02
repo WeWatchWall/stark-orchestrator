@@ -41,7 +41,7 @@ export class PodBalancer {
     await this.load();
 
     var self = this;
-    this.state.packageConfig.eventEmitter.on('change', async function (change) {
+    this.state.packageConfig.eventEmitter.on('change', async (change) => {
       // TODO: Replace with upsert: https://pouchdb.com/guides/conflicts.html#two-types-of-conflicts
       await Util.retry(async (retry) => {
         if (self.isDeletedPackage) { return; }
@@ -54,7 +54,7 @@ export class PodBalancer {
       }, 8);
     });
     
-    this.state.podConfig.eventEmitter.on('delete', function () {
+    this.state.podConfig.eventEmitter.on('delete', () => {
       self.eventEmitter.emit("delete");
     });
   }

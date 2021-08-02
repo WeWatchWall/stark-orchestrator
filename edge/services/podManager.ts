@@ -23,6 +23,7 @@ export class PodManager {
     this.addWatcher = this.nodeBootstrap.database.state.changes({
       since: 'now',
       live: true,
+      retry: true,
       include_docs: true,
       selector: {
         "_id": {"$regex": "^podConfig"}
@@ -50,7 +51,7 @@ export class PodManager {
     this.podConfigs[podName] = podConfig;
 
     var self = this;
-    podConfig.eventEmitter.on('delete', (podName: string) => { self.delete(podName); })
+    podConfig.eventEmitter.on('delete', async (podName: string) => { await self.delete(podName); })
 
     await podConfig.load();
   }

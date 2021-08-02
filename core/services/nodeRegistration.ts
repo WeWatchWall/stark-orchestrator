@@ -190,7 +190,7 @@ export class NodeRegistration {
       {
         source: servicesDatabase.dbName,
         target: servicesUserDatabase.dbName,
-        filter: "replicate/hasTypesSrc",
+        filter: "replicate/hasTypesSrcRemote",
         query_params: {
           types: [
             "request"

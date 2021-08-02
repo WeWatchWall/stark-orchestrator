@@ -63,6 +63,7 @@ export class Pod {
     this.watcher = this.db.changes({
       since: 'now',
       live: true,
+      retry: true,
       include_docs: true,
       selector: {
           "_id": podId

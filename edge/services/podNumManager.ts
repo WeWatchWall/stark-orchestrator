@@ -16,7 +16,6 @@ export class PodNumManager {
   podBalancers = {};
 
   addWatcher: any;
-  isDeleting = false;
 
   constructor(user: any) {
     this.user = user;
@@ -85,6 +84,7 @@ export class PodNumManager {
       .changes({
         since: "now",
         live: true,
+        retry: true,
         include_docs: true,
         selector: {
           _id: { $regex: "^podConfig" }
@@ -124,7 +124,7 @@ export class PodNumManager {
     });
 
     var self = this;
-    balancer.eventEmitter.on('delete', async function () {
+    balancer.eventEmitter.on('delete', async () => {
       await self.delete(balancer.argValid.name);
     });
 

@@ -14,6 +14,7 @@ import { PodManager } from './services/podManager';
 import { PodConfigManager } from './services/podConfigManager';
 import { UserAuth } from '../shared/objectmodels/userAuth';
 import { PodNumManager } from './services/podNumManager';
+import { Router } from './services/router';
 
 var edge = express();
 
@@ -80,6 +81,9 @@ async function Main() {
 
   let podNumService = new PodNumManager(user);
   await podNumService.init();
+
+  let router = new Router(user);
+  await router.init();
 }
 Main();
 

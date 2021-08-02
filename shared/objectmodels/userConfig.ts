@@ -28,6 +28,7 @@ export class UserConfig {
     this.watcher = this.db.changes({
       since: 'now',
       live: true,
+      retry: true,
       include_docs: true,
       selector: {
         "_id": this.db.rel.makeDocID({
