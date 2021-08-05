@@ -7,7 +7,6 @@ export class PodConfig {
   db: any;
   
   arg: any;
-  argValid: any;
   state: any;
   change: any;
   validate: boolean;
@@ -39,9 +38,7 @@ export class PodConfig {
       live: true,
       retry: true,
       include_docs: true,
-      selector: {
-        "_id": this.argValid.id
-      }
+      selector: this.arg
     }).on('change', async function (change) {
       if (change.deleted) {
         // TODO: self-destruct?
@@ -75,9 +72,7 @@ export class PodConfig {
     this.validateNew();
     
     let  saved = (await this.db.find({
-      selector: {
-        "_id": this.argValid.id
-      },
+      selector: this.arg,
       limit: 1
     })).docs;
     saved = await this.db.rel.parseRelDocs('podConfig', saved);
@@ -102,12 +97,8 @@ export class PodConfig {
     // NOOP
   }
 
-  private newDeployConfigModel = ObjectModel({
-    id: String
-  });
-
   private validateNew() {
-    this.argValid = this.validate ? new this.newDeployConfigModel(this.arg) : this.arg;
+    assert(!!this.arg);
   }
 
   private validateState() {

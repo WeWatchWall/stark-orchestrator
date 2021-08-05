@@ -94,7 +94,7 @@ export class PodBalancer {
       {
         db: this.dbs.nodeDb,
         arg: {
-          id: this.argValid.id
+          _id: this.argValid.id
         },
       },
       true

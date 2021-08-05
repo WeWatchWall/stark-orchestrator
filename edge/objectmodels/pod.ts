@@ -97,7 +97,7 @@ export class Pod {
     if (this.processes.length > this.state.numPods) {
       for (let i = 0; i < this.processes.length - this.state.numPods; i++) {
         let processEnv = this.processes.pop();
-        // await processEnv.delete();
+        // TODO: await processEnv.delete();
       }
     } else if (this.state.numPods > this.processes.length) {
       for (let i = 0; i < this.state.numPods - this.processes.length; i++) {
@@ -110,7 +110,7 @@ export class Pod {
               await self.saveConfig({status: ProvisionStatus.Error, error: error});
           });
 
-          processEnv.save();
+          processEnv.save(this.processes.length - 1);
           await self.saveConfig({ status: ProvisionStatus.Up });
         } catch (error) {
           await this.saveConfig({ status: ProvisionStatus.Error, error: error });

@@ -43,7 +43,7 @@ export class PodEnv {
     this.state = true;
   }
 
-  async save() {
+  async save(podIndex) {
     if (!this.state) { await this.load(); } // TODO: USE THIS PATTERN!
     this.validateState();
 
@@ -77,7 +77,7 @@ export class PodEnv {
       `,
       path.join(this.packageDir, 'stark_bootstrap.js')
     );
-    functionInSandbox(this.argValid.name);
+    functionInSandbox(`${this.argValid.name}-${podIndex}`);
   }
 
   toString() {

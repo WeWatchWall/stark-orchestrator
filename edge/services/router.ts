@@ -1,4 +1,3 @@
-import { request } from "express";
 import { Database } from "../../shared/objectmodels/database";
 import { NodeUser } from "../../shared/objectmodels/nodeUser";
 import { UserConfig } from "../../shared/objectmodels/userConfig";
@@ -19,6 +18,7 @@ export class Router {
   nodeConfigWatcher: any;
   packConfigWatcher: any;
   addRequestWatcher: any;
+  deleteResponseWatcher: any;
 
   numRouters: number;
   routerIndex: number;
@@ -124,7 +124,6 @@ export class Router {
     /* #endregion */
 
     /* #region  Initialize the router's PackageConfig state and updates. */
-    // TODO: filter only status = 1 nodes.
     // TODO: Watch for changes before or after load???
     this.packConfigWatcher = this.userDb.state.changes({
       since: 'now',
@@ -163,7 +162,6 @@ export class Router {
     /* #endregion */
 
     /* #region  Initialize the router's Request state and updates. */
-    // TODO: filter only status = 1 nodes.
     // TODO: Watch for changes before or after load???
     this.addRequestWatcher = this.userServiceDb.state.changes({
       since: 'now',
@@ -171,11 +169,15 @@ export class Router {
       retry: true,
       include_docs: true,
       selector: {
-        "_id": {"$regex": "^request"}
+        "_id": {"$regex": "^request"},
+        data: {
+          "$or": [
+            { isNew: true },
+            { isDeleted: true }
+          ]
+        }
       }
     }).on('change', async function (change) {
-      if (change.deleted) { return; }
-
       let request = await self.userServiceDb.state.rel.parseRelDocs('request', [change.doc]);
       request = request.requests[0];
 
@@ -186,14 +188,49 @@ export class Router {
     let preRequests = (await this.userServiceDb.state.find({
       selector: {
         "_id": { "$regex": "^request" },
-        data: {isNew: true}
+        data: {
+          "$or": [
+            { isNew: true },
+            { isDeleted: true }
+          ]
+        }
       }
     })).docs;
     preRequests = await this.userServiceDb.state.rel.parseRelDocs('request', preRequests);
     preRequests = preRequests.requests;
 
     preRequests.forEach(async request => {
+      if (request.isDeleted) { return await this.delete(request); }
       await this.add(request);
+    });
+    /* #endregion */
+  
+    /* #region  Initialize the router's deleted Response state and updates. */
+    // TODO: Watch for changes before or after load???
+    this.deleteResponseWatcher = this.userServiceDb.state.changes({
+      since: 'now',
+      live: true,
+      retry: true,
+      include_docs: true,
+      selector: {
+        "_id": {"$regex": "^response"},
+        data: {isDeleted: true}
+      }
+    }).on('change', async function (change) {
+      if (!self.isBalanceAvailable(change.doc.data.time)) { return; }
+      await self.deleteResponse(change.doc);
+    });
+
+    let preResponses = (await this.userServiceDb.state.find({
+      selector: {
+        "_id": { "$regex": "^response" },
+        data: {isDeleted: true}
+      }
+    })).docs;
+
+    preResponses.forEach(async response => {
+      if (!this.isBalanceAvailable(response.data.time)) { return; }
+      await self.deleteResponse(response);
     });
     /* #endregion */
   }
@@ -253,15 +290,25 @@ export class Router {
     return result;
   }
 
-  async delete(requestDoc) {
+  async delete(request) {
+    if (!this.isBalanceAvailable(request.timeNew)) { return; }
     try {
-      this.userServiceDb.state.remove(
+      await this.userServiceDb.state.remove(
         this.userServiceDb.state.rel.makeDocID({
-          id: requestDoc.id,
+          id: request.id,
           type: 'request'
         }),
-        requestDoc.rev
+        request.rev
       );
+    } catch (error) {
+      // TODO?
+      debugger;
+    }
+  }
+
+  private async deleteResponse(responseDoc) {
+    try {
+      await this.userServiceDb.state.remove( responseDoc._id, responseDoc._rev);
     } catch (error) {
       // TODO?
       debugger;
