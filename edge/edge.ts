@@ -100,7 +100,7 @@ async function Main() {
 
   let dbServer = process.env.STARK_DB_HOST;
 
-    // TODO: Security problem, please make the "trusted services" handle multiple nodes.
+  // TODO: Security problem, please make the "trusted services" handle multiple nodes.
   let user = new UserAuth({
     server: undefined,
     arg: undefined
@@ -168,8 +168,8 @@ async function Main() {
   serviceNodeDb.state.setSchema(serviceDbSchema);
   /* #endregion */
 
-
   // Can also use DI instead when there are too many dependencies.
+  /* #region  Initializing the users' "trusted" orchestrator services. */
   let deployManagerService = new PodManager(nodeBootstrapService);
   await deployManagerService.init();
 
@@ -181,6 +181,7 @@ async function Main() {
 
   let router = new Router(user, dbServer, userDb, userConfig, userServiceDb, nodeConfig);
   await router.init();
+  /* #endregion */
 
   /* #region  Testing the request pipeline, has to set the package.isService = true. */
   // TODO: Use in a service
@@ -206,11 +207,7 @@ async function Main() {
 
   let result = await requester.add({
     service: 'stark-core-config',
-    isNew: true,
     isRemote: true,  // Also important to test: false,
-    source: serviceNodeDb.dbName,
-    sourcePod: 0,
-    timeNew: new Date().getTime(),
     arg: 'HELLO WORLD!!!'
   });
   console.log(`The request was successful. Result: ${result}`);

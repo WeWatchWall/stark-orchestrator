@@ -74,6 +74,16 @@ export class Requester {
 
   async add(request) {
     if (this.argValid.services.indexOf(request.service) === -1) { throw new Error("The service dependency is not declared."); }
+
+    request.isNew = true;
+    request.source = this.arg.serviceNodeDb.dbName;
+    request.sourcePod = this.argValid.podIndex;
+    request.timeNew = new Date().getTime();
+
+    return await this.requestArg(request);
+  }
+
+  private async requestArg(request) {
     let remoteArgs = {
       isRemote: this.arg.nodeConfig.state.podConfigs.indexOf(request.service) === -1 || request.isRemote,
       isLocalTimeout: false
