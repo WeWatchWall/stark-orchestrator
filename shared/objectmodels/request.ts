@@ -73,11 +73,12 @@ export class Request {
   private newRequestModel = ObjectModel({
     service: String,
     isNew: Boolean,
+    timeNew: Number,
     source: String,
+    isBalanced: [Boolean],
+    timeRoute: [Number],
     target: [String],
     targetPod: [Number],
-    timeNew: Number,
-    timeRoute: [Number],
     responseId: [String],
     isDeleted: [Boolean]
   });

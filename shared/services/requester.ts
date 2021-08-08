@@ -16,6 +16,7 @@ export class Requester {
   
   podConfig;
   currentRequests = {};
+  currentServiceRoutes = {};
 
   constructor(arg, nodeDb, nodeConfig, serviceNodeDb) {
     this.arg = { arg, nodeDb, nodeConfig, serviceNodeDb };
@@ -121,7 +122,14 @@ export class Requester {
     requestDoc.id = undefined;
 
     let request = new Request({ db: this.arg.serviceNodeDb.state, arg: requestDoc }, true);
-    if (!requestDoc.isRemote) {
+    
+    let knownRoute = this.currentServiceRoutes[request.argValid.service];
+    if (!request.argValid.isBalanced && knownRoute) {
+      request.arg.isNew = knownRoute.isNew;
+      request.arg.isRemote = knownRoute.isRemote;
+      request.arg.target = knownRoute.target;
+      request.arg.targetPod = knownRoute.targetPod;
+    } else if (!requestDoc.isRemote) {
       request.arg.isNew = false;
       request.arg.target = requestDoc.source;
       request.arg.targetPod = Math.floor(Math.random() * this.podConfig.state.numPods);
@@ -142,6 +150,7 @@ export class Requester {
     try {
       return await result.promise;
     } catch (error) {
+      if (!requestDoc.isBalanced) { this.currentServiceRoutes[requestDoc.service] = undefined; }
       await this.delete(requestDoc);
       throw error;
     }
@@ -175,6 +184,17 @@ export class Requester {
       }
     });
     await result.load();
+
+    let knownRoute = this.currentServiceRoutes[result.state.service];
+    if (!result.state.isBalanced && !knownRoute) {
+      this.currentServiceRoutes[result.state.service] = {
+        isNew: false,
+        isRemote: result.state.isRemote,
+        target: result.state.target,
+        targetPod: result.state.targetPod
+      };
+    }
+
     result.state.isDeleted = true;
     result.state.responseId = request.responseId;
     await result.save();
