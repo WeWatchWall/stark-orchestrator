@@ -13,7 +13,7 @@ export class Requester {
   arg;
   argValid;
   responseWatcher: any;
-  
+
   podConfig;
   currentRequests = {};
   currentServiceRoutes = {};
@@ -23,13 +23,13 @@ export class Requester {
     this.validateNew(arg);
   }
 
-  async init() { 
+  async init() {
     /* #region  Initializing the environment properties. */
     this.podConfig = new PodConfig(
       {
         db: this.arg.nodeDb.state,
         arg: {
-          data: {name: this.argValid.name}
+          data: { name: this.argValid.name }
         },
       }
     );
@@ -45,7 +45,7 @@ export class Requester {
       retry: true,
       include_docs: true,
       selector: {
-        "_id": {"$regex": "^response"},
+        "_id": { "$regex": "^response" },
         data: {
           target: this.arg.serviceNodeDb.dbName,
           targetPod: this.argValid.podIndex
@@ -89,7 +89,7 @@ export class Requester {
       isRemote: this.arg.nodeConfig.state.podConfigs.indexOf(request.service) === -1 || request.isRemote,
       isLocalTimeout: false
     };
-    
+
     if (request.retry) {
       var result;
       await Util.retry(async (retry) => {
@@ -101,7 +101,7 @@ export class Requester {
       }, 10e6);
       return result;
     }
-    
+
     return await this.requestLocal(request, remoteArgs);
   }
 
@@ -122,7 +122,8 @@ export class Requester {
     requestDoc.id = undefined;
 
     let request = new Request({ db: this.arg.serviceNodeDb.state, arg: requestDoc }, true);
-    
+
+    /* #region  Non-balanced and local routing. */
     let knownRoute = this.currentServiceRoutes[request.argValid.service];
     if (!request.argValid.isBalanced && knownRoute) {
       request.arg.isNew = knownRoute.isNew;
@@ -134,7 +135,9 @@ export class Requester {
       request.arg.target = requestDoc.source;
       request.arg.targetPod = Math.floor(Math.random() * this.podConfig.state.numPods);
     }
+    /* #endregion */
 
+    /* #region  Store request in the DB and its breadcrumbs in memory. */
     await request.save();
     requestDoc.id = request.state.id;
 
@@ -146,6 +149,7 @@ export class Requester {
         if (timeoutRequest) { timeoutRequest.promise.reject(new Error(`Timeout on request: ${JSON.stringify(requestDoc)}`)); }
       }, requestDoc.timeout || defaultTimeout)
     };
+    /* #endregion */
 
     try {
       return await result.promise;
@@ -154,7 +158,7 @@ export class Requester {
       await this.delete(requestDoc);
       throw error;
     }
-    
+
   }
 
   async responseAdd(responseDoc) {
@@ -174,6 +178,7 @@ export class Requester {
   }
 
   async delete(request) {
+    /* #region  Keep the old route if necessary. */
     let result = new Request({
       db: this.arg.serviceNodeDb.state,
       arg: {
@@ -198,17 +203,18 @@ export class Requester {
     result.state.isDeleted = true;
     result.state.responseId = request.responseId;
     await result.save();
+    /* #endregion */
 
     try {
       await result.delete();
     } catch { // WARNING.
     }
-    
+
   }
 
   private async deleteResponse(responseDoc) {
     try {
-      await this.arg.serviceNodeDb.state.remove( responseDoc._id, responseDoc._rev);
+      await this.arg.serviceNodeDb.state.remove(responseDoc._id, responseDoc._rev);
     } catch { // WARNING.
     }
   }
