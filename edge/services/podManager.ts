@@ -1,14 +1,14 @@
 import fs from 'fs-extra';
 import { Pod } from '../objectmodels/pod';
-import { NodeBootstrap } from './nodeBootstrap';
+
 
 export class PodManager {
   static PackagesDir = `./packages-run`;
-  nodeBootstrap: NodeBootstrap;
+  nodeBootstrap;
   podConfigs = {};
   addWatcher: any;
 
-  constructor(nodeBootstrap: NodeBootstrap) {
+  constructor(nodeBootstrap) {
     this.nodeBootstrap = nodeBootstrap;
   }
 

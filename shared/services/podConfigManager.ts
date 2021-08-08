@@ -1,77 +1,26 @@
-import { Availability } from "../../shared/objectmodels/availability";
-import { Database } from "../../shared/objectmodels/database";
-import { NodeUser } from "../../shared/objectmodels/nodeUser";
-import { UserConfig } from "../../shared/objectmodels/userConfig";
-import { Util } from "../../shared/util";
-import { NodeConfig } from "../objectmodels/nodeConfig";
-import { PodConfig } from "../objectmodels/podConfig";
+import { Util } from "../util";
+import { Availability } from "../objectmodels/availability";
+import { PodConfigTransfer } from "../objectmodels/podConfigTransfer";
 
 export class PodConfigManager {
-  user: any;
-  userDb: any;
-  userConfig: any;
-
-  nodeUser: any;
-  nodeConfig: any;
-  nodeDb: any;
-
+  arg;
   podConfigs = {};
   podConfigsId = {};
 
   addWatcher: any;
 
-  constructor(user: any) {
-    this.user = user;
+  constructor(userDb, userConfig, nodeConfig, nodeDb) {
+    this.arg = {userDb, userConfig, nodeConfig, nodeDb};
   }
 
   async init() {
-    /* #region  Initializing the environment properties. */
-    this.userDb = new Database({
-      arg: { username: this.user.state.name },
-      username: this.user.state.name,
-      password: this.user.state.password
-    });
-    await this.userDb.load();
-    this.userDb.state.setSchema(this.userDbSchema);
-
-    this.userConfig = new UserConfig({ db: this.userDb.state, arg: { name: this.user.state.name} });
-    await this.userConfig.init();
-
-    this.nodeUser = new NodeUser(
-      {
-        server: undefined,
-        arg: {}
-      },
-      true
-    );
-    this.nodeUser.init();
-
-    this.nodeDb = new Database({
-      arg: { username: this.nodeUser.argValid.name },
-      username: this.nodeUser.argValid.name,
-      password: this.nodeUser.argValid.password
-    });
-    await this.nodeDb.load();
-    this.nodeDb.state.setSchema(this.nodeDbSchema);
-    
-    this.nodeConfig = new NodeConfig(
-      {
-        db: this.nodeDb.state,
-        arg: {}
-      },
-      true
-    );
-    this.nodeConfig.init();
-    await this.nodeConfig.load();
-    /* #endregion */
-
     /* #region  Get pre-existing pods */
     let prePackConfigs = (
-      await this.userDb.state.find({
+      await this.arg.userDb.state.find({
         selector: {
           _id: { $regex: "^packageConfig" },
           data: {
-            mode: this.nodeConfig.state.mode,
+            mode: this.arg.nodeConfig.state.mode,
             $or: [
               {availability: Availability.Any}, {availability: Availability.Tag}
             ]
@@ -87,7 +36,7 @@ export class PodConfigManager {
 
     /* #region  Watch the user's DB for changes to the package. */
     var self = this;
-    this.addWatcher = this.userDb.state
+    this.addWatcher = this.arg.userDb.state
       .changes({
         since: "now",
         live: true,
@@ -121,7 +70,7 @@ export class PodConfigManager {
       });
     /* #endregion */
 
-    this.nodeConfig.eventEmitter.on('delete', async () => {
+    this.arg.nodeConfig.eventEmitter.on('delete', async () => {
       await self.deleteAll();
     });
   }
@@ -132,13 +81,13 @@ export class PodConfigManager {
     let podName = packageDoc.data.name;
 
     /* #region  Create and save the PodConfig. */
-    let podConfig = new PodConfig(
+    let podConfig = new PodConfigTransfer(
       {
-        db: this.nodeDb.state,
+        db: this.arg.nodeDb.state,
         arg: {
-          userDb: this.userDb.state,
+          userDb: this.arg.userDb.state,
           name: podName,
-          mode: this.nodeConfig.state.mode
+          mode: this.arg.nodeConfig.state.mode
         },
       },
       true
@@ -154,11 +103,11 @@ export class PodConfigManager {
     // TODO: Replace with upsert: https://pouchdb.com/guides/conflicts.html#two-types-of-conflicts
     await Util.retry(async (retry) => {
       try {
-        await this.nodeConfig.load();
-        let podConfigs = new Set(this.nodeConfig.state.podConfigs);
+        await this.arg.nodeConfig.load();
+        let podConfigs = new Set(this.arg.nodeConfig.state.podConfigs);
         podConfigs.add(podName);
-        this.nodeConfig.state.podConfigs = Array.from(podConfigs);
-        await this.nodeConfig.save();
+        this.arg.nodeConfig.state.podConfigs = Array.from(podConfigs);
+        await this.arg.nodeConfig.save();
       } catch (error) {
         retry(error)
       }
@@ -167,15 +116,15 @@ export class PodConfigManager {
   }
 
   private isAvailable(packageDoc): boolean {
-    if (!this.userConfig.state.enablePods) { return false; }
-    if (!this.nodeConfig.state.availability) { return false; }
+    if (!this.arg.userConfig.state.enablePods) { return false; }
+    if (!this.arg.nodeConfig.state.availability) { return false; }
 
     if (!packageDoc._attachments) { return false; }
-    if (packageDoc.data.mode !== this.nodeConfig.state.mode) { return false; }
+    if (packageDoc.data.mode !== this.arg.nodeConfig.state.mode) { return false; }
     if (!packageDoc.data.availability) { return false; }
 
     if (packageDoc.data.availability === Availability.Tag) {
-      let nodeDoc = this.nodeConfig.state;
+      let nodeDoc = this.arg.nodeConfig.state;
 
       packageDoc.data.tags.forEach(tag => {
         if (nodeDoc.tags.indexOf(tag) === -1) { return false; }
@@ -197,11 +146,11 @@ export class PodConfigManager {
     // TODO: Replace with upsert: https://pouchdb.com/guides/conflicts.html#two-types-of-conflicts
     await Util.retry(async (retry) => {
       try {
-        await this.nodeConfig.load();
-        let podConfigs = new Set(this.nodeConfig.state.podConfigs);
+        await this.arg.nodeConfig.load();
+        let podConfigs = new Set(this.arg.nodeConfig.state.podConfigs);
         podConfigs.delete(podName);
-        this.nodeConfig.state.podConfigs = Array.from(podConfigs);
-        await this.nodeConfig.save();
+        this.arg.nodeConfig.state.podConfigs = Array.from(podConfigs);
+        await this.arg.nodeConfig.save();
       } catch (error) {
         retry(error)
       }
@@ -223,25 +172,4 @@ export class PodConfigManager {
       await this.delete(packId);
     });
   }
-
-  private userDbSchema = [
-    { singular: 'packageConfig', plural: 'packageConfigs' },
-    {
-      singular: 'userConfig', plural: 'userConfigs', 
-      relations: {
-        nodeConfigs: {hasMany: 'nodeConfig'}
-      }
-    },
-    {singular: 'nodeConfig', plural: 'nodeConfigs', relations: {userConfig: {belongsTo: 'userConfig'}}}
-  ];
-  private nodeDbSchema = [
-    { singular: 'podConfig', plural: 'podConfigs' },
-    {
-      singular: 'userConfig', plural: 'userConfigs', 
-      relations: {
-        nodeConfigs: {hasMany: 'nodeConfig'}
-      }
-    },
-    {singular: 'nodeConfig', plural: 'nodeConfigs', relations: {userConfig: {belongsTo: 'userConfig'}}}
-  ];
 }

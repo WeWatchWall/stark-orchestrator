@@ -1,10 +1,10 @@
 import assert from "assert";
 import { ObjectModel } from "objectmodel";
-import { Availability } from "../../shared/objectmodels/availability"; // TODO
-import { DeploymentMode } from "../../shared/objectmodels/deploymentMode";
-import { ProvisionStatus } from "../../shared/objectmodels/provisionStatus";
+import { Availability } from "./availability"; // TODO
+import { DeploymentMode } from "./deploymentMode";
+import { ProvisionStatus } from "./provisionStatus";
 
-export class PodConfig {
+export class PodConfigTransfer {
   db: any;
   
   arg: any;

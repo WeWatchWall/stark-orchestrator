@@ -1,33 +1,27 @@
 import { ObjectModel } from "objectmodel"
-import { Database } from "../../shared/objectmodels/database";
-import { Response } from "../../shared/objectmodels/response";
+import { Response } from "../objectmodels/response";
 
 export class RequestManager {
+  arg;
   argValid;
   addWatcher: any;
-  serviceNodeDb;
   addCallback;
   deleteCallback;
 
-  constructor(arg) {
+  constructor(arg, serviceNodeDb) {
+    this.arg = {arg, serviceNodeDb};
     this.validateNew(arg);
     this.addCallback = async () => { };
     this.deleteCallback = async () => { };
   }
 
   async init() { 
-    this.serviceNodeDb = new Database({
-      arg: { username: this.argValid.user.state.name },
-      username: this.argValid.user.state.name,
-      password: this.argValid.user.state.password
-    });
-    await this.serviceNodeDb.load();
-    this.serviceNodeDb.state.setSchema(this.serviceDbSchema);
+    
 
     /* #region  Initialize the router's Request state and updates. */
     // TODO: Watch for changes before or after load???
     var self = this;
-    this.addWatcher = this.serviceNodeDb.state.changes({
+    this.addWatcher = this.arg.serviceNodeDb.state.changes({
       since: 'now',
       live: true,
       retry: true,
@@ -37,30 +31,30 @@ export class RequestManager {
         data: {
           isNew: false,
           service: this.argValid.name,
-          target: this.serviceNodeDb.dbName,
+          target: this.arg.serviceNodeDb.dbName,
           targetPod: this.argValid.podIndex
         }
       }
     }).on('change', async function (change) {
-      let request = await self.serviceNodeDb.state.rel.parseRelDocs('request', [change.doc]);
+      let request = await self.arg.serviceNodeDb.state.rel.parseRelDocs('request', [change.doc]);
       request = request.requests[0];
 
       if (request.isDeleted) { return await self.deleteHandler(request); }
       await self.addHandler(request);
     });
 
-    let preRequests = (await this.serviceNodeDb.state.find({
+    let preRequests = (await this.arg.serviceNodeDb.state.find({
       selector: {
         "_id": { "$regex": "^request" },
         data: {
           isNew: false,
           service: this.argValid.name,
-          target: this.serviceNodeDb.dbName,
+          target: this.arg.serviceNodeDb.dbName,
           targetPod: this.argValid.podIndex
         }
       }
     })).docs;
-    preRequests = await this.serviceNodeDb.state.rel.parseRelDocs('request', preRequests);
+    preRequests = await this.arg.serviceNodeDb.state.rel.parseRelDocs('request', preRequests);
     preRequests = preRequests.requests;
 
     preRequests.forEach(async request => {
@@ -79,7 +73,7 @@ export class RequestManager {
 
   private async addHandler(request) {
     let result = new Response({
-      db: this.serviceNodeDb.state,
+      db: this.arg.serviceNodeDb.state,
       arg: {
         source: request.target,
         target: request.source,
@@ -87,7 +81,7 @@ export class RequestManager {
         targetPod: request.sourcePod,
         result: await this.addCallback(request),
         time: new Date().getTime(),
-        requestId: this.serviceNodeDb.state.rel.makeDocID({
+        requestId: this.arg.serviceNodeDb.state.rel.makeDocID({
           id: request.id,
           type: 'request'
         })
@@ -101,7 +95,7 @@ export class RequestManager {
   private async deleteHandler(request) {
     // TODO: cancel waiting internally?
     let response = new Response({
-      db: this.serviceNodeDb.state,
+      db: this.arg.serviceNodeDb.state,
       arg: {
         _id: request.responseId
       }
@@ -111,23 +105,19 @@ export class RequestManager {
     await response.save();
     
     try {
-      await this.serviceNodeDb.state.remove(
-        this.serviceNodeDb.state.rel.makeDocID({
+      await this.arg.serviceNodeDb.state.remove(
+        this.arg.serviceNodeDb.state.rel.makeDocID({
           id: request.id,
           type: 'request'
         }),
         request.rev
       );
     } catch (error) {
-      // TODO?
-      debugger;
     }
 
     try {
       await response.delete();
     } catch (error) {
-      // TODO?
-      debugger;
     }
 
     await this.deleteCallback(request);
@@ -142,9 +132,4 @@ export class RequestManager {
   private validateNew(arg) {
     this.argValid = new this.newRequestManager(arg);
   }
-
-  private serviceDbSchema = [
-    { singular: 'request', plural: 'requests' },
-    { singular: 'response', plural: 'responses' }
-  ];
 }

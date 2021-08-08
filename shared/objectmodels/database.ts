@@ -20,6 +20,7 @@ export class Database {
   state: any;
   validate: boolean;
 
+  dbServer: String;
   username: String;
   password: String; 
   dbName: string;
@@ -47,7 +48,7 @@ export class Database {
     this.dbName = dbName;
     
     // skip_setup: true, auth: { username: "admin", password: "mLHhxiForA1ebt7V1lT1" }
-    let address = `http://${this.username}:${this.password}@${process.env.STARK_DB_HOST}:5984`;
+    let address = `http://${this.username}:${this.password}@${this.argValid.dbServer}:5984`;
     let server = nano(address);
 
     await Util.retry(async (retry) => {
@@ -73,12 +74,13 @@ export class Database {
   }
 
   private newDatabaseModel = ObjectModel({
-    username: String
+      username: String,
+      dbServer: String
     }).assert(
-    newDatabase => {
-      // TODO
-            return newDatabase
-                && RegExp('^[a-z0-9_-]{3,75}$').test(newDatabase.username);
+      newDatabase => {
+        // TODO
+        return newDatabase
+            && RegExp('^[a-z0-9_-]{3,75}$').test(newDatabase.username);
         
     }
   );

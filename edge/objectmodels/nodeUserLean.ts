@@ -1,8 +1,8 @@
 import { ObjectModel } from "objectmodel"
 
-import { User } from '../../shared/objectmodels/user';
+import { User } from './user';
 
-export class NodeUser extends User {
+export class NodeUserLean extends User {
 
     /**
    * Creates an instance of user.

@@ -1,75 +1,44 @@
 import FlatPromise from "flat-promise";
 import { ArrayModel, ObjectModel } from "objectmodel"
-import { Database } from "../../shared/objectmodels/database";
-import { Response } from "../../shared/objectmodels/response"; // TODO?
-import { Request } from "../../shared/objectmodels/request";
-import { NodeConfig } from "../objectmodels/nodeConfig";
-import { Util } from "../../shared/util";
-import { PodConfig } from "../../shared/objectmodels/podConfig";
+import { Response } from "../objectmodels/response"; // TODO?
+import { Request } from "../objectmodels/request";
+import { Util } from "../util";
+import { PodConfig } from "../objectmodels/podConfig";
 
 const defaultTimeout = 10e3;
 
 // TODO: attachments
 // TODO: request helper to fill in the simple details -- e.g.: isNew: true, sourceDB, SourcePpod, time
 export class Requester {
+  arg;
   argValid;
   responseWatcher: any;
   
-  nodeDb;
-  nodeConfig;
   podConfig;
-
-  serviceNodeDb;
- 
   currentRequests = {};
 
-  constructor(arg) {
+  constructor(arg, nodeDb, nodeConfig, serviceNodeDb) {
+    this.arg = { arg, nodeDb, nodeConfig, serviceNodeDb };
     this.validateNew(arg);
   }
 
   async init() { 
     /* #region  Initializing the environment properties. */
-    this.nodeDb = new Database({
-      arg: { username: this.argValid.nodeUser.argValid.name },
-      username: this.argValid.nodeUser.argValid.name,
-      password: this.argValid.nodeUser.argValid.password
-    });
-    await this.nodeDb.load();
-    this.nodeDb.state.setSchema(this.nodeDbSchema);
-
-    this.nodeConfig = new NodeConfig(
-      {
-        db: this.nodeDb.state,
-        arg: {}
-      },
-      true
-    );
-    this.nodeConfig.init();
-    await this.nodeConfig.load();
-
     this.podConfig = new PodConfig(
       {
-        db: this.nodeDb.state,
+        db: this.arg.nodeDb.state,
         arg: {
           data: {name: this.argValid.name}
         },
       }
     );
     await this.podConfig.init();
-
-    this.serviceNodeDb = new Database({
-      arg: { username: this.argValid.serviceUser.state.name },
-      username: this.argValid.serviceUser.state.name,
-      password: this.argValid.serviceUser.state.password
-    });
-    await this.serviceNodeDb.load();
-    this.serviceNodeDb.state.setSchema(this.serviceDbSchema);
     /* #endregion */
 
     /* #region  Initialize the router's Response state and updates. */
     // TODO: Watch for changes before or after load???
     var self = this;
-    this.responseWatcher = this.serviceNodeDb.state.changes({
+    this.responseWatcher = this.arg.serviceNodeDb.state.changes({
       since: 'now',
       live: true,
       retry: true,
@@ -77,7 +46,7 @@ export class Requester {
       selector: {
         "_id": {"$regex": "^response"},
         data: {
-          target: this.serviceNodeDb.dbName,
+          target: this.arg.serviceNodeDb.dbName,
           targetPod: this.argValid.podIndex
         }
       }
@@ -86,11 +55,11 @@ export class Requester {
       await self.responseAdd(change.doc);
     });
 
-    let preResponses = (await this.serviceNodeDb.state.find({
+    let preResponses = (await this.arg.serviceNodeDb.state.find({
       selector: {
         "_id": { "$regex": "^response" },
         data: {
-          target: this.serviceNodeDb.dbName,
+          target: this.arg.serviceNodeDb.dbName,
           targetPod: this.argValid.podIndex
         }
       }
@@ -106,7 +75,7 @@ export class Requester {
   async add(request) {
     if (this.argValid.services.indexOf(request.service) === -1) { throw new Error("The service dependency is not declared."); }
     let remoteArgs = {
-      isRemote: this.nodeConfig.state.podConfigs.indexOf(request.service) === -1 || request.isRemote,
+      isRemote: this.arg.nodeConfig.state.podConfigs.indexOf(request.service) === -1 || request.isRemote,
       isLocalTimeout: false
     };
     
@@ -130,7 +99,6 @@ export class Requester {
       try {
         return await this.requestInternal(request, remoteArgs);
       } catch (error) {
-        debugger;
         remoteArgs.isLocalTimeout = true;
       }
     }
@@ -142,7 +110,7 @@ export class Requester {
     requestDoc.isRemote = remoteArgs.isRemote || remoteArgs.isLocalTimeout;
     requestDoc.id = undefined;
 
-    let request = new Request({ db: this.serviceNodeDb.state, arg: requestDoc }, true);
+    let request = new Request({ db: this.arg.serviceNodeDb.state, arg: requestDoc }, true);
     if (!requestDoc.isRemote) {
       request.arg.isNew = false;
       request.arg.target = requestDoc.source;
@@ -172,7 +140,7 @@ export class Requester {
 
   async responseAdd(responseDoc) {
     try {
-      let requestId = this.serviceNodeDb.state.rel.parseDocID(responseDoc.data.requestId).id;
+      let requestId = this.arg.serviceNodeDb.state.rel.parseDocID(responseDoc.data.requestId).id;
       let request = this.currentRequests[requestId];
       this.currentRequests[requestId] = undefined;
       clearTimeout(request.timeout);
@@ -182,16 +150,15 @@ export class Requester {
         id: requestId,
         responseId: responseDoc._id
       });
-    } catch (error) {
-      debugger;
+    } catch { // WARNING.
     }
   }
 
   async delete(request) {
     let result = new Request({
-      db: this.serviceNodeDb.state,
+      db: this.arg.serviceNodeDb.state,
       arg: {
-        _id: this.serviceNodeDb.state.rel.makeDocID({
+        _id: this.arg.serviceNodeDb.state.rel.makeDocID({
           id: request.id,
           type: 'request'
         })
@@ -204,18 +171,15 @@ export class Requester {
 
     try {
       await result.delete();
-    } catch (error) {
-      debugger;
+    } catch { // WARNING.
     }
     
   }
 
   private async deleteResponse(responseDoc) {
     try {
-      await this.serviceNodeDb.state.remove( responseDoc._id, responseDoc._rev);
-    } catch (error) {
-      // TODO?
-      debugger;
+      await this.arg.serviceNodeDb.state.remove( responseDoc._id, responseDoc._rev);
+    } catch { // WARNING.
     }
   }
 
@@ -230,19 +194,4 @@ export class Requester {
   private validateNew(arg) {
     this.argValid = new this.newRequester(arg);
   }
-
-  private nodeDbSchema = [
-    { singular: 'podConfig', plural: 'podConfigs' },
-    {
-      singular: 'userConfig', plural: 'userConfigs',
-      relations: {
-        nodeConfigs: { hasMany: 'nodeConfig' }
-      }
-    },
-    { singular: 'nodeConfig', plural: 'nodeConfigs', relations: { userConfig: { belongsTo: 'userConfig' } } }
-  ];
-  private serviceDbSchema = [
-    { singular: 'request', plural: 'requests' },
-    { singular: 'response', plural: 'responses' }
-  ];
 }

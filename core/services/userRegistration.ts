@@ -55,7 +55,7 @@ export class UserRegistration {
     /* #endregion */
 
     /* #region  ADMIN CONFIG & KEY */
-    let adminDatabase = new Database({ arg: { username: UserAdmin.AdminName }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
+    let adminDatabase = new Database({ arg: { username: UserAdmin.AdminName, dbServer: process.env.STARK_DB_HOST }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
     await adminDatabase.load();
     adminDatabase.state.setSchema(this.userDbSchema);
 
@@ -116,7 +116,7 @@ export class UserRegistration {
 
     /* #region  CREATE USER */
     if (arg.name !== UserAdmin.AdminName) {
-      adminDatabase = new Database({ arg: { username: UserAdmin.AdminName }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
+      adminDatabase = new Database({ arg: { username: UserAdmin.AdminName, dbServer: process.env.STARK_DB_HOST }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
       await adminDatabase.load();
       adminDatabase.state.setSchema(this.userDbSchema);
 
@@ -136,7 +136,7 @@ export class UserRegistration {
     /* #endregion */
 
     /* #region  SAVE USER CONFIG */
-    let database = new Database({ arg: { username: user.argValid.name }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
+    let database = new Database({ arg: { username: user.argValid.name, dbServer: process.env.STARK_DB_HOST }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
     await database.load();
     database.state.setSchema(this.userDbSchema);
 
@@ -168,7 +168,7 @@ export class UserRegistration {
     );
     await userServices.save();
 
-    let servicesDatabase = new Database({ arg: { username: userServices.argValid.name }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
+    let servicesDatabase = new Database({ arg: { username: userServices.argValid.name, dbServer: process.env.STARK_DB_HOST }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
     await servicesDatabase.load();
 
     let servicesDesignDocument = new DesignDocument({

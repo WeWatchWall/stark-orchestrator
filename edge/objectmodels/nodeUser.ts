@@ -11,7 +11,7 @@ import https from 'https';
 import assert from 'assert';
 import updateDotenv from 'update-dotenv';
 
-import { User } from '../../shared/objectmodels/user';
+import { User } from './user';
 import { Util } from "../../shared/util";
 
 export class NodeUser extends User {

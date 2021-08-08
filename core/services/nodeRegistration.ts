@@ -29,9 +29,9 @@ export class NodeRegistration {
   }
 
   async add(arg) { 
-    let userDatabase = new Database({ arg: { username: arg.username }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
+    let userDatabase = new Database({ arg: { username: arg.username, dbServer: process.env.STARK_DB_HOST }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
         
-    let adminDatabase = new Database({ arg: { username: UserAdmin.AdminName }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
+    let adminDatabase = new Database({ arg: { username: UserAdmin.AdminName, dbServer: process.env.STARK_DB_HOST }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
     await adminDatabase.load();
     adminDatabase.state.setSchema(this.userDbSchema);
     
@@ -61,7 +61,7 @@ export class NodeRegistration {
     );
     await nodeUser.save();
 
-    let nodeDatabase = new Database({ arg: { username: nodeUser.argValid.name }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
+    let nodeDatabase = new Database({ arg: { username: nodeUser.argValid.name, dbServer: process.env.STARK_DB_HOST }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
     await nodeDatabase.load();
     nodeDatabase.state.setSchema(this.nodeDbSchema);
     
@@ -161,7 +161,7 @@ export class NodeRegistration {
     );
     await nodeServices.save();
 
-    let servicesDatabase = new Database({ arg: { username: nodeServices.argValid.name }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
+    let servicesDatabase = new Database({ arg: { username: nodeServices.argValid.name, dbServer: process.env.STARK_DB_HOST }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
     await servicesDatabase.load();
 
     let servicesDesignDocument = new DesignDocument({
@@ -183,7 +183,7 @@ export class NodeRegistration {
     await servicesDatabaseSecurity.load();
     await servicesDatabaseSecurity.save();
 
-    let servicesUserDatabase = new Database({ arg: { username: `services-${arg.username}` }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
+    let servicesUserDatabase = new Database({ arg: { username: `services-${arg.username}`, dbServer: process.env.STARK_DB_HOST }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
     await  servicesUserDatabase.load();
 
     let requestsReplication = new Replication(

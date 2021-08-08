@@ -1,7 +1,7 @@
 import { NodeConfig } from "../objectmodels/nodeConfig";
 import { NodeUser } from "../objectmodels/nodeUser";
 import { Database } from "../../shared/objectmodels/database";
-import { UserUnauth } from "../../shared/objectmodels/userUnauth";
+import { UserUnauth } from "../../edge/objectmodels/userUnauth";
 
 export class NodeBootstrap {
     nodeConfig: NodeConfig;
@@ -34,7 +34,7 @@ export class NodeBootstrap {
     // this.user.state.key
     await this.user.load();
 
-    this.database = new Database({ arg: { username: this.nodeUser.state.name }, username: process.env.STARK_NODE_NAME, password: process.env.STARK_NODE_PASSWORD });
+    this.database = new Database({ arg: { username: this.nodeUser.state.name, dbServer: process.env.STARK_DB_HOST }, username: process.env.STARK_NODE_NAME, password: process.env.STARK_NODE_PASSWORD });
     await this.database.load();
     this.database.state.setSchema(this.nodeDbSchema);
 

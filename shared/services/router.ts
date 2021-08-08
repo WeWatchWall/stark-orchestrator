@@ -1,20 +1,10 @@
-import { Database } from "../../shared/objectmodels/database";
-import { NodeUser } from "../../shared/objectmodels/nodeUser";
-import { UserConfig } from "../../shared/objectmodels/userConfig";
-import { NodeConfig } from "../objectmodels/nodeConfig";
+import { Database } from "../objectmodels/database";
 
 const numMsWait = 500;
 
 export class Router {
-  user: any;
-  userDb: any;
-  userConfig: any;
-  userServiceDb: any;
+  arg: any;
   
-  nodeUser: any;
-  nodeConfig: any;
-  nodeDb: any;
-
   nodeConfigWatcher: any;
   packConfigWatcher: any;
   addRequestWatcher: any;
@@ -30,68 +20,22 @@ export class Router {
   packId = {}  // packId, packName 
   packRoundRobin = {}; // package(service), node(skippable),  Tuple<podNum, currentPod> - currentPod >= pod ===> currentPod = 0 
 
-  constructor(user: any) {
-    this.user = user;
+  constructor( user, dbServer, userDb, userConfig, userServiceDb, nodeConfig) {
+    this.arg = { user, dbServer, userDb, userConfig, userServiceDb, nodeConfig }; // TODO: USE THIS!!!
   }
 
   async init() {
-    /* #region  Initializing the environment properties. */
-    this.userDb = new Database({
-      arg: { username: this.user.state.name },
-      username: this.user.state.name,
-      password: this.user.state.password
-    });
-    await this.userDb.load();
-    this.userDb.state.setSchema(this.userDbSchema);
-
-    this.userConfig = new UserConfig({ db: this.userDb.state, arg: { name: this.user.state.name } });
-    await this.userConfig.init();
-
-    this.userServiceDb = new Database({
-      arg: { username: `services-${this.user.state.name}` },
-      username: this.user.state.name,
-      password: this.user.state.password
-    });
-    await this.userServiceDb.load();
-    this.userServiceDb.state.setSchema(this.serviceDbSchema);
-
-    this.nodeUser = new NodeUser({
-      server: undefined,
-      arg: {}
-    },
-      true
-    );
-    this.nodeUser.init();
-
-    this.nodeDb = new Database({
-      arg: { username: this.nodeUser.argValid.name },
-      username: this.nodeUser.argValid.name,
-      password: this.nodeUser.argValid.password
-    });
-    await this.nodeDb.load();
-    this.nodeDb.state.setSchema(this.nodeDbSchema);
-
-    this.nodeConfig = new NodeConfig(
-      {
-        db: this.nodeDb.state,
-        arg: {}
-      },
-      true
-    );
-    this.nodeConfig.init();
-    await this.nodeConfig.load();
-    /* #endregion */
 
     var self = this;
     self.updateBalancingStats();
-    this.userConfig.eventEmitter.on('change', async () => {
+    this.arg.userConfig.eventEmitter.on('change', async () => {
       self.updateBalancingStats();
     });
 
     /* #region  Initialize the router's Node state and updates. */
     // TODO: filter only status = 1 nodes.
     // TODO: Watch for changes before or after load???
-    this.nodeConfigWatcher = this.userDb.state.changes({
+    this.nodeConfigWatcher = this.arg.userDb.state.changes({
       since: 'now',
       live: true,
       retry: true,
@@ -105,17 +49,17 @@ export class Router {
         return;
       }
 
-      let nodeConfigs = await self.userDb.state.rel.parseRelDocs('nodeConfig', [change.doc]);
+      let nodeConfigs = await self.arg.userDb.state.rel.parseRelDocs('nodeConfig', [change.doc]);
       nodeConfigs = nodeConfigs.nodeConfigs;
       await self.addNode(nodeConfigs[0]);
     });
 
-    let nodeConfigs = (await this.userDb.state.find({
+    let nodeConfigs = (await this.arg.userDb.state.find({
       selector: {
         "_id": {"$regex": "^nodeConfig"}
       }
     })).docs;
-    nodeConfigs = await this.userDb.state.rel.parseRelDocs('nodeConfig', nodeConfigs);
+    nodeConfigs = await this.arg.userDb.state.rel.parseRelDocs('nodeConfig', nodeConfigs);
     nodeConfigs = nodeConfigs.nodeConfigs;
 
     nodeConfigs.forEach(async nodeConfig => {
@@ -125,7 +69,7 @@ export class Router {
 
     /* #region  Initialize the router's PackageConfig state and updates. */
     // TODO: Watch for changes before or after load???
-    this.packConfigWatcher = this.userDb.state.changes({
+    this.packConfigWatcher = this.arg.userDb.state.changes({
       since: 'now',
       live: true,
       retry: true,
@@ -139,7 +83,7 @@ export class Router {
         return;
       }
 
-      let packConfig = await self.userDb.state.rel.parseRelDocs('packageConfig', [change.doc]);
+      let packConfig = await self.arg.userDb.state.rel.parseRelDocs('packageConfig', [change.doc]);
       packConfig = packConfig.packageConfigs[0];
       if (await self.addPack(packConfig)) { return; }
 
@@ -147,13 +91,13 @@ export class Router {
       self.packRoundRobin[packConfig.name] = self.getPackState(packConfig.nodePods);
     });
 
-    let packConfigs = (await this.userDb.state.find({
+    let packConfigs = (await this.arg.userDb.state.find({
       selector: {
         "_id": { "$regex": "^packageConfig" },
         data: { isService: true }
       }
     })).docs;
-    packConfigs = await this.userDb.state.rel.parseRelDocs('packageConfig', packConfigs);
+    packConfigs = await this.arg.userDb.state.rel.parseRelDocs('packageConfig', packConfigs);
     packConfigs = packConfigs.packageConfigs;
 
     packConfigs.forEach(async packConfig => {
@@ -163,7 +107,7 @@ export class Router {
 
     /* #region  Initialize the router's Request state and updates. */
     // TODO: Watch for changes before or after load???
-    this.addRequestWatcher = this.userServiceDb.state.changes({
+    this.addRequestWatcher = this.arg.userServiceDb.state.changes({
       since: 'now',
       live: true,
       retry: true,
@@ -178,14 +122,14 @@ export class Router {
         }
       }
     }).on('change', async function (change) {
-      let request = await self.userServiceDb.state.rel.parseRelDocs('request', [change.doc]);
+      let request = await self.arg.userServiceDb.state.rel.parseRelDocs('request', [change.doc]);
       request = request.requests[0];
 
       if (request.isDeleted) { return await self.delete(request); }
       await self.add(request);
     });
 
-    let preRequests = (await this.userServiceDb.state.find({
+    let preRequests = (await this.arg.userServiceDb.state.find({
       selector: {
         "_id": { "$regex": "^request" },
         data: {
@@ -196,7 +140,7 @@ export class Router {
         }
       }
     })).docs;
-    preRequests = await this.userServiceDb.state.rel.parseRelDocs('request', preRequests);
+    preRequests = await this.arg.userServiceDb.state.rel.parseRelDocs('request', preRequests);
     preRequests = preRequests.requests;
 
     preRequests.forEach(async request => {
@@ -207,7 +151,7 @@ export class Router {
   
     /* #region  Initialize the router's deleted Response state and updates. */
     // TODO: Watch for changes before or after load???
-    this.deleteResponseWatcher = this.userServiceDb.state.changes({
+    this.deleteResponseWatcher = this.arg.userServiceDb.state.changes({
       since: 'now',
       live: true,
       retry: true,
@@ -221,7 +165,7 @@ export class Router {
       await self.deleteResponse(change.doc);
     });
 
-    let preResponses = (await this.userServiceDb.state.find({
+    let preResponses = (await this.arg.userServiceDb.state.find({
       selector: {
         "_id": { "$regex": "^response" },
         data: {isDeleted: true}
@@ -236,8 +180,8 @@ export class Router {
   }
 
   private updateBalancingStats() {
-    this.numRouters = this.userConfig.state.numRouters;
-    this.routerIndex = this.userConfig.state.nodeConfigs.indexOf(this.nodeConfig.state.id);
+    this.numRouters = this.arg.userConfig.state.numRouters;
+    this.routerIndex = this.arg.userConfig.state.nodeConfigs.indexOf(this.arg.nodeConfig.state.id);
   }
 
   async add(requestDoc) {
@@ -257,8 +201,7 @@ export class Router {
     // Save request.
     try {
       await this.serviceDbs[this.sourceNodes[requestDoc.source]].state.rel.save('request', requestDoc);
-    } catch (error) {
-      debugger;
+    } catch { // WARNING.
     }
   }
 
@@ -272,6 +215,7 @@ export class Router {
     let serviceState = this.packRoundRobin[serviceName];
     let result;
 
+    // WARNING. Maybe when it's got nothing available?
     while (!result) {
       Object.keys(this.serviceDbs).forEach(nodeName => {
         let nodeState = serviceState[nodeName];
@@ -293,25 +237,21 @@ export class Router {
   async delete(request) {
     if (!this.isBalanceAvailable(request.timeNew)) { return; }
     try {
-      await this.userServiceDb.state.remove(
-        this.userServiceDb.state.rel.makeDocID({
+      await this.arg.userServiceDb.state.remove(
+        this.arg.userServiceDb.state.rel.makeDocID({
           id: request.id,
           type: 'request'
         }),
         request.rev
       );
-    } catch (error) {
-      // TODO?
-      debugger;
+    } catch { // WARNING.
     }
   }
 
   private async deleteResponse(responseDoc) {
     try {
-      await this.userServiceDb.state.remove( responseDoc._id, responseDoc._rev);
-    } catch (error) {
-      // TODO?
-      debugger;
+      await this.arg.userServiceDb.state.remove( responseDoc._id, responseDoc._rev);
+    } catch { // WARNING.
     }
   }
 
@@ -321,9 +261,9 @@ export class Router {
     this.serviceDbsId[nodeConfigDoc.id] = 'init';
 
     let serviceNodeDb = new Database({
-      arg: { username: `services-${nodeConfigDoc.name}` },
-      username: this.user.state.name,
-      password: this.user.state.password
+      arg: { username: `services-${nodeConfigDoc.name}`, dbServer: this.arg.dbServer },
+      username: this.arg.user.state.name,
+      password: this.arg.user.state.password
     });
     await serviceNodeDb.load();
     serviceNodeDb.state.setSchema(this.serviceDbSchema);
@@ -334,7 +274,7 @@ export class Router {
   }
 
   private async deleteNode(nodeConfigDoc) {
-    let id = this.userDb.rel.parseDocID(nodeConfigDoc._id).id;
+    let id = this.arg.userDb.rel.parseDocID(nodeConfigDoc._id).id;
     let nodeName = this.serviceDbsId[id];
     let nodeServiceDb = this.serviceDbs[nodeName].dbName;
 
@@ -369,33 +309,12 @@ export class Router {
   }
 
   private async deletePack(packConfigDoc) {
-    let id = this.userDb.rel.parseDocID(packConfigDoc._id).id;
+    let id = this.arg.userDb.rel.parseDocID(packConfigDoc._id).id;
     let packName = this.packId[id];
     this.packId[id] = undefined;
     this.packRoundRobin[packName] = undefined;
   }
 
-
-  private userDbSchema = [
-    { singular: 'packageConfig', plural: 'packageConfigs' },
-    {
-      singular: 'userConfig', plural: 'userConfigs',
-      relations: {
-        nodeConfigs: { hasMany: 'nodeConfig' }
-      }
-    },
-    { singular: 'nodeConfig', plural: 'nodeConfigs', relations: { userConfig: { belongsTo: 'userConfig' } } }
-  ];
-  private nodeDbSchema = [
-    { singular: 'podConfig', plural: 'podConfigs' },
-    {
-      singular: 'userConfig', plural: 'userConfigs',
-      relations: {
-        nodeConfigs: { hasMany: 'nodeConfig' }
-      }
-    },
-    { singular: 'nodeConfig', plural: 'nodeConfigs', relations: { userConfig: { belongsTo: 'userConfig' } } }
-  ];
   private serviceDbSchema = [
     { singular: 'request', plural: 'requests' },
     { singular: 'response', plural: 'responses' }
