@@ -17,7 +17,7 @@
     "Typescript",
     "interop"
   ],
-  "author": "Adrian Burlacu",
+  "author": "Adrian Burlacu <adrian.burlacu@live.com>",
   "license": "MIT",
   "dependencies": {
     "@cloudnative/health-connect": "^2.1.0",
