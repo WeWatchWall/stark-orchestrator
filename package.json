@@ -49,8 +49,6 @@
     "pouchdb-security-helper": "^2.1.2",
     "promise-retry": "^2.0.1",
     "relational-pouch": "^4.0.0",
-    "require-from-string": "^2.0.2",
-    "session-pouchdb-store": "^0.4.1",
     "update-dotenv": "^1.1.1",
     "uuid": "^8.3.2",
     "vm2": "^3.9.2"
