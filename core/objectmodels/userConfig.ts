@@ -95,7 +95,7 @@ export class UserConfig {
     enablePods: true,
     
     nodeConfigs: [],
-    packageConfigs: ['stark-edge-config'],
+    packageConfigs: ['stark-edge-config', 'stark-browser-config'],
     numRouters: 0
     // sharedReads: [],
     // sharedWrites: []

@@ -48,7 +48,7 @@ export class UserAdmin extends User {
     enableAllNodes: true,
     enablePods: true,
     corePackageConfigs: ['stark-core-config'],
-    packageConfigs: ['stark-edge-config']
+    packageConfigs: ['stark-edge-config', 'stark-browser-config']
   }).assert(
     newUser => {
       // TODO

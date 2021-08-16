@@ -1,4 +1,5 @@
 // TODO:
+// TODO: The only really non-shareable class in here; because of the request(https)(use the mode flag) and proxy {config}->import('update-dotenv').
 // Validate load()
 // If it cannot find its configuration in load() first
 // Save config in the Save() function :P Which will use the PUT server/node/nodeid

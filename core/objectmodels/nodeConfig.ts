@@ -100,8 +100,7 @@ export class NodeConfig {
     tags: [],
 
     // Pods
-    status: ProvisionStatus.Init,
-    podConfigs: ['stark-edge-config'], // TODO: Replace for browser in the deployer service!  
+    status: ProvisionStatus.Init
   }).assert(
     newNodeConfig => {
       return newNodeConfig &&

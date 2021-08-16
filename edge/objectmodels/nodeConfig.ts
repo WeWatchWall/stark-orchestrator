@@ -1,4 +1,4 @@
-// import assert from "assert"
+// import assert from "assert" TODO
 import { EventEmitter } from 'events';
 import { ObjectModel, ArrayModel } from "objectmodel";
 

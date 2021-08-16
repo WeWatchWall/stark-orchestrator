@@ -10,6 +10,7 @@ import { UserConfig } from '../objectmodels/userConfig';
 import { DatabaseSecurity } from '../objectmodels/databaseSecurity';
 import { PodConfig } from '../objectmodels/podConfig';
 import { DesignDocument } from '../objectmodels/designDocument';
+import { DeploymentPack } from '../../shared/objectmodels/deploymentPack';
 
 // TODO EDGE: BOOTSTRAP by asking for the user name and their deploy password
 // True even for cases where I don't really care about copying the value of the user key because any browser will sign into the user.
@@ -102,7 +103,8 @@ export class NodeRegistration {
             replication: {
               id: databaseReplication.state.id,
               rev: databaseReplication.state.rev
-            }
+            },
+            podConfigs: [DeploymentPack[arg.mode]]
           }
         }
       },

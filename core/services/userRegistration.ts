@@ -14,6 +14,7 @@ import { Availability } from '../../shared/objectmodels/availability';
 import { Security } from '../../shared/objectmodels/security';
 import { DesignDocument } from '../objectmodels/designDocument';
 import { DatabaseSecurity } from '../objectmodels/databaseSecurity';
+import { DeploymentPack } from '../../shared/objectmodels/deploymentPack';
 // import { Replication } from '../objectmodels/replication';
 
 
@@ -84,7 +85,7 @@ export class UserRegistration {
         username: process.env.STARK_USER_NAME,
         arg: {
           name: adminEdgeConfig,
-          mode: DeploymentMode.Edge,
+          mode:  Object.values(DeploymentPack).includes(adminEdgeConfig) ? DeploymentMode[DeploymentMode[DeploymentPack[adminEdgeConfig]]] : DeploymentMode.Edge,
           security: Security.Public
         }
       });
