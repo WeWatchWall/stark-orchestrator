@@ -1,6 +1,6 @@
 import { ObjectModel } from "objectmodel";
 import { v4 as uuidv4 } from 'uuid';
-import generator from 'generate-password';
+import generator from 'generate-password-browser';
 import validator from "email-validator";
 
 import { UserUnauth } from "./userUnauth";

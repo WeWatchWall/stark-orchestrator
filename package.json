@@ -34,7 +34,7 @@
     "express": "~4.16.1",
     "flat-promise": "^1.0.2",
     "fs-extra": "^9.0.1",
-    "generate-password": "^1.5.1",
+    "generate-password-browser": "^1.1.0",
     "http-errors": "~1.6.3",
     "jszip": "^3.5.0",
     "lodash": "^4.17.21",

@@ -1,6 +1,6 @@
 import { ObjectModel, ArrayModel } from "objectmodel"
 import { User } from './user';
-import generator from 'generate-password';
+import generator from 'generate-password-browser';
 import validator from "email-validator";
 
 // TODO: 

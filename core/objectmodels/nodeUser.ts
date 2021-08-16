@@ -1,7 +1,7 @@
 import { ObjectModel } from "objectmodel"
 import { User } from './user';
 import { v4 as uuidv4 } from 'uuid'; // Through Nano?
-import generator from 'generate-password';
+import generator from 'generate-password-browser';
 
 export class NodeUser extends User {
   init(): void {
