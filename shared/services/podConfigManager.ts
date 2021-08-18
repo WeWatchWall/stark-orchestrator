@@ -128,6 +128,7 @@ export class PodConfigManager {
 
       packageDoc.data.tags.forEach(tag => {
         if (nodeDoc.tags.indexOf(tag) === -1) { return false; }
+        return true;
       });
       
       return true;

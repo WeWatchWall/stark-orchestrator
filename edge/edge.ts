@@ -80,13 +80,7 @@ async function Main() {
   ];
   let nodeDbSchema = [
     { singular: 'podConfig', plural: 'podConfigs' },
-    {
-      singular: 'userConfig', plural: 'userConfigs',
-      relations: {
-        nodeConfigs: { hasMany: 'nodeConfig' }
-      }
-    },
-    { singular: 'nodeConfig', plural: 'nodeConfigs', relations: { userConfig: { belongsTo: 'userConfig' } } }
+    { singular: 'nodeConfig', plural: 'nodeConfigs' }
   ];
   let serviceDbSchema = [
     { singular: 'request', plural: 'requests' },

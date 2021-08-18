@@ -39,6 +39,8 @@ export class NodeConfig {
   }
 
   async load() {
+    let init = !!this.state;
+
     this.state = (await this.db.find({
       selector: { data: this.arg },
       limit: 1
@@ -46,6 +48,8 @@ export class NodeConfig {
     this.state = await this.db.rel.parseRelDocs('nodeConfig', this.state);
     this.state = this.state.nodeConfigs[0];
     this.validateState();
+
+    if (init) { return; }
 
     var self = this;
     this.watcher = this.db.changes({
