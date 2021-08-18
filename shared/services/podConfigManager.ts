@@ -18,7 +18,7 @@ export class PodConfigManager {
     let prePackConfigs = (
       await this.arg.userDb.state.find({
         selector: {
-          _id: { $regex: "^packageConfig" },
+          _id: { "$regex": "^packageConfig" },
           data: {
             mode: this.arg.nodeConfig.state.mode,
             $or: [
@@ -43,7 +43,7 @@ export class PodConfigManager {
         retry: true,
         include_docs: true,
         selector: {
-          _id: { $regex: "^packageConfig" }
+          _id: { "$regex": "^packageConfig" }
         }
       })
       .on('change', async function (change) {

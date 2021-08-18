@@ -14,7 +14,7 @@ export class PodNumManager {
     let prePodConfigs = (
       await this.arg.nodeDb.state.find({
         selector: {
-          _id: { $regex: "^podConfig" },
+          _id: { "$regex": "^podConfig" },
           data: {
             mode: this.arg.nodeConfig.state.mode
           }
@@ -36,7 +36,7 @@ export class PodNumManager {
         retry: true,
         include_docs: true,
         selector: {
-          _id: { $regex: "^podConfig" }
+          _id: { "$regex": "^podConfig" }
         }
       })
       .on('change', async function (change) {

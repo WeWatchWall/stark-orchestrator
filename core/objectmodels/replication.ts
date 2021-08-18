@@ -43,8 +43,8 @@ export class Replication {
         _rev: this.argValid.rev
       } :
       {
-        source: { $regex: this.argValid.source },
-        target: { $regex: this.argValid.target }
+        source: { "$regex": this.argValid.source },
+        target: { "$regex": this.argValid.target }
       };
 
     let state = (await db.find({
