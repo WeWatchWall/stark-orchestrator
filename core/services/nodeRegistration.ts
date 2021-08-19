@@ -228,7 +228,8 @@ export class NodeRegistration {
         filter: "replicate/hasTypesDest",
         query_params: {
           types: [
-            "response"
+            "response",
+            "request"
           ],
           target: servicesDatabase.dbName
         }
