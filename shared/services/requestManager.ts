@@ -80,7 +80,7 @@ export class RequestManager {
         isRemote: request.isRemote,
         targetPod: request.sourcePod,
         result: await this.addCallback(request),
-        time: new Date().getTime(),
+        time: Date.now(),
         requestId: this.arg.serviceNodeDb.state.rel.makeDocID({
           id: request.id,
           type: 'request'

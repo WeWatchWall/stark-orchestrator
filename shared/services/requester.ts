@@ -79,7 +79,7 @@ export class Requester {
     request.isNew = true;
     request.source = this.arg.serviceNodeDb.dbName;
     request.sourcePod = this.argValid.podIndex;
-    request.timeNew = new Date().getTime();
+    request.timeNew = Date.now();
 
     return await this.requestArg(request);
   }
