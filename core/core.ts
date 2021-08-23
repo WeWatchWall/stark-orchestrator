@@ -5,6 +5,7 @@ import path from 'path';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import * as bodyparser from 'body-parser';
+var timesyncServer = require('timesync/server');
 
 // Monitoring.
 // const logger = require('morgan');
@@ -31,7 +32,8 @@ async function Main() {
   
   let healthcheck = new health.HealthChecker();
   core.use('/health', health.LivenessEndpoint(healthcheck));
-  
+  core.use('/timesync', timesyncServer.requestHandler);
+
   // here we are adding middleware to parse all incoming requests as JSON 
   core.use(bodyparser.json());
   // here we are adding middleware to allow cross-origin requests
