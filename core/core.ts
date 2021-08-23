@@ -30,6 +30,10 @@ async function Main() {
   core.use(express.urlencoded({ extended: false }));
   core.use(cookieParser());
   
+  core.use(cors());
+  // The logger goes after CORS.
+  //core.use(logger('dev'));
+
   let healthcheck = new health.HealthChecker();
   core.use('/health', health.LivenessEndpoint(healthcheck));
   core.use('/timesync', timesyncServer.requestHandler);
@@ -37,9 +41,7 @@ async function Main() {
   // here we are adding middleware to parse all incoming requests as JSON 
   core.use(bodyparser.json());
   // here we are adding middleware to allow cross-origin requests
-  core.use(cors());
-  // The logger goes after CORS.
-  //core.use(logger('dev'));
+
   
   
   core.use(express.static(path.join(__dirname, 'public')));
