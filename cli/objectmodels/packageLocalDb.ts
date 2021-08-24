@@ -28,11 +28,15 @@ export class PackageLocalDb extends PackageServer {
     
     
     let promise = new FlatPromise();
-    // (event, path)
-    this.watcher.on('all',  _.debounce(async () => {
-      await this._load();
+
+        
+    var self = this;
+    let debounced = _.debounce(async () => {
+      await self._load();
       promise.resolve();
-    }, 2000));
+    }, 2000);
+    // (event, path)
+    this.watcher.on('all',  debounced);
 
     await promise.promise;
     this.argValid.packageConfig.arg.attachment = this.state.buffer;

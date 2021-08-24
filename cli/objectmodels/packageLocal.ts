@@ -19,11 +19,13 @@ export class PackageLocal extends PackageServer {
             awaitWriteFinish: true
         });
     
+    var self = this;
+    let debounced = _.debounce(async () => {
+      await self._load();
+      await self.save();
+    }, 2000);
     // (event, path)
-    this.watcher.on('all',  _.debounce(async () => {
-      await this._load();
-      await this.save();
-    }, 2000));
+    this.watcher.on('all',  debounced);
                 
   }
   
