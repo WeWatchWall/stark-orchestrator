@@ -42,9 +42,7 @@ async function Main() {
   core.use(bodyparser.json());
   // here we are adding middleware to allow cross-origin requests
 
-  
-  
-  core.use(express.static(path.join(__dirname, 'public')));
+  core.use(express.static('public'));  
   
   // USE DEPENDENCY INJECTION WHEN THIS GETS UNRULY :P
 
