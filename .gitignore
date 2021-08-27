@@ -3,4 +3,4 @@ dist/
 node_modules/
 packages-dist/
 packages-run/
-public/**
+public/*
