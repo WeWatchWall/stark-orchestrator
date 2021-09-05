@@ -40,6 +40,29 @@ export class UserRegistration {
     try {
       // 2. initialize the admin user with its own deployment key
       await this.add(adminUser.arg);
+
+      /* #region  ADMIN CONFIG & KEY */
+      let adminDatabase = new Database({ arg: { username: UserAdmin.AdminName, dbServer: process.env.STARK_DB_HOST }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
+      await adminDatabase.load();
+      adminDatabase.state.setSchema(this.userDbSchema);
+
+      // Might load before it exists but after the DB becomes available, but not likely!!
+      let adminConfig = new UserConfig({ db: adminDatabase.state, arg: { name: UserAdmin.AdminName } });
+      await adminConfig.load();
+      adminConfig.state = { ...adminConfig.state, ...{
+        enableUsers: true,
+        enableAllNodes: true,
+        corePackageConfigs: ['stark-core-config']
+      }};
+      await adminConfig.save();
+
+      await updateDotenv({
+        STARK_USER_KEY: adminConfig.state.key,
+        STARK_SERVICES_NAME: `services-${adminUser.arg.name}`,
+        STARK_SERVICES_PASSWORD: adminUser.arg.password
+      });
+      /* #endregion */
+
       this.isInit = true;
     } catch (error) {
       if (error.status !== 409) {
@@ -55,30 +78,15 @@ export class UserRegistration {
     }
     /* #endregion */
 
-    /* #region  ADMIN CONFIG & KEY */
+    if (!this.isInit) { return; }
+
     let adminDatabase = new Database({ arg: { username: UserAdmin.AdminName, dbServer: process.env.STARK_DB_HOST }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
     await adminDatabase.load();
     adminDatabase.state.setSchema(this.userDbSchema);
 
-    // Might load before it exists but after the DB becomes available, but not likely!!
     let adminConfig = new UserConfig({ db: adminDatabase.state, arg: { name: UserAdmin.AdminName } });
     await adminConfig.load();
-    adminConfig.state = { ...adminConfig.state, ...{
-      enableUsers: true,
-      enableAllNodes: true,
-      corePackageConfigs: ['stark-core-config']
-    }};
-    await adminConfig.save();
 
-    await updateDotenv({
-      STARK_USER_KEY: adminConfig.state.key,
-      STARK_SERVICES_NAME: `services-${adminUser.arg.name}`,
-      STARK_SERVICES_PASSWORD: adminUser.arg.password
-    });
-    /* #endregion */
-
-    if (!this.isInit) { return; }
-    
     /* #region BOOTSTRAP ADMIN PACKAGES */
     let pack; // : PackageDb (not : PackageDb | PackageLocal)
     for (let adminEdgeConfig of adminConfig.state.packageConfigs) {

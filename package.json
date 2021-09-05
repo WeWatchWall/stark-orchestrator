@@ -5,8 +5,8 @@
   "description": "Orchestrator layer for the Stark OS.",
   "scripts": {
     "start": "npm install && node --unhandled-rejections=none bin/www",
-    "debug": "export DEBUG=* && npm run start",
-    "debugDev": "node --unhandled-rejections=none --inspect-brk ./bin/www",
+    "debug": "npm install && node --unhandled-rejections=warn bin/www",
+    "debugDev": "npm install && node --unhandled-rejections=warn --inspect-brk ./bin/www",
     "test": "echo \"Error: no test specified\" && exit 1",
     "postinstall": "node ./postinstall.js"
   },
