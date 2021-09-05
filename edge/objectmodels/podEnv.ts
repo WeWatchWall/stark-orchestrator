@@ -77,7 +77,12 @@ export class PodEnv {
       `,
       path.join(this.packageDir, 'stark_bootstrap.js')
     );
-    functionInSandbox(`${this.argValid.name}-${podIndex}`);
+
+    functionInSandbox({
+      package: this.argValid.name,
+      pod: podIndex,
+      arg: this.argValid.arg
+    });
   }
 
   toString() {
@@ -91,7 +96,8 @@ export class PodEnv {
   }
 
   private newPodEnvModel = ObjectModel({
-    name: String
+    name: String,
+    arg: [Object]
   });
 
   private validateNew() {

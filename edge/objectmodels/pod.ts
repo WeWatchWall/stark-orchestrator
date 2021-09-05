@@ -101,7 +101,12 @@ export class Pod {
       }
     } else if (this.state.numPods > this.processes.length) {
       for (let i = 0; i < this.state.numPods - this.processes.length; i++) {
-        let processEnv = new PodEnv({ arg: { name: this.state.name } }, true);
+        let processEnv = new PodEnv({
+          arg: {
+            name: this.state.name,
+            arg: this.state.arg
+          }
+        }, true);
         this.processes.push(processEnv);
 
         try {

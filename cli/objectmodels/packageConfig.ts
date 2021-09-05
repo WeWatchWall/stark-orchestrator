@@ -77,33 +77,35 @@ export class PackageConfig {
 
   // :() Constructor type?
   protected newUserModel = ObjectModel({
-      // Relational
-      name: String,
-      
-      // Config
-      mode: [DeploymentMode.Core, DeploymentMode.Edge, DeploymentMode.Browser],
-      availability: [Availability.Off, Availability.Tag, Availability.Any],
-      security: [Security.Private, Security.Friends, Security.Public],
-      tags: ArrayModel(String),
-      maxPods: Number,
-      numPods: Number,
-      status: [ProvisionStatus.Init, ProvisionStatus.Up, ProvisionStatus.Error, ProvisionStatus.Stop],
-      isService: Boolean,
-      services: ArrayModel(String),
-      nodePods: Object
-    }).defaultTo({
-      // Require name
-      // Require mode
-      availability: Availability.Any,
-      security: Security.Private,
-      tags: [],
-      maxPods: 0,
-      numPods: 0,
-      status: ProvisionStatus.Init,
-      isService: false,
-      services: [],
-      nodePods: {}
-    }).assert(
+    // Relational
+    name: String,
+    
+    // Config
+    mode: [DeploymentMode.Core, DeploymentMode.Edge, DeploymentMode.Browser],
+    availability: [Availability.Off, Availability.Tag, Availability.Any],
+    security: [Security.Private, Security.Friends, Security.Public],
+    tags: ArrayModel(String),
+    maxPods: Number,
+    numPods: Number,
+    status: [ProvisionStatus.Init, ProvisionStatus.Up, ProvisionStatus.Error, ProvisionStatus.Stop],
+    isService: Boolean,
+    services: ArrayModel(String),
+    nodePods: Object,
+    arg: Object
+  }).defaultTo({
+    // Require name
+    // Require mode
+    availability: Availability.Any,
+    security: Security.Private,
+    tags: [],
+    maxPods: 0,
+    numPods: 0,
+    status: ProvisionStatus.Init,
+    isService: false,
+    services: [],
+    nodePods: {},
+    arg: {}
+  }).assert(
     newUser => {
       // TODO
       return newUser &&

@@ -71,7 +71,9 @@ export class UserRegistration {
     await adminConfig.save();
 
     await updateDotenv({
-      STARK_USER_KEY: adminConfig.state.key
+      STARK_USER_KEY: adminConfig.state.key,
+      STARK_SERVICES_NAME: `services-${adminUser.arg.name}`,
+      STARK_SERVICES_PASSWORD: adminUser.arg.password
     });
     /* #endregion */
 

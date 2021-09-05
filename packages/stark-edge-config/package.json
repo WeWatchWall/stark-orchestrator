@@ -1,28 +1,17 @@
 {
-  "name": "stark-all",
-  "version": "0.0.8",
-  "description": "Dummy.",
+  "name": "stark-edge-config",
+  "version": "0.5.0",
+  "description": "Stark's default edge bootstrapper.",
   "main": "index.js",
   "scripts": {
     "postinstall": "node ./postinstall.js",
-	"test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/WeWatchWall/stark-all.git"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
-    "JS"
+    "Stark"
   ],
   "author": "Adrian Burlacu",
   "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/WeWatchWall/stark-all/issues"
-  },
-  "homepage": "https://github.com/WeWatchWall/stark-all#readme",
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com/"
-  },
   "dependencies": {
     "fs-extra": "^9.0.1"
   },

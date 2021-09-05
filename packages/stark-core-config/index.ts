@@ -3,7 +3,7 @@ module.exports = function(arg) {
   
   setInterval(() => {
     console.log(process.cwd());
-    console.log(arg);
+    console.log(JSON.stringify(arg));
   }, 5000);
   
   // TODO: Last task is set Init status on the Node!
