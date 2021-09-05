@@ -31,7 +31,7 @@ function runApp(appName) {
 	 */
 
 	const fs = require('fs');
-	var https = require('https');
+	var http = require('http');
 	var app = require(`../dist/${appName}/${appName}`);
 
 	/**
@@ -47,11 +47,17 @@ function runApp(appName) {
 	 * Create HTTP server.
 	 */
 
-	var server = https.createServer({
-	  key: fs.readFileSync(__dirname + './../key.pem'),
-	  cert: fs.readFileSync(__dirname + './../cert.pem'),
-	  passphrase: process.env.STARK_CERT_PASS
-	}, app);
+	// var server = https.createServer({
+	//   key: fs.readFileSync(__dirname + './../key.pem'),
+	//   cert: fs.readFileSync(__dirname + './../cert.pem'),
+	//   passphrase: process.env.STARK_CERT_PASS
+	// }, app);
+
+  /**
+	 * Create HTTP server.
+	 */
+
+	var server = http.createServer(app);
 
 	/**
 	 * Listen on provided port, on all network interfaces.

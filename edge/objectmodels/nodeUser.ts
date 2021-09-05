@@ -75,13 +75,10 @@ export class NodeUser extends User {
   }
 
   async save() {
-    const result = await fetch(`https://${this.server}:${process.env.STARK_PORT}/nodes/nodeDb`, {
+    const result = await fetch(`http://${this.server}:${process.env.STARK_PORT}/nodes/nodeDb`, {
       method: 'put',
       body: JSON.stringify({...this.argValid, ...this.nodeConfig}),
-      headers: { 'Content-Type': 'application/json' },
-      agent: new https.Agent({
-          rejectUnauthorized: false,
-      })
+      headers: { 'Content-Type': 'application/json' }
     });
     
     assert(result.status === 201);
