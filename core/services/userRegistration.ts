@@ -87,6 +87,10 @@ export class UserRegistration {
     let adminConfig = new UserConfig({ db: adminDatabase.state, arg: { name: UserAdmin.AdminName } });
     await adminConfig.load();
 
+    await updateDotenv({
+      STARK_USER_KEY: adminConfig.state.key
+    });
+
     /* #region BOOTSTRAP ADMIN PACKAGES */
     let pack; // : PackageDb (not : PackageDb | PackageLocal)
     for (let adminEdgeConfig of adminConfig.state.packageConfigs) {
