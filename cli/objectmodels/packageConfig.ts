@@ -5,6 +5,8 @@ import { DeploymentMode } from '../../shared/objectmodels/deploymentMode';
 import { Security } from '../../shared/objectmodels/security';
 import { Availability } from '../../shared/objectmodels/availability';
 import { ProvisionStatus } from '../../shared/objectmodels/provisionStatus';
+import { Sandbox } from '../../shared/objectmodels/sandbox';
+import { Runtime } from '../../shared/objectmodels/runtime';
 
 export class PackageConfig {
   db: any;
@@ -91,7 +93,9 @@ export class PackageConfig {
     isService: Boolean,
     services: ArrayModel(String),
     nodePods: Object,
-    arg: Object
+    arg: Object,
+    sandbox: [Sandbox.Default, Sandbox.Admin, Sandbox.UI],
+    runtime: [Runtime.Thread, Runtime.Process, Runtime.None]
   }).defaultTo({
     // Require name
     // Require mode
@@ -104,7 +108,9 @@ export class PackageConfig {
     isService: false,
     services: [],
     nodePods: {},
-    arg: {}
+    arg: {},
+    sandbox: Sandbox.Default,
+    runtime: Runtime.Thread
   }).assert(
     newUser => {
       // TODO
