@@ -34,7 +34,9 @@ async function Main() {
     'STARK_DB_HOST': process.env['STARK_DB_HOST'],
     'STARK_USER_NAME': process.env['STARK_USER_NAME'],
     'STARK_USER_PASSWORD': process.env['STARK_USER_PASSWORD'],
-    'STARK_USER_KEY': process.env['STARK_USER_KEY']
+    'STARK_USER_KEY': process.env['STARK_USER_KEY'],
+    'STARK_SERVICES_NAME': process.env['STARK_SERVICES_NAME'],
+    'STARK_SERVICES_PASSWORD': process.env['STARK_SERVICES_PASSWORD'],
   }, 'client');
   
   require('browser-env-vars').generate({
