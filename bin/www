@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-const parseNpmVersion = require('parse-npm-version');
 var debug = require('debug')('stark-server:server');
 require('dotenv').config();
 
@@ -11,12 +10,6 @@ let modes = JSON.parse(process.env.STARK_MODES);
 // }
 
 async function main() {
-  const version = await parseNpmVersion();
-
-  if (version.major > 6) {
-    throw new Error("Stark is currently only supports NPM@V.6.");
-  }
-
   // Optional based on the root user parameter.
   if (modes[0]) {
     // Automatically turn on the edge service if it's not configured.
