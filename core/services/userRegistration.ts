@@ -134,7 +134,7 @@ export class UserRegistration {
           security: Security.Public
         }
       });
-      await pack.save();
+      await pack.load();
       await pack.delete();
     }
 
@@ -148,7 +148,7 @@ export class UserRegistration {
           security: Security.Public
         }
       });
-      await pack.save();
+      await pack.load();
       await pack.delete();
     }
     /* #endregion */

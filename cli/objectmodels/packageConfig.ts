@@ -111,15 +111,7 @@ export class PackageConfig {
     arg: {},
     sandbox: Sandbox.Default,
     runtime: Runtime.Thread
-  }).assert(
-    newUser => {
-      // TODO
-      return newUser &&
-      
-        // Alphanumeric string that may include _ and - having a length of 3 to 20 characters.
-        RegExp('^[a-zA-Z0-9-_]{3,75}$').test(newUser.name);
-    }
-  );
+  });
 
   protected validateNew() {
     this.argValid = this.validate ? new this.newUserModel(this.arg) : this.arg;

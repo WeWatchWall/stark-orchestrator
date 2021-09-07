@@ -71,7 +71,6 @@ export class PodEnv {
       `
       module.exports = function(arg) {
         console.log(process.cwd());
-        console.log(JSON.stringify(process.env));
         const app = require('./dist/index.js');
         app(arg);
       }            
