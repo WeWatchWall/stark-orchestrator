@@ -44,7 +44,6 @@ export class PackageConfig {
   }
   
   async load() {
-    if (this.state) { return; }
     this.validateNew();
 
     this.state = (await this.db.find({
@@ -55,14 +54,14 @@ export class PackageConfig {
     this.state = this.state.packageConfigs[0];
         
     this.validateState();
-    
-    this.attachment = await this.db.rel.getAttachment('packageConfig', this.state.id, 'package.zip.pgp');
+    this.attachment = this.attachment || await this.db.rel.getAttachment('packageConfig', this.state.id, 'package.zip.pgp');
   }
   
   async save() {
-    this.validateNew();
+    if (this.state) { await this.load(); }
+    let result = await this.db.rel.save('packageConfig', this.state || this.argValid);    
 
-    this.state = await this.db.rel.save('packageConfig', this.state || this.argValid);
+    this.state = {...this.state, ...result};
     
     await this.db.rel.putAttachment('packageConfig', this.state, 'package.zip.pgp', this.attachment || this.arg.attachment, 'text/plain');
 

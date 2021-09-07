@@ -167,7 +167,7 @@ export class Pod {
     }
     zip = undefined;
 
-    await execShellCommand(`npm --prefix ./${this.packageDir} install ./${this.packageDir}`);
+    await execShellCommand(`cd ./${this.packageDir} && npm install`);
     // NPM 7 has the bug wht doesn't navigate directories due to env_var so I have to:
     // await execShellCommand(`cd ./${packageDir} && tsc`); // TODO: clean this somehow??
   }

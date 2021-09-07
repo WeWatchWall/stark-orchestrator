@@ -82,7 +82,7 @@ export class PackageRegistration {
     let packConfig = (await import(configPath)).default;
     arg.arg = { ...arg.arg, ...packConfig };
     if (packConfig.mode === DeploymentMode.Browser) {
-      await execShellCommand(`npm --prefix ${dirPath} install ${dirPath}`);
+      await execShellCommand(`cd ${dirPath} && npm install`);
     }
   }
 
