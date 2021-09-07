@@ -21,6 +21,7 @@
   "license": "MIT",
   "dependencies": {
     "@cloudnative/health-connect": "^2.1.0",
+    "@growflow/update-dotenv": "^1.0.2",
     "appmetrics-prometheus": "^3.1.0",
     "btoa": "^1.2.1",
     "chokidar": "^3.4.3",
@@ -50,12 +51,10 @@
     "promise-retry": "^2.0.1",
     "relational-pouch": "^4.0.0",
     "timesync": "^1.0.8",
-    "update-dotenv": "^1.1.1",
     "uuid": "^8.3.2",
     "vm2": "^3.9.2"
   },
   "devDependencies": {
-    "@growflow/update-dotenv": "^1.0.2",
     "@types/cors": "^2.8.8",
     "@types/express": "^4.17.8",
     "browser-env-vars": "^1.1.1",

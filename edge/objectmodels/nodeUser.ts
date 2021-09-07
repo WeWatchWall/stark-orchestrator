@@ -10,7 +10,7 @@ import generator from 'generate-password-browser';
 import fetch from 'node-fetch';
 import https from 'https';
 import assert from 'assert';
-import updateDotenv from 'update-dotenv';
+import updateDotenv from '@growflow/update-dotenv';
 
 import { User } from './user';
 import { Util } from "../../shared/util";

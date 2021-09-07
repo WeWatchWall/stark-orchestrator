@@ -1,7 +1,10 @@
+import fs from 'fs-extra';
+import envVars from 'browser-env-vars';
+
 import PouchDB from 'pouchdb';
 PouchDB.plugin(require('pouchdb-authentication'));
 
-import updateDotenv from 'update-dotenv';
+import updateDotenv from '@growflow/update-dotenv';
 import FlatPromise from 'flat-promise';
 
 import { UserAdmin } from '../objectmodels/userAdmin';
@@ -49,11 +52,13 @@ export class UserRegistration {
       // Might load before it exists but after the DB becomes available, but not likely!!
       let adminConfig = new UserConfig({ db: adminDatabase.state, arg: { name: UserAdmin.AdminName } });
       await adminConfig.load();
-      adminConfig.state = { ...adminConfig.state, ...{
-        enableUsers: true,
-        enableAllNodes: true,
-        corePackageConfigs: ['stark-core-config']
-      }};
+      adminConfig.state = {
+        ...adminConfig.state, ...{
+          enableUsers: true,
+          enableAllNodes: true,
+          corePackageConfigs: ['stark-core-config']
+        }
+      };
       await adminConfig.save();
 
       await updateDotenv({
@@ -80,6 +85,32 @@ export class UserRegistration {
 
     if (!this.isInit) { return; }
 
+    /* #region  Updating the client config. */
+    // Also in postinstall.js
+    await updateDotenv({
+      'STARK_HOST': process.env['STARK_HOST'],
+      'STARK_PORT': process.env['STARK_PORT'],
+      'STARK_DB_HOST': process.env['STARK_DB_HOST'],
+      'STARK_USER_NAME': process.env['STARK_USER_NAME'],
+      'STARK_USER_PASSWORD': process.env['STARK_USER_PASSWORD'],
+      'STARK_USER_KEY': process.env['STARK_USER_KEY'],
+      'STARK_SERVICES_NAME': process.env['STARK_SERVICES_NAME'],
+      'STARK_SERVICES_PASSWORD': process.env['STARK_SERVICES_PASSWORD'],
+    }, 'production');
+
+    envVars.generate({
+      esm: true,
+      readFile: '.env.production'
+    });
+    console.log("Generated client config.");
+    console.log("");
+
+    console.log("5. Copying client config.");
+    fs.copySync('config.js', './dist/public/config.js');
+    console.log("Copied client config.");
+    console.log("");
+    /* #endregion */
+
     let adminDatabase = new Database({ arg: { username: UserAdmin.AdminName, dbServer: process.env.STARK_DB_HOST }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
     await adminDatabase.load();
     adminDatabase.state.setSchema(this.userDbSchema);
@@ -99,7 +130,7 @@ export class UserRegistration {
         username: process.env.STARK_USER_NAME,
         arg: {
           name: adminEdgeConfig,
-          mode:  Object.values(DeploymentPack).includes(adminEdgeConfig) ? DeploymentMode[DeploymentMode[DeploymentPack[adminEdgeConfig]]] : DeploymentMode.Edge,
+          mode: Object.values(DeploymentPack).includes(adminEdgeConfig) ? DeploymentMode[DeploymentMode[DeploymentPack[adminEdgeConfig]]] : DeploymentMode.Edge,
           security: Security.Public
         }
       });
@@ -156,9 +187,9 @@ export class UserRegistration {
     database.state.setSchema(this.userDbSchema);
 
     let designDocument = new DesignDocument({
-        db: database.state,
-        arg: undefined
-      },
+      db: database.state,
+      arg: undefined
+    },
       true
     );
     designDocument.init();
@@ -176,9 +207,9 @@ export class UserRegistration {
 
     /* #region  Setup services databases. */
     let userServices = new UserUser({
-        db: UserRegistration.db,
-        arg: {...arg, ...{ name: `services-${arg.name}` }}
-      },
+      db: UserRegistration.db,
+      arg: { ...arg, ...{ name: `services-${arg.name}` } }
+    },
       true
     );
     await userServices.save();
@@ -187,9 +218,9 @@ export class UserRegistration {
     await servicesDatabase.load();
 
     let servicesDesignDocument = new DesignDocument({
-        db: servicesDatabase.state,
-        arg: undefined
-      },
+      db: servicesDatabase.state,
+      arg: undefined
+    },
       true
     );
     servicesDesignDocument.init();

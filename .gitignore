@@ -4,5 +4,5 @@ node_modules/
 packages-dist/
 packages-run/
 .env
-.env.client
+.env.production
 config.js

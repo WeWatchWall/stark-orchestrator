@@ -60,9 +60,9 @@ export class PodEnv {
         builtin: ['*'],
         root: `${path.join(this.packageDir)}`,
         mock: {
-          fs: {
-            readFileSync() { return 'Nice try!'; }
-          }
+          // fs: {
+          //   readFileSync() { return 'Nice try!'; }
+          // }
         }
       }
     });
@@ -71,6 +71,7 @@ export class PodEnv {
       `
       module.exports = function(arg) {
         console.log(process.cwd());
+        console.log(JSON.stringify(process.env));
         const app = require('./dist/index.js');
         app(arg);
       }            
