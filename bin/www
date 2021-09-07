@@ -14,7 +14,7 @@ async function main() {
   const version = await parseNpmVersion();
 
   if (version.major > 6) {
-    throw new Error("Stark is currently only supports NPM@V6.");
+    throw new Error("Stark is currently only supports NPM@V.6.");
   }
 
   // Optional based on the root user parameter.
