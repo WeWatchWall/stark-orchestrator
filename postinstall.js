@@ -39,7 +39,7 @@ async function Main() {
       'STARK_USER_KEY': process.env['STARK_USER_KEY'],
       'STARK_SERVICES_NAME': process.env['STARK_SERVICES_NAME'],
       'STARK_SERVICES_PASSWORD': process.env['STARK_SERVICES_PASSWORD'],
-    }, 'client');
+    }, 'production');
     
     require('browser-env-vars').generate({
       esm: true,

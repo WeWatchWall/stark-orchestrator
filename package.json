@@ -44,6 +44,7 @@
     "node-fetch": "^2.6.1",
     "objectmodel": "^4.2.2",
     "openpgp": "^4.10.9",
+    "parse-npm-version": "^1.0.1",
     "pouchdb": "^7.2.1",
     "pouchdb-authentication": "^1.1.3",
     "pouchdb-find": "^7.2.2",

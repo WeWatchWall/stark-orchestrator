@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+const parseNpmVersion = require('parse-npm-version');
 var debug = require('debug')('stark-server:server');
 require('dotenv').config();
 
@@ -9,23 +10,31 @@ let modes = JSON.parse(process.env.STARK_MODES);
 // 	require('appmetrics-prometheus').attach();
 // }
 
-// Optional based on the root user parameter.
-if (modes[0]) {
-	// Automatically turn on the edge service if it's not configured.
-	if (!modes[1]) {
-		process.env.STARK_MODES = '[true, true]';
-		modes[1] = true;
-	}
+async function main() {
+  const version = await parseNpmVersion();
 
-	runApp('core');
+  if (version.major > 6) {
+    throw new Error("Stark is currently only supports NPM@V6.");
+  }
+
+  // Optional based on the root user parameter.
+  if (modes[0]) {
+    // Automatically turn on the edge service if it's not configured.
+    if (!modes[1]) {
+      process.env.STARK_MODES = '[true, true]';
+      modes[1] = true;
+    }
+
+    await runApp('core');
+  }
+
+  if(modes[1]) {
+    await runApp('edge');
+  }
 }
+main();
 
-if(modes[1]) {
-	runApp('edge');
-}
-
-
-function runApp(appName) {
+async function runApp(appName) {
 	/**
 	 * Module dependencies.
 	 */
