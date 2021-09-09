@@ -19,8 +19,7 @@ export class PodEnv {
   
   string: string;
   packageDir: any;
-  static config = dotenv.config().parsed;
-
+    
   constructor(arg = { arg: undefined},  validate = false) {
     this.arg = arg.arg;
     this.validate = validate;
@@ -84,7 +83,7 @@ export class PodEnv {
       package: this.argValid.name,
       pod: podIndex,
       arg: this.argValid.arg,
-      config: PodEnv.config
+      config: dotenv.config().parsed
     });
   }
 
