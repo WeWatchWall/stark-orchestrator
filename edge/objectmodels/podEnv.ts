@@ -1,3 +1,4 @@
+import dotenv from 'dotenv';
 import assert from "assert";
 import { ObjectModel } from "objectmodel";
 
@@ -18,7 +19,8 @@ export class PodEnv {
   
   string: string;
   packageDir: any;
-    
+  static config = dotenv.config().parsed;
+
   constructor(arg = { arg: undefined},  validate = false) {
     this.arg = arg.arg;
     this.validate = validate;
@@ -81,7 +83,8 @@ export class PodEnv {
     functionInSandbox({
       package: this.argValid.name,
       pod: podIndex,
-      arg: this.argValid.arg
+      arg: this.argValid.arg,
+      config: PodEnv.config
     });
   }
 
