@@ -33,12 +33,16 @@ The Stark-Server project that runs the Stark Orchestrator Core be initialized be
 ## Usage
 
 The server will allow you to create users by sending a PUT request to http://LAN_IP:3005/users/root with the following body:
-{
+  
+  ```typescript
+  {
     "name": "<User name>", // ex: root
     "password": "<Password>", // ex: o1iviA51
     "key": "<User Key>", // ex: b1vI451key
     "email": "<Email>" // ex: friday@example.com
-}
+  }
+  ```
+
 
 Other instances of core and edge nodes can be added to the orchestrator through a similar procedure to running the initial core node. For the edge, there is an example config in env_examples/edge_init.env. There is a single core user, so any core instance needs to share their config with the first initialized core environment. In other words, there is a single core user. Other users may only run DeloyMode.Edge and DeloyMode.Browser nodes.
 
