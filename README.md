@@ -3,13 +3,13 @@
 [![Build and test status](https://github.com/WeWatchWall/stark-server/workflows/Lint%20and%20test/badge.svg)](https://github.com/WeWatchWall/stark-server/actions?query=workflow%3A%22Lint+and+test%22)
 [![NPM version](https://img.shields.io/npm/v/stark-server.svg)](https://www.npmjs.com/package/stark-server)
 
-The core Stark Orchestrator project, built the [![Couchdb]](http://couchdb.apache.org/) ecosystem. Tested only on Windows 10. Not yet ready for production, yet it makes prototyping a breeze ;)
+The core Stark Orchestrator project, built the [Couchdb](http://couchdb.apache.org/) ecosystem. Tested only on Windows 10. Not yet ready for production, yet it makes prototyping a breeze ;)
 
 ## Getting Started
 
 The Stark-Server project that runs the Stark Orchestrator Core be initialized before anything else.
 
-1. [![Install CouchDB on your system.]](https://docs.couchdb.org/en/main/install/windows.html) Log into the http://LAN_IP:5984/_utils/#login with the configured credentials. Go to the DB setup tab on the left(wrench, second down), select single instance, and point the instance to your LAN_IP (not 0.0.0.0).
+1. [Install CouchDB on your system.](https://docs.couchdb.org/en/main/install/windows.html) Log into the http://LAN_IP:5984/_utils/#login with the configured credentials. Go to the DB setup tab on the left(wrench, second down), select single instance, and point the instance to your LAN_IP (not 0.0.0.0).
 
 2. Go to the DB config tab(gear, fourth down) and enable: CORS (*, for all), and Main Config - couch_peruser:delete_dbs= true and couch_peruser:enable= true.
 
