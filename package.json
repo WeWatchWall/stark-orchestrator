@@ -1,6 +1,6 @@
 {
-  "name": "stark-server",
-  "version": "0.8.0",
+  "name": "stark-orchestrator",
+  "version": "0.8.1",
   "description": "Orchestrator layer for the Stark OS.",
   "scripts": {
     "start": "npm install && node --unhandled-rejections=none bin/www",
