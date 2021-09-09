@@ -14,13 +14,14 @@ import { PodManager } from './services/podManager';
 import { PodConfigManager } from '../shared/services/podConfigManager';
 import { UserAuth } from '../edge/objectmodels/userAuth';
 import { PodNumManager } from '../shared/services/podNumManager';
-import { Router } from '../shared/services/router';
-import { RequestManager } from '../shared/services/requestManager';
-import { Requester } from '../shared/services/requester';
 import { NodeUserLean } from '../edge/objectmodels/nodeUserLean';
 import { Database } from '../shared/objectmodels/database';
 import { UserConfig } from '../shared/objectmodels/userConfig';
 import { NodeConfig } from './objectmodels/nodeConfig';
+
+// import { Router } from '../shared/services/router';
+// import { RequestManager } from '../shared/services/requestManager';
+// import { Requester } from '../shared/services/requester';
 
 var edge = express();
 
@@ -172,39 +173,39 @@ async function Main() {
 
   let podNumService = new PodNumManager(userDb, userConfig, nodeDb, nodeConfig);
   await podNumService.init();
-
-  let router = new Router(user, dbServer, userDb, userConfig, userServiceDb, nodeConfig);
-  await router.init();
   /* #endregion */
 
   /* #region  Testing the request pipeline, has to set the package.isService = true. */
   // TODO: Use in a service
-  let requestManager = new RequestManager({
-    user: nodeServiceUser,
-    name: 'stark-core-config',
-    podIndex: 0
-  },
-  serviceNodeDb);
-  await requestManager.init();
-  requestManager.add(async request => {
-    return request.arg;
-  });
+  // let router = new Router(user, dbServer, userDb, userConfig, userServiceDb, nodeConfig);
+  // await router.init();
 
-  let requester = new Requester({
-    nodeUser: nodeUser,
-    serviceUser: nodeServiceUser,
-    name: 'stark-core-config',
-    services: ['stark-core-config'],
-    podIndex: 0
-  }, nodeDb, nodeConfig, serviceNodeDb);
-  await requester.init();
+  // let requestManager = new RequestManager({
+  //   user: nodeServiceUser,
+  //   name: 'stark-core-config',
+  //   podIndex: 0
+  // },
+  // serviceNodeDb);
+  // await requestManager.init();
+  // requestManager.add(async request => {
+  //   return request.arg;
+  // });
 
-  let result = await requester.add({
-    service: 'stark-core-config',
-    isRemote: true,  // Also important to test: false,
-    arg: 'HELLO WORLD!!!'
-  });
-  console.log(`The request was successful. Result: ${result}`);
+  // let requester = new Requester({
+  //   nodeUser: nodeUser,
+  //   serviceUser: nodeServiceUser,
+  //   name: 'stark-core-config',
+  //   services: ['stark-core-config'],
+  //   podIndex: 0
+  // }, nodeDb, nodeConfig, serviceNodeDb);
+  // await requester.init();
+
+  // let result = await requester.add({
+  //   service: 'stark-core-config',
+  //   isRemote: true,  // Also important to test: false,
+  //   arg: 'HELLO WORLD!!!'
+  // });
+  // console.log(`The request was successful. Result: ${result}`);
   /* #endregion */
 }
 Main();
