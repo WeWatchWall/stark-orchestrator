@@ -32,7 +32,7 @@ The Stark-Orchestrator project that runs the Stark Orchestrator Core be initiali
 
 ## Usage
 
-The server will allow you to create users by sending a PUT request to http://LAN_IP:3005/users/root with the following body:
+The server will allow you to create users by sending a PUT request to http://LAN_IP:STARK_PORT/users/root with the following body:
   
   ```typescript
   {
@@ -46,7 +46,7 @@ The server will allow you to create users by sending a PUT request to http://LAN
 
 Other instances of core and edge nodes can be added to the orchestrator through a similar procedure to running the initial core node. For the edge, there is an example config in env_examples/edge_init.env. There is a single core user, so any core instance needs to share their config with the first initialized core environment. In other words, there is a single core user. Other users may only run DeloyMode.Edge and DeloyMode.Browser nodes.
 
-If you navigate to http://LAN_IP:3005, you will receive the deployed Stark-Client build into your browser, which will create a DeployMode.Browser node and bootstrap it. If you deploy any eligible browser packages to your user database, they will appear in your browser.
+If you navigate to http://LAN_IP:STARK_PORT, you will receive the deployed Stark-Client build into your browser, which will create a DeployMode.Browser node and bootstrap it. If you deploy any eligible browser packages to your user database, they will appear in your browser.
 
 The author aknowledges that documentation is not yet anywhere close to complete, so feel free to look at the following files to get an idea of how to use the classes for core and edge packages:
 
