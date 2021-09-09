@@ -3,7 +3,8 @@
 [![Build and test status](https://github.com/WeWatchWall/stark-orchestrator/workflows/Lint%20and%20test/badge.svg)](https://github.com/WeWatchWall/stark-orchestrator/actions?query=workflow%3A%22Lint+and+test%22)
 [![NPM version](https://img.shields.io/npm/v/stark-orchestrator.svg)](https://www.npmjs.com/package/stark-orchestrator)
 
-The core Stark Orchestrator project, built the [Couchdb](http://couchdb.apache.org/) ecosystem. Tested only on Windows 10. Not yet ready for production, yet it makes prototyping a breeze ;)
+The Stark Orchestrator project brings software management to the Internet of Things. Both configuration and convenience are baked right into this centralized JavaScript software manager.
+The core Stark Orchestrator project is built the [Couchdb](http://couchdb.apache.org/) ecosystem. Tested only on Windows 10. Not yet ready for production, yet it makes prototyping a breeze ;)
 
 ## Getting Started
 
