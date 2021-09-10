@@ -8,7 +8,7 @@ The core Stark Orchestrator project is built the [Couchdb](http://couchdb.apache
 
 ## Getting Started
 
-The Stark-Orchestrator project that runs the Stark Orchestrator Core be initialized before anything else.
+The Stark-Orchestrator project that runs the Stark Orchestrator Core be initialized before anything else. Relies on having [Node.JS and NPM installed.](https://nodejs.org/en/download/)
 
 1. [Install CouchDB on your system.](https://docs.couchdb.org/en/main/install/windows.html) Log into the http://LAN_IP:5984/_utils/#login with the configured credentials. Go to the DB setup tab on the left(wrench, second down), select single instance, and point the instance to your LAN_IP (not 0.0.0.0).
 
