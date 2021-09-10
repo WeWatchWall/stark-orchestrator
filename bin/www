@@ -42,7 +42,8 @@ async function runApp(appName) {
 	
 	var port = normalizePort(process.env.STARK_PORT || '3000');
 	port = (modes[0] && appName === 'edge' ? port + 1 : port);
-	
+  port = (!modes[0] && appName === 'edge' ? port + 2 : port);
+  
 	app.set('port', port);
 
 	/**

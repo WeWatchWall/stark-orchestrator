@@ -45,7 +45,7 @@ The server will allow you to create users by sending a PUT request to http://LAN
   ```
 
 
-Other instances of core and edge nodes can be added to the orchestrator through a similar procedure to running the initial core node. For the edge, there is an example config in env_examples/edge_init.env. There is a single core user, so any core instance needs to share their config with the first initialized core environment. In other words, other users may only run DeloyMode.Edge and DeloyMode.Browser nodes.
+Other instances of core and edge nodes can be added to the orchestrator through a similar procedure to running the initial core node. For the edge, there is an example config in env_examples/edge_init.env. There is a single core user, so any core instance needs to share their config with the first initialized core environment. In other words, other users may only run DeloyMode.Edge and eventually, when login is built, will be able to DeloyMode.Browser nodes.
 
 If you navigate to http://LAN_IP:STARK_PORT, you will receive the deployed Stark-Client build into your browser, which will create a DeployMode.Browser node and bootstrap it. If you deploy any eligible browser packages to your user database, they will appear in your browser.
 
