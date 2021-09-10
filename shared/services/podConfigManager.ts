@@ -140,6 +140,7 @@ export class PodConfigManager {
   async delete(podId: string) {
     /* #region  Get pod by Id and retrieve its name. */
     let podConfig = this.podConfigsId[podId];
+    if (!podConfig) { return; }
     let podName = podConfig.argValid.name;
     /* #endregion */
 
