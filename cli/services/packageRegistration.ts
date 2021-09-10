@@ -23,12 +23,12 @@ export class PackageRegistration {
   async add(arg) {
     await this._adjustForDb(arg);
 
-    return arg.db ? await this._addDb(arg) : await this._addLocal(arg);
+    return arg.arg && arg.arg.db ? await this._addDb(arg) : await this._addLocal(arg);
   }
 
 
   async get(arg) {
-    let packageConfig = new PackageConfig(arg, false);
+    let packageConfig = new PackageConfig({ db: arg.arg.db, arg: arg.arg}, false);
     let packageDb = new PackageAdminDb(arg, true);
     packageDb.arg.packageConfig = packageConfig;
     await packageDb.load();
@@ -36,12 +36,12 @@ export class PackageRegistration {
   }
 
   async _addDb(arg) {        
-    let packageConfig = new PackageConfig(arg, true);
+    let packageConfig = new PackageConfig({db: arg.arg.db, arg: arg.arg}, true);
 
     try {
       await packageConfig.load();
     } catch (error) {            
-      let userConfig = new UserConfig({ db: arg.db, arg: { name: arg.username} });
+      let userConfig = new UserConfig({ db: arg.arg.db, arg: { name: arg.username} });
       await userConfig.init();
       let packageConfigs = new Set(userConfig.state.packageConfigs);
       packageConfigs.add(arg.arg.name);
@@ -72,7 +72,7 @@ export class PackageRegistration {
       let database = new Database({ arg: { username: process.env.STARK_USER_NAME, dbServer: process.env.STARK_DB_HOST }, username: process.env.STARK_USER_NAME, password: process.env.STARK_USER_PASSWORD });
       await database.load();
       database.state.setSchema(this.userDbSchema);
-      arg.db = database.state;
+      arg.arg.db = database.state;
       arg.isAdmin = false;
       arg.username = process.env.STARK_USER_NAME;
     }

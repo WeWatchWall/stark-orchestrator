@@ -21,7 +21,7 @@ export class PackageAdminDb extends PackageLocalDb {
     }
 
     await this.arg.packageConfig.load();
-    this.state = this.arg.packageConfig.state.attachment;
+    this.state = this.arg.packageConfig.attachment;
     const { data: decrypted } = await openpgp.decrypt({
       message: await openpgp.message.read(this.state), // parse encrypted bytes
       passwords: [process.env.STARK_USER_KEY],        // decrypt with password
@@ -35,6 +35,11 @@ export class PackageAdminDb extends PackageLocalDb {
     }));
   
     this.state = message.packets.write();
+  }
+ 
+  async save() {
+    this.validateNew();
+    await super.save();
   }
 
   protected newPackageModel = ObjectModel({

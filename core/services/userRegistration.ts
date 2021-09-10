@@ -126,9 +126,9 @@ export class UserRegistration {
     let pack; // : PackageDb (not : PackageDb | PackageLocal)
     for (let adminEdgeConfig of adminConfig.state.packageConfigs) {
       pack = await this.packageRegistrationService.add({
-        db: adminDatabase.state,
         username: process.env.STARK_USER_NAME,
         arg: {
+          db: adminDatabase.state,
           name: adminEdgeConfig,
           mode: Object.values(DeploymentPack).includes(adminEdgeConfig) ? DeploymentMode[DeploymentMode[DeploymentPack[adminEdgeConfig]]] : DeploymentMode.Edge,
           security: Security.Public
@@ -140,9 +140,9 @@ export class UserRegistration {
 
     for (let adminCoreConfig of adminConfig.state.corePackageConfigs) {
       pack = await this.packageRegistrationService.add({
-        db: adminDatabase.state,
         username: process.env.STARK_USER_NAME,
         arg: {
+          db: adminDatabase.state,
           name: adminCoreConfig,
           mode: DeploymentMode.Core,
           security: Security.Public
@@ -248,9 +248,9 @@ export class UserRegistration {
 
       // Make these packages private!
       adminPack = await this.packageRegistrationService.get({
-        db: adminDatabase.state,
         userKey: userConfig.state.key,
         arg: {
+          db: adminDatabase.state,
           name: adminEdgeConfig
         }
       });
@@ -260,10 +260,10 @@ export class UserRegistration {
       if (adminPack.arg.packageConfig.state.mode === DeploymentMode.Core) { continue; }
 
       pack = await this.packageRegistrationService.add({
-        db: database.state,
         isAdmin: true,
         username: user.argValid.name,
         arg: {
+          db: database.state,
           name: adminEdgeConfig,
           security: Security.Private,
           mode: adminPack.arg.packageConfig.state.mode,

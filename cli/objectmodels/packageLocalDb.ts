@@ -46,7 +46,7 @@ export class PackageLocalDb extends PackageServer {
   }
 
   async save() {
-    this.validateState();       
+    this.validateState();
     await this.argValid.packageConfig.save();
   }
 
