@@ -141,7 +141,7 @@ export class Pod {
     }, 8);
   }
 
-  private async saveInstall() { 
+  private async saveInstall() {
     let attachment = await this.db.rel.getAttachment('podConfig', this.state.id, 'package.zip.pgp');
     let key = process.env.STARK_USER_KEY;
 
@@ -179,14 +179,13 @@ export class Pod {
     for (let processEnv of this.processes) {
       await processEnv.delete();
     }
+    this.processes = [];
 
     if (isFull) {
       this.eventEmitter.emit('delete', this.state.name);
       await fs.remove(this.packageDir);
+      this.state = undefined;
     }
-
-    this.processes = [];
-    this.state = undefined;
   }
 
   private newPodConfigModel = ObjectModel({
