@@ -9,6 +9,7 @@ export class PodConfigTransfer {
   
   arg: any;
   argValid: any;
+  read: any;
   state: any;
   validate: boolean;
   
@@ -56,6 +57,7 @@ export class PodConfigTransfer {
     this.state = await this.argValid.userDb.rel.parseRelDocs('packageConfig', this.state);
     this.state = this.state.packageConfigs[0];
     this.validateState();
+    this.read = this.state;
 
     let  saved = (await this.db.find({
       selector: {
@@ -81,13 +83,12 @@ export class PodConfigTransfer {
   async save() {
     if (!this.state) { await this.load(); } // TODO: USE THIS PATTERN!
     if (this.isSaved) { return; }
-
-    let read = this.state;    
+    
     this.state = undefined;
 
     let result;
     result = await this.db.rel.save('podConfig', {
-      ...read, ...{
+      ...this.read, ...{
         id: undefined,
         rev: undefined,
         attachment: undefined,
@@ -103,7 +104,7 @@ export class PodConfigTransfer {
         error: 'empty'
       }
     });
-    await this.db.rel.putAttachment('podConfig', result, 'package.zip.pgp', read.attachment, 'text/plain');
+    await this.db.rel.putAttachment('podConfig', result, 'package.zip.pgp', this.read.attachment, 'text/plain');
     this.state = result;
 
     this.validateState();

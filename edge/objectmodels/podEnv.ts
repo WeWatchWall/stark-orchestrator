@@ -48,7 +48,6 @@ export class PodEnv {
     if (!this.state) { await this.load(); } // TODO: USE THIS PATTERN!
     this.validateState();
 
-    
     // TODO: SANDBOX WITH (SCAFFOLD FILES) + (SEPARATE PROCESS OR THREAD) + (ARGUMENTS for VM2)
     const vm = new NodeVM({
       console: 'inherit',
@@ -59,6 +58,7 @@ export class PodEnv {
           transitive: true
         },
         builtin: ['*'],
+        context: "sandbox",
         root: `${path.join(this.packageDir)}`,
         mock: {
           // fs: {
@@ -72,6 +72,7 @@ export class PodEnv {
       `
       module.exports = function(arg) {
         console.log(process.cwd());
+        
         const app = require('./dist/index.js');
         app(arg);
       }            

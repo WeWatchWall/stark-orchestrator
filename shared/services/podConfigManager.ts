@@ -54,8 +54,9 @@ export class PodConfigManager {
           return;
         }
 
+        let isAvailable = self.isAvailable(doc);
         let newPodName = doc.data.name;
-        if (!self.podConfigs[newPodName] && self.isAvailable(doc)) {
+        if (isAvailable && !self.podConfigs[newPodName]) {
           self.podConfigsId[doc._id] = 'init';
           self.podConfigs[doc.data.name] = 'init';
 
@@ -63,8 +64,19 @@ export class PodConfigManager {
           return;
         }
 
-        if (self.podConfigs[newPodName] && !self.isAvailable(doc)) {
+        if (!isAvailable && self.podConfigs[newPodName]) {
           await self.delete(doc._id);
+          return;
+        }
+
+        if (isAvailable
+          && self.podConfigs[newPodName]?.read?.attachments?.["package.zip.pgp"]?.revpos
+          && self.podConfigs[newPodName]?.read?.attachments?.["package.zip.pgp"]?.revpos !== doc._attachments?.["package.zip.pgp"]?.revpos) {
+          
+          await self.delete(doc._id);
+          // WARNING: MIGHT NOT BE DELETED BY THE TIME THAT I RE-INSTALL
+          await Util.delay(3e3);
+          await self.add(doc);
           return;
         }
       });

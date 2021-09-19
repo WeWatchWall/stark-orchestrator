@@ -83,7 +83,7 @@ export class PodNumManager {
   
   async delete(podName) {
     let podBalancer = this.podBalancers[podName];
-    await podBalancer.delete();
+    await podBalancer?.delete();
     this.podBalancers[podName] = undefined;
   }
     
