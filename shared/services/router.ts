@@ -1,4 +1,5 @@
 import { Database } from "../objectmodels/database";
+import { RequestMode } from "../objectmodels/requestMode";
 
 const numMsWait = 500;
 
@@ -118,7 +119,8 @@ export class Router {
           "$or": [
             { isNew: true },
             { isDeleted: true }
-          ]
+          ],
+          mode: RequestMode.Single
         }
       }
     }).on('change', async function (change) {
@@ -136,7 +138,8 @@ export class Router {
           "$or": [
             { isNew: true },
             { isDeleted: true }
-          ]
+          ],
+          mode: RequestMode.Single
         }
       }
     })).docs;

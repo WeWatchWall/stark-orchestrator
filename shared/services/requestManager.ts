@@ -17,7 +17,6 @@ export class RequestManager {
 
   async init() { 
     
-
     /* #region  Initialize the router's Request state and updates. */
     // TODO: Watch for changes before or after load???
     var self = this;

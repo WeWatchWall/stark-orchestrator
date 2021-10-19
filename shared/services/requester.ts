@@ -167,7 +167,7 @@ export class Requester {
       let request = this.currentRequests[requestId];
       this.currentRequests[requestId] = undefined;
       clearTimeout(request.timeout);
-      request.promise.resolve(responseDoc.data.result);
+      request.promise.resolve(responseDoc.data);
 
       await this.delete({
         id: requestId,
@@ -220,7 +220,6 @@ export class Requester {
   }
 
   private newRequester = ObjectModel({
-    nodeUser: Object,
     serviceUser: Object,
     name: String,
     services: ArrayModel(String),

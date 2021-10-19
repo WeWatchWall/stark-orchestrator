@@ -1,4 +1,5 @@
 import { ObjectModel } from "objectmodel";
+import { RequestMode } from "./requestMode";
 
 export class Request {
   db: any;
@@ -73,6 +74,7 @@ export class Request {
   private newRequestModel = ObjectModel({
     service: String,
     isNew: Boolean,
+    mode: [RequestMode.Single, RequestMode.Broadcast],
     timeNew: Number,
     source: String,
     isBalanced: [Boolean],

@@ -22,6 +22,7 @@ import { NodeConfig } from './objectmodels/nodeConfig';
 // import { Router } from '../shared/services/router';
 // import { RequestManager } from '../shared/services/requestManager';
 // import { Requester } from '../shared/services/requester';
+// import { RequestMode } from '../shared/objectmodels/requestMode';
 
 var edge = express();
 
@@ -192,7 +193,6 @@ async function Main() {
   // });
 
   // let requester = new Requester({
-  //   nodeUser: nodeUser,
   //   serviceUser: nodeServiceUser,
   //   name: 'stark-core-config',
   //   services: ['stark-core-config'],
@@ -200,12 +200,13 @@ async function Main() {
   // }, nodeDb, nodeConfig, serviceNodeDb);
   // await requester.init();
 
-  // let result = await requester.add({
+  // let response = await requester.add({
   //   service: 'stark-core-config',
+  //   mode: RequestMode.Single,
   //   isRemote: true,  // Also important to test: false,
   //   arg: 'HELLO WORLD!!!'
   // });
-  // console.log(`The request was successful. Result: ${result}`);
+  // console.log(`The request was successful. Result: ${response.result}`);
   /* #endregion */
 }
 Main();
