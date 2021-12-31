@@ -5,3 +5,8 @@ packages-run/
 .env
 .env.production
 config.js
+
+packages/*
+!packages/stark-browser-config
+!packages/stark-core-config
+!packages/stark-edge-config

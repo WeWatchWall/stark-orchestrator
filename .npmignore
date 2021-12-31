@@ -15,3 +15,8 @@ package-lock.json
 /tmp*
 /mnt/
 /package/
+
+packages/*
+!packages/stark-browser-config
+!packages/stark-core-config
+!packages/stark-edge-config
