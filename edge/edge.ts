@@ -177,7 +177,7 @@ async function Main() {
   /* #endregion */
 
   /* #region  Testing the request pipeline, has to set the package.isService = true. */
-  // TODO: Use in a service
+  /* TODO: Use in a service */
   // let router = new Router({ user, dbServer, userDb, userConfig, userServiceDb, nodeConfig });
   // await router.init();
 
