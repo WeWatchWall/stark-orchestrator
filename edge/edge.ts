@@ -155,13 +155,13 @@ async function Main() {
     }
   };
 
-  let serviceNodeDb = new Database({
+  let nodeServiceDb = new Database({
     arg: { username: nodeServiceUser.state.name, dbServer },
     username: user.state.name,
     password: user.state.password
   });
-  await serviceNodeDb.load();
-  serviceNodeDb.state.setSchema(serviceDbSchema);
+  await nodeServiceDb.load();
+  nodeServiceDb.state.setSchema(serviceDbSchema);
   /* #endregion */
 
   // Can also use DI instead when there are too many dependencies.
@@ -178,26 +178,28 @@ async function Main() {
 
   /* #region  Testing the request pipeline, has to set the package.isService = true. */
   // TODO: Use in a service
-  // let router = new Router(user, dbServer, userDb, userConfig, userServiceDb, nodeConfig);
+  // let router = new Router({ user, dbServer, userDb, userConfig, userServiceDb, nodeConfig });
   // await router.init();
 
   // let requestManager = new RequestManager({
-  //   user: nodeServiceUser,
-  //   name: 'stark-core-config',
-  //   podIndex: 0
-  // },
-  // serviceNodeDb);
-  // await requestManager.init();
-  // requestManager.add(async request => {
-  //   return request.arg;
+  //   arg:  {
+  //     user: nodeServiceUser,
+  //     name: 'stark-core-config',
+  //     podIndex: 0,
+  //     addCallback: async request => {
+  //       return request.arg;
+  //     },
+  //     nodeServiceDb
+  //   }
   // });
+  // await requestManager.init();
 
   // let requester = new Requester({
   //   serviceUser: nodeServiceUser,
   //   name: 'stark-core-config',
   //   services: ['stark-core-config'],
   //   podIndex: 0
-  // }, nodeDb, nodeConfig, serviceNodeDb);
+  // }, nodeDb, nodeConfig, nodeServiceDb);
   // await requester.init();
 
   // let response = await requester.add({

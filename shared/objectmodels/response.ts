@@ -72,6 +72,7 @@ export class Response {
 
   private newResponseModel = ObjectModel({
     source: String,
+    sourcePod: Number,
     target: String,
     targetPod: Number,
     time: Number,

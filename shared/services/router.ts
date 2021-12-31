@@ -21,8 +21,8 @@ export class Router {
   packId = {}  // packId, packName 
   packRoundRobin = {}; // package(service), node(skippable),  Tuple<podNum, currentPod> - currentPod >= pod ===> currentPod = 0 
 
-  constructor( user, dbServer, userDb, userConfig, userServiceDb, nodeConfig) {
-    this.arg = { user, dbServer, userDb, userConfig, userServiceDb, nodeConfig }; // TODO: USE THIS!!!
+  constructor(arg) {
+    this.arg = arg;
   }
 
   async init() {
@@ -63,9 +63,9 @@ export class Router {
     nodeConfigs = await this.arg.userDb.state.rel.parseRelDocs('nodeConfig', nodeConfigs);
     nodeConfigs = nodeConfigs.nodeConfigs;
 
-    nodeConfigs.forEach(async nodeConfig => {
+    for (const nodeConfig of nodeConfigs) {
       await self.addNode(nodeConfig);
-    });
+    }
     /* #endregion */
 
     /* #region  Initialize the router's PackageConfig state and updates. */
@@ -146,6 +146,7 @@ export class Router {
     preRequests = await this.arg.userServiceDb.state.rel.parseRelDocs('request', preRequests);
     preRequests = preRequests.requests;
 
+    // Not waiting for async on purpose.
     preRequests.forEach(async request => {
       if (request.isDeleted) { return await this.delete(request); }
       await this.add(request);
@@ -175,6 +176,7 @@ export class Router {
       }
     })).docs;
 
+    // Not waiting for async on purpose.
     preResponses.forEach(async response => {
       if (!this.isBalanceAvailable(response.data.time)) { return; }
       await self.deleteResponse(response);

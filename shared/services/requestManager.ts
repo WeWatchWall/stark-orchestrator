@@ -3,16 +3,17 @@ import { Response } from "../objectmodels/response";
 
 export class RequestManager {
   arg;
-  argValid;
-  addWatcher: any;
-  addCallback;
-  deleteCallback;
+  nodeServiceDb;
 
-  constructor(arg, serviceNodeDb) {
-    this.arg = {arg, serviceNodeDb};
-    this.validateNew(arg);
-    this.addCallback = async () => { };
-    this.deleteCallback = async () => { };
+  private argValid;
+  private addWatcher: any;
+
+  constructor(init?: Partial<RequestManager>) {
+    Object.assign(this, init);
+
+    this.validateNew(this.arg);
+    this.arg.addCallback = this.arg.addCallback || (async (request) => { });
+    this.arg.deleteCallback = this.arg.deleteCallback || (async (request) => { });
   }
 
   async init() { 
@@ -20,7 +21,7 @@ export class RequestManager {
     /* #region  Initialize the router's Request state and updates. */
     // TODO: Watch for changes before or after load???
     var self = this;
-    this.addWatcher = this.arg.serviceNodeDb.state.changes({
+    this.addWatcher = this.arg.nodeServiceDb.state.changes({
       since: 'now',
       live: true,
       retry: true,
@@ -30,57 +31,51 @@ export class RequestManager {
         data: {
           isNew: false,
           service: this.argValid.name,
-          target: this.arg.serviceNodeDb.dbName,
+          target: this.arg.nodeServiceDb.dbName,
           targetPod: this.argValid.podIndex
         }
       }
     }).on('change', async function (change) {
-      let request = await self.arg.serviceNodeDb.state.rel.parseRelDocs('request', [change.doc]);
+      let request = await self.arg.nodeServiceDb.state.rel.parseRelDocs('request', [change.doc]);
       request = request.requests[0];
 
-      if (request.isDeleted) { return await self.deleteHandler(request); }
-      await self.addHandler(request);
+      if (request.isDeleted) { return await self.delete(request); }
+      await self.add(request);
     });
 
-    let preRequests = (await this.arg.serviceNodeDb.state.find({
+    let preRequests = (await this.arg.nodeServiceDb.state.find({
       selector: {
         "_id": { "$regex": "^request" },
         data: {
           isNew: false,
           service: this.argValid.name,
-          target: this.arg.serviceNodeDb.dbName,
+          target: this.arg.nodeServiceDb.dbName,
           targetPod: this.argValid.podIndex
         }
       }
     })).docs;
-    preRequests = await this.arg.serviceNodeDb.state.rel.parseRelDocs('request', preRequests);
+    preRequests = await this.arg.nodeServiceDb.state.rel.parseRelDocs('request', preRequests);
     preRequests = preRequests.requests;
 
+    // Not waiting for async on purpose.
     preRequests.forEach(async request => {
-      await this.addHandler(request);
+      await this.add(request);
     });
     /* #endregion */
   }
 
-  async add(asyncCallback) {
-    this.addCallback = asyncCallback;
-  }
-
-  async delete(asyncCallback) {
-    this.deleteCallback = asyncCallback;
-  }
-
-  private async addHandler(request) {
+  async add(request) {
     let result = new Response({
-      db: this.arg.serviceNodeDb.state,
+      db: this.arg.nodeServiceDb.state,
       arg: {
         source: request.target,
+        sourcePod: request.targetPod,
         target: request.source,
         isRemote: request.isRemote,
         targetPod: request.sourcePod,
-        result: await this.addCallback(request),
+        result: await this.arg.addCallback(request),
         time: Date.now(),
-        requestId: this.arg.serviceNodeDb.state.rel.makeDocID({
+        requestId: this.arg.nodeServiceDb.state.rel.makeDocID({
           id: request.id,
           type: 'request'
         })
@@ -91,10 +86,10 @@ export class RequestManager {
     await result.save();
   }
 
-  private async deleteHandler(request) {
+  async delete(request) {
     // TODO: cancel waiting internally?
     let response = new Response({
-      db: this.arg.serviceNodeDb.state,
+      db: this.arg.nodeServiceDb.state,
       arg: {
         _id: request.responseId
       }
@@ -104,8 +99,8 @@ export class RequestManager {
     await response.save();
     
     try {
-      await this.arg.serviceNodeDb.state.remove(
-        this.arg.serviceNodeDb.state.rel.makeDocID({
+      await this.arg.nodeServiceDb.state.remove(
+        this.arg.nodeServiceDb.state.rel.makeDocID({
           id: request.id,
           type: 'request'
         }),
@@ -119,7 +114,7 @@ export class RequestManager {
     } catch (error) {
     }
 
-    await this.deleteCallback(request);
+    await this.arg.deleteCallback(request);
   }
 
   private newRequestManager = ObjectModel({

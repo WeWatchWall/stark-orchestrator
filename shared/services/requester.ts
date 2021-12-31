@@ -66,6 +66,7 @@ export class Requester {
       }
     })).docs;
 
+    // Not waiting for async on purpose.
     preResponses.forEach(async response => {
       if (response.data.isDeleted) { await this.deleteResponse(response.doc); return; }
       await this.responseAdd(response);
