@@ -1,10 +1,14 @@
 import dotenv from 'dotenv';
 import assert from "assert";
-import { ObjectModel } from "objectmodel";
+import { ArrayModel, ObjectModel } from "objectmodel";
 
 import path from 'path';
 import fs from 'fs-extra';
 const { NodeVM } = require('vm2');
+
+// TODO: cleanup and secure the endpoints
+import events from 'events';
+import performanceNow from 'performance-now';
 
 // TODO: SCALING UP+DOWN with UPDATE
 
@@ -52,7 +56,9 @@ export class PodEnv {
     const vm = new NodeVM({
       console: 'inherit',
       sandbox: {},
+      sourceExtensions: ['js', 'cjs'],
       require: {
+        // import: ['objectmodel'], outside the border...
         external: {
           modules: ['*'],
           transitive: true
@@ -61,9 +67,9 @@ export class PodEnv {
         context: "sandbox",
         root: `${path.join(this.packageDir)}`,
         mock: {
-          // fs: {
-          //   readFileSync() { return 'Nice try!'; }
-          // }
+          objectmodel: { ArrayModel, ObjectModel },
+          events: events,
+          'performance-now': performanceNow
         }
       }
     });
