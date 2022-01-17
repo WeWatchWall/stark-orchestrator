@@ -93,7 +93,7 @@ export class PackageConfig {
     services: ArrayModel(String),
     nodePods: Object,
     arg: Object,
-    sandbox: [Sandbox.Default, Sandbox.Admin, Sandbox.UI],
+    sandbox: [Sandbox.Default, Sandbox.None],
     runtime: [Runtime.Thread, Runtime.Process, Runtime.None]
   }).defaultTo({
     // Require name

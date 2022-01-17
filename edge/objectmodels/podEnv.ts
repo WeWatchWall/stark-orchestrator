@@ -4,11 +4,10 @@ import { ArrayModel, ObjectModel } from "objectmodel";
 
 import path from 'path';
 import fs from 'fs-extra';
-const { NodeVM } = require('vm2');
 
-// TODO: cleanup and secure the endpoints
-import events from 'events';
-import performanceNow from 'performance-now';
+import { Runtime } from '../../shared/objectmodels/runtime';
+import workerProcess from '../workerProcess';
+import workerThread from '../workerThread';
 
 // TODO: SCALING UP+DOWN with UPDATE
 
@@ -52,46 +51,23 @@ export class PodEnv {
     if (!this.state) { await this.load(); } // TODO: USE THIS PATTERN!
     this.validateState();
 
-    // TODO: SANDBOX WITH (SCAFFOLD FILES) + (SEPARATE PROCESS OR THREAD) + (ARGUMENTS for VM2)
-    const vm = new NodeVM({
-      console: 'inherit',
-      sandbox: {},
-      sourceExtensions: ['js', 'cjs'],
-      require: {
-        // import: ['objectmodel'], outside the border...
-        external: {
-          modules: ['*'],
-          transitive: true
-        },
-        builtin: ['*'],
-        context: "sandbox",
-        root: `${path.join(this.packageDir)}`,
-        mock: {
-          objectmodel: { ArrayModel, ObjectModel },
-          events: events,
-          'performance-now': performanceNow
-        }
+    let sandbox;
+    if (this.state.runtime === Runtime.Process) {
+      sandbox = workerProcess.init();
+    } else { 
+      sandbox = workerThread.init();
+    }
+   
+    let result = sandbox.execute({
+      file: path.resolve(`${this.packageDir}/dist/index`),
+      arg: {
+        package: this.argValid.name,
+        pod: podIndex,
+        arg: this.argValid.arg,
+        config: dotenv.config().parsed
       }
-    });
+    })
 
-    let functionInSandbox = vm.run(
-      `
-      module.exports = function(arg) {
-        console.log(process.cwd());
-        
-        const app = require('./dist/index.js');
-        app(arg);
-      }            
-      `,
-      path.join(this.packageDir, 'stark_bootstrap.js')
-    );
-
-    functionInSandbox({
-      package: this.argValid.name,
-      pod: podIndex,
-      arg: this.argValid.arg,
-      config: dotenv.config().parsed
-    });
   }
 
   toString() {
@@ -106,7 +82,8 @@ export class PodEnv {
 
   private newPodEnvModel = ObjectModel({
     name: String,
-    arg: [Object]
+    arg: [Object],
+    runtime: [Runtime.Thread, Runtime.Process, Runtime.None]
   });
 
   private validateNew() {

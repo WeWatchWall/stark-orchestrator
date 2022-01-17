@@ -79,7 +79,10 @@ export class Pod {
       let prevState = self.state;
       self.state = parsedChange;
 
-      if (prevState.attachments["package.zip.pgp"].revpos !== parsedChange.attachments["package.zip.pgp"].revpos) {
+      if (
+        prevState.attachments["package.zip.pgp"].revpos !== parsedChange.attachments["package.zip.pgp"].revpos ||
+        prevState.runtime !== parsedChange.runtime
+      ) {
         await self.delete();
         await self.saveInstall();
       }
@@ -104,7 +107,8 @@ export class Pod {
         let processEnv = new PodEnv({
           arg: {
             name: this.state.name,
-            arg: this.state.arg
+            arg: this.state.arg,
+            runtime: this.state.runtime
           }
         }, true);
         this.processes.push(processEnv);
