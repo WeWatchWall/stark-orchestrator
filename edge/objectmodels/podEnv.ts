@@ -66,7 +66,7 @@ export class PodEnv {
         arg: this.argValid.arg,
         config: dotenv.config().parsed
       }
-    })
+    });
 
   }
 
