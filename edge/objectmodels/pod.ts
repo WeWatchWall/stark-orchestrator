@@ -118,7 +118,7 @@ export class Pod {
         try {
           var self = this;
 
-          processEnv.save();
+          processEnv.save(this.numProcesses);
           await self.saveConfig({ status: ProvisionStatus.Up });
           this.numProcesses++;
         } catch (error) {
