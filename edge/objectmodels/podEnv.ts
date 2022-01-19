@@ -22,6 +22,7 @@ export class PodEnv {
   
   string: string;
   packageDir: any;
+  processes = [];
     
   constructor(arg = { arg: undefined},  validate = false) {
     this.arg = arg.arg;
@@ -68,16 +69,16 @@ export class PodEnv {
       }
     });
 
+    this.processes.push(sandbox.worker);
   }
 
   toString() {
     this.string = JSON.stringify(this.state);
   }
-    
-    // TODO!! Store the sandbox so that I can cancel that while I'm scaling down!!
-    // If I reach 0, and I call delete again, then I delete the install package,
-    // So that I can call load automatically again...:()
-    async delete() {
+
+  async delete() {
+    let worker = this.processes.pop();
+    worker.terminate();
   }
 
   private newPodEnvModel = ObjectModel({

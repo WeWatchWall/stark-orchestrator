@@ -70,8 +70,11 @@ export class PodConfigManager {
         }
 
         if (isAvailable
-          && self.podConfigs[newPodName]?.read?.attachments?.["package.zip.pgp"]?.revpos
-          && self.podConfigs[newPodName]?.read?.attachments?.["package.zip.pgp"]?.revpos !== doc._attachments?.["package.zip.pgp"]?.revpos) {
+          && (
+              (self.podConfigs[newPodName]?.read?.attachments?.["package.zip.pgp"]?.revpos
+              && self.podConfigs[newPodName]?.read?.attachments?.["package.zip.pgp"]?.revpos !== doc._attachments?.["package.zip.pgp"]?.revpos)
+            || (self.podConfigs[newPodName]?.read?.runtime !== doc.data?.runtime))
+        ) {
           
           await self.delete(doc._id);
           // WARNING: MIGHT NOT BE DELETED BY THE TIME THAT I RE-INSTALL

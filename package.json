@@ -1,6 +1,6 @@
 {
   "name": "stark-orchestrator",
-  "version": "0.8.14",
+  "version": "0.8.15",
   "description": "Orchestrator layer for the Stark OS.",
   "scripts": {
     "start": "npm install && node --unhandled-rejections=none bin/www",

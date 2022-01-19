@@ -21,7 +21,9 @@ export class Pod {
   validate: boolean;
   state: any;
   
-  processes: Array<PodEnv> = [];
+  env;
+  numProcesses = 0;
+
   watcher: any;
   eventEmitter = new EventEmitter();
   isSaveConfig = false;
@@ -97,30 +99,28 @@ export class Pod {
 
     if (this.state.status === ProvisionStatus.Stop) { await this.delete(); return; }
 
-    if (this.processes.length > this.state.numPods) {
-      for (let i = 0; i < this.processes.length - this.state.numPods; i++) {
-        let processEnv = this.processes.pop();
-        // TODO: await processEnv.delete();
+    if (this.numProcesses > this.state.numPods) {
+      for (let i = 0; i < this.numProcesses - this.state.numPods; i++) {
+        this.numProcesses--;
+        await this.env.delete();
       }
-    } else if (this.state.numPods > this.processes.length) {
-      for (let i = 0; i < this.state.numPods - this.processes.length; i++) {
-        let processEnv = new PodEnv({
+    } else if (this.state.numPods > this.numProcesses) {
+      for (let i = 0; i < this.state.numPods - this.numProcesses; i++) {
+        let processEnv = this.env || new PodEnv({
           arg: {
             name: this.state.name,
             arg: this.state.arg,
             runtime: this.state.runtime
           }
         }, true);
-        this.processes.push(processEnv);
+        this.env = processEnv;
 
         try {
           var self = this;
-          process.on('uncaughtException', async (error) => { // DO SOME ERROR CHECKING SAME POD?
-              await self.saveConfig({status: ProvisionStatus.Error, error: error});
-          });
 
-          processEnv.save(this.processes.length - 1);
+          processEnv.save();
           await self.saveConfig({ status: ProvisionStatus.Up });
+          this.numProcesses++;
         } catch (error) {
           await this.saveConfig({ status: ProvisionStatus.Error, error: error });
         }
@@ -180,10 +180,12 @@ export class Pod {
   async delete(isFull = false) {
     if (isFull) { this.watcher.cancel(); }
     
-    for (let processEnv of this.processes) {
-      await processEnv.delete();
+    for (let index = 0; index < this.numProcesses; index++) {
+      await this.env.delete();
     }
-    this.processes = [];
+
+    this.numProcesses = 0;
+    delete this.env;
 
     if (isFull) {
       this.eventEmitter.emit('delete', this.state.name);
