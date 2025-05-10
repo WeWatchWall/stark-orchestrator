@@ -64,7 +64,7 @@ async function startServer(
   app.get("/hello", async (_req, res) => {
     const pb = new PocketBase(`${serverConfig.DBHost}:${serverConfig.DBPort}`);
     await pb
-      .collection("users")
+      .collection("_superusers")
       .authWithPassword(serverConfig.DBUser, serverConfig.DBpassword);
     const users = await pb.collection("users").getFullList();
 
