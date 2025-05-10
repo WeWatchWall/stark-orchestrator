@@ -42,8 +42,9 @@ export async function runServers(
     const workerPort = workerBasePort + i;
     workerTargets.push(`http://127.0.0.1:${workerPort}`);
     try {
-      const p = await pool.exec("startServer", [workerPort, serverConfig]);
-      console.log(p);
+      pool.exec("startServer", [workerPort, serverConfig]).then((p) => {
+        console.log(p);
+      });
     } catch (error) {
       console.error(`Error starting worker on port ${workerPort}: ${error}`);
     }

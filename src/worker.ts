@@ -8,10 +8,10 @@ import { createPinia } from "pinia";
 import { createApp } from "vue";
 import { threadId } from "worker_threads";
 import workerpool from "workerpool";
-import PocketBase from "pocketbase";
 
 import { ServerConfig } from "./entity/serverConfig";
 import { SESSION_EXPIRY } from "./util/constants";
+import { AdminDB } from "./model/adminDB";
 
 const app = createApp({});
 const pinia = createPinia();
@@ -61,14 +61,11 @@ async function startServer(
     next();
   });
 
-  app.get("/hello", async (_req, res) => {
-    const pb = new PocketBase(`${serverConfig.DBHost}:${serverConfig.DBPort}`);
-    await pb
-      .collection("_superusers")
-      .authWithPassword(serverConfig.DBUser, serverConfig.DBpassword);
-    const users = await pb.collection("users").getFullList();
+  const adminDB = new AdminDB(serverConfig, threadId);
+  await adminDB.init();
 
-    res.send(`Hello, world! Users: ${JSON.stringify(users)}`);
+  app.get("/hello", async (_req, res) => {
+    res.send(`Hello, world!`);
   });
 
   // ...other express middleware/routes if needed...
