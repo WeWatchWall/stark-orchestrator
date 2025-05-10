@@ -1,11 +1,11 @@
-import workerpool from "workerpool";
-import path from "path";
+import fs from "fs";
 import http from "http";
 import httpProxy from "http-proxy";
 import https from "https";
+import path from "path";
+import workerpool from "workerpool";
 import { getCerts } from "./certs";
 import { ServerConfig } from "./entity/serverConfig";
-import fs from "fs";
 
 // Declare variables at module scope
 let pool: workerpool.Pool | undefined;
@@ -34,6 +34,7 @@ export async function runServers(
   }
   pool = workerpool.pool(workerPath, {
     maxWorkers: numWorkers,
+    workerType: 'thread', // <-- use worker threads
   });
 
   workerTargets = [];
