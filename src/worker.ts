@@ -8,6 +8,7 @@ import { createPinia } from "pinia";
 import { createApp } from "vue";
 import { threadId } from "worker_threads";
 import workerpool from "workerpool";
+import PocketBase from "pocketbase";
 
 import { ServerConfig } from "./entity/serverConfig";
 import { SESSION_EXPIRY } from "./util/constants";
@@ -22,7 +23,6 @@ async function startServer(
   port: number,
   serverConfig: ServerConfig
 ): Promise<string> {
-
   const app = express();
   app.set("trust proxy", 1); // trust first proxy
 
@@ -61,8 +61,14 @@ async function startServer(
     next();
   });
 
-  app.get("/hello", (_req, res) => {
-    res.send("Hello, world!");
+  app.get("/hello", async (_req, res) => {
+    const pb = new PocketBase(`${serverConfig.DBHost}:${serverConfig.DBPort}`);
+    await pb
+      .collection("users")
+      .authWithPassword(serverConfig.DBUser, serverConfig.DBpassword);
+    const users = await pb.collection("users").getFullList();
+
+    res.send(`Hello, world! Users: ${JSON.stringify(users)}`);
   });
 
   // ...other express middleware/routes if needed...

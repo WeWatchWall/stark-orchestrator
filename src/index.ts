@@ -24,7 +24,7 @@ program
   .option(
     "--dbHost <string>",
     "Pocketbase host",
-    "localhost"
+    "http://localhost"
   )
   .option(
     "--dbUser <string>",
