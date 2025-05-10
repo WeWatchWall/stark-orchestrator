@@ -16,7 +16,6 @@ package-lock.json
 /mnt/
 /package/
 
-packages/*
-!packages/stark-browser-config
-!packages/stark-core-config
-!packages/stark-edge-config
+node_modules/
+dist/
+certs/
