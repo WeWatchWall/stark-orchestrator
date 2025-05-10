@@ -34,20 +34,21 @@ export async function runServers(
   }
   pool = workerpool.pool(workerPath, {
     maxWorkers: numWorkers,
-    workerType: 'thread', // <-- use worker threads
+    workerType: "thread", // <-- use worker threads
   });
 
   workerTargets = [];
   for (let i = 0; i < numWorkers; i++) {
     const workerPort = workerBasePort + i;
     workerTargets.push(`http://127.0.0.1:${workerPort}`);
-    try {
-      pool.exec("startServer", [workerPort, serverConfig]).then((p) => {
+    pool
+      .exec("startServer", [workerPort, serverConfig])
+      .then((p) => {
         console.log(p);
+      })
+      .catch((error) => {
+        console.error(`Error starting worker on port ${workerPort}: ${error}`);
       });
-    } catch (error) {
-      console.error(`Error starting worker on port ${workerPort}: ${error}`);
-    }
   }
 
   currentIndex = 0;
