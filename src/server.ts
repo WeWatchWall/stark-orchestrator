@@ -1,120 +1,106 @@
-import fs from "fs";
 import http from "http";
-import httpProxy from "http-proxy";
 import https from "https";
-import path from "path";
-import workerpool from "workerpool";
+import express from "express";
+import session from "express-session";
+import createMemoryStore from "memorystore";
+
 import { getCerts } from "./certs";
 import { ServerConfig } from "./entity/serverConfig";
+import { SESSION_EXPIRY } from "./util/constants";
+import { AdminDB } from "./model/adminDB";
 
 // Declare variables at module scope
-let pool: workerpool.Pool | undefined;
-let workerTargets: string[] = [];
-let currentIndex = 0;
-let proxy: httpProxy | undefined;
 let httpServer: http.Server | undefined;
 let httpsServer: https.Server | undefined;
 
+// Function to start an Express server, adapted from worker.ts
+async function startExpressApp(
+  serverConfig: ServerConfig
+): Promise<express.Express> {
+  const app = express();
+  app.set("trust proxy", 1); // trust first proxy
+
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+
+  /* #region Setup Swagger. */
+  // const JSONPath =
+  //   path.join(__dirname, '..', 'src', 'util', 'swagger.json');
+  // const swaggerDocument =
+  //   JSON.parse(fs.readFileSync(JSONPath).toString());
+  // app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+  /* #endregion */
+
+  const MemoryStore = createMemoryStore(session);
+
+  app.use(
+    session({
+      cookie: {
+        maxAge: SESSION_EXPIRY,
+        secure: serverConfig.isSecureCookie,
+        sameSite: serverConfig.isSecureCookie ? "none" : "lax",
+      },
+      secret: require("crypto").randomBytes(32).toString("hex"),
+      resave: false,
+      saveUninitialized: false,
+      store: new MemoryStore({
+        checkPeriod: SESSION_EXPIRY, // prune expired entries every 24h
+      }),
+    })
+  );
+
+  app.use((req, _res, next) => {
+    // Increment the session visits counter
+    (req.session as any).visits = ((req.session as any).visits || 0) + 1;
+    next();
+  });
+
+  const adminDB = new AdminDB(serverConfig);
+  await adminDB.init();
+
+  app.get("/hello", async (_req, res) => {
+    res.send(`Hello, world!`);
+  });
+
+  // ...other express middleware/routes if needed...
+  return app;
+}
+
 export async function runServers(
-  numWorkers: number,
   httpPort: number,
   exposeHttp: boolean,
   httpsPort: number,
   serverConfig: ServerConfig
 ): Promise<void> {
-  const workerBasePort = httpPort + 1;
-
-  // Determine worker path for both dev (src) and prod (dist) environments
-  let workerPath = path.join(__dirname, "worker.js");
-  try {
-    fs.accessSync(workerPath);
-  } catch {
-    // fallback to cwd if not found (e.g., running from dist in test)
-    workerPath = path.join(process.cwd(), "dist", "worker.js");
-  }
-  pool = workerpool.pool(workerPath, {
-    maxWorkers: numWorkers,
-    workerType: "thread", // <-- use worker threads
-  });
-
-  workerTargets = [];
-  for (let i = 0; i < numWorkers; i++) {
-    const workerPort = workerBasePort + i;
-    workerTargets.push(`http://127.0.0.1:${workerPort}`);
-    pool
-      .exec("startServer", [workerPort, serverConfig])
-      .then((p) => {
-        console.log(p);
-      })
-      .catch((error) => {
-        console.error(`Error starting worker on port ${workerPort}: ${error}`);
-      });
-  }
-
-  currentIndex = 0;
-  proxy = httpProxy.createProxyServer({});
-  const requestHandler = (
-    req: http.IncomingMessage,
-    res: http.ServerResponse
-  ) => {
-    // Check for pid in query string or headers
-    let pid: string | undefined;
-    if (req.url) {
-      const urlObj = new URL(
-        req.url,
-        `http://${req.headers.host || "localhost"}`
-      );
-      pid = urlObj.searchParams.get("pid") || undefined;
-    }
-    if (!pid && req.headers["pid"]) {
-      pid = Array.isArray(req.headers["pid"])
-        ? req.headers["pid"][0]
-        : req.headers["pid"];
-    }
-    let targetIndex: number;
-    if (pid) {
-      // Convert pid string to a number and map to worker index
-      const pidNum = parseInt(pid, 10);
-      if (!isNaN(pidNum)) {
-        targetIndex = Math.abs(pidNum) % workerTargets.length;
-      } else {
-        targetIndex = 0; // fallback if pid is not a number
-      }
-    } else {
-      // fallback to round-robin
-      targetIndex = currentIndex;
-      currentIndex = (currentIndex + 1) % workerTargets.length;
-    }
-    const target = workerTargets[targetIndex];
-    proxy!.web(req, res, { target }, (_err: any) => {
-      res.writeHead(502, { "Content-Type": "text/plain" });
-      res.end("Bad gateway");
-    });
-  };
+  const expressApp = await startExpressApp(serverConfig);
 
   httpServer = undefined;
   httpsServer = undefined;
 
   if (exposeHttp) {
-    httpServer = http.createServer(requestHandler);
+    httpServer = http.createServer(expressApp); // Use expressApp directly
     httpServer.listen(httpPort, "0.0.0.0", () => {
-      console.log(`HTTP Proxy server listening on port ${httpPort}`);
+      console.log(`HTTP Server listening on port ${httpPort}`);
     });
   } else {
     console.log("HTTP server not exposed.");
   }
 
-  // HTTPS proxy server (always created)
+  // HTTPS server (always created)
   const certOptions = getCerts();
-  httpsServer = https.createServer(certOptions, requestHandler);
+  httpsServer = https.createServer(certOptions, expressApp); // Use expressApp directly
   httpsServer.listen(httpsPort, "0.0.0.0", () => {
-    console.log(`HTTPS Proxy server listening on port ${httpsPort}`);
+    console.log(`HTTPS Server listening on port ${httpsPort}`);
   });
+  console.log(
+    `Single server instance started. HTTP on ${httpPort} ${
+      exposeHttp ? "" : "(not exposed)"
+    }, HTTPS on ${httpsPort}`
+  );
 }
 
 // Expose dispose logic as a function
 export async function dispose() {
-  await pool?.terminate(true); // force kill all workers
   if (httpServer) {
     await new Promise<void>((resolve, reject) => {
       httpServer!.close((err) => (err ? reject(err) : resolve()));
@@ -125,5 +111,5 @@ export async function dispose() {
       httpsServer!.close((err) => (err ? reject(err) : resolve()));
     });
   }
-  proxy?.close();
+  console.log("Servers disposed.");
 }

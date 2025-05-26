@@ -5,11 +5,9 @@ import { APP_NAME, COLLECTION_VALUES } from "../util/constants";
 export class AdminDB {
   serverConfig: ServerConfig;
   pocketBase: PocketBase;
-  threadId: number;
 
-  constructor(serverConfig: ServerConfig, threadId: number) {
+  constructor(serverConfig: ServerConfig) {
     this.serverConfig = serverConfig;
-    this.threadId = threadId;
 
     this.pocketBase = new PocketBase(
       `${serverConfig.DBHost}:${serverConfig.DBPort}`
@@ -53,17 +51,6 @@ export class AdminDB {
       applicationValue.expand["value"] === APP_NAME
     )
       return;
-
-    // If this is not the first thread, wait for the first thread to finish
-    // before assuming the initialization is complete
-    if (this.threadId > 1) {
-      await new Promise((resolve) => {
-        setTimeout(() => {
-          resolve(true);
-        }, 5000);
-      });
-      return;
-    }
 
     // Create the collection if it doesn't exist
     if (!valuesCollection) {

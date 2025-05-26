@@ -1,15 +1,8 @@
 import { Command } from "commander";
-import os from "os";
 import { runServers } from "./server";
 
-const numCores = os.cpus().length;
 const program = new Command();
 program
-  .option(
-    "-w, --workers <number>",
-    "number of worker threads",
-    String(numCores)
-  )
   .option(
     "-p, --httpPort <number>",
     "port for the HTTP server (external)",
@@ -45,7 +38,6 @@ program
   .parse(process.argv);
 
 const options = program.opts();
-const numWorkers = parseInt(options.workers, 10);
 const httpPort = parseInt(options.httpPort, 10);
 const httpsPort = parseInt(options.httpsPort, 10);
 const exposeHttp: boolean = options.exposeHttp;
@@ -54,7 +46,6 @@ const dbPort = parseInt(options.dbPort, 10);
 
 (async () => {
   await runServers(
-    numWorkers,
     httpPort,
     exposeHttp,
     httpsPort,

@@ -1,6 +1,8 @@
+# Build with: docker build -t pocketbase:latest .
+
 FROM alpine:latest
 
-ARG PB_VERSION=0.28.1
+ARG PB_VERSION=0.28.2
 
 RUN apk add --no-cache \
     unzip \
