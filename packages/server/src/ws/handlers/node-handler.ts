@@ -156,7 +156,7 @@ export async function handleNodeRegister(
     sendResponse(
       ws,
       'node:register:error',
-      { code: 'INTERNAL_ERROR', message: 'Failed to register node', details: createResult.error },
+      { code: 'INTERNAL_ERROR', message: 'Failed to register node' },
       correlationId,
     );
     return;

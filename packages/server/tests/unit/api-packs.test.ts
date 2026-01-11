@@ -13,6 +13,7 @@ import type { Pack, RegisterPackInput, RuntimeTag } from '@stark-o/shared';
 // Mock the supabase modules before importing the handlers
 vi.mock('../../src/supabase/packs.js', () => ({
   getPackQueries: vi.fn(),
+  getPackQueriesAdmin: vi.fn(),
 }));
 
 // Import after mocking
@@ -24,7 +25,7 @@ import {
   updatePack,
   deletePack,
 } from '../../src/api/packs.js';
-import { getPackQueries } from '../../src/supabase/packs.js';
+import { getPackQueries, getPackQueriesAdmin } from '../../src/supabase/packs.js';
 
 /**
  * Create a mock Express request
@@ -104,6 +105,7 @@ describe('Pack API Handlers', () => {
     };
 
     vi.mocked(getPackQueries).mockReturnValue(mockPackQueries as any);
+    vi.mocked(getPackQueriesAdmin).mockReturnValue(mockPackQueries as any);
   });
 
   afterEach(() => {

@@ -13,6 +13,7 @@ import type { CreatePodInput, Pod, PodStatus } from '@stark-o/shared';
 // Mock the supabase modules before importing the handlers
 vi.mock('../../src/supabase/pods.js', () => ({
   getPodQueries: vi.fn(),
+  getPodQueriesAdmin: vi.fn(),
 }));
 
 vi.mock('../../src/supabase/packs.js', () => ({
@@ -21,7 +22,7 @@ vi.mock('../../src/supabase/packs.js', () => ({
 
 // Import after mocking
 import { createPod, listPods, getPodById, getPodStatus, deletePod, rollbackPod } from '../../src/api/pods.js';
-import { getPodQueries } from '../../src/supabase/pods.js';
+import { getPodQueries, getPodQueriesAdmin } from '../../src/supabase/pods.js';
 import { getPackQueries } from '../../src/supabase/packs.js';
 
 /**
@@ -143,6 +144,7 @@ describe('Pod API Handlers', () => {
 
     // Wire up the mocks
     vi.mocked(getPodQueries).mockReturnValue(mockPodQueries as any);
+    vi.mocked(getPodQueriesAdmin).mockReturnValue(mockPodQueries as any);
     vi.mocked(getPackQueries).mockReturnValue(mockPackQueries as any);
   });
 
