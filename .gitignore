@@ -1,7 +1,49 @@
+# Dependencies
 node_modules/
+.pnpm-store/
+
+# Build outputs
 dist/
-certs/
-infra/.terraform/
-infra/.terraform.lock.hcl
-*.tfstate
-*.tfstate.*
+build/
+*.tsbuildinfo
+
+# Test coverage
+coverage/
+
+# IDE and editors
+.vscode/
+.idea/
+*.suo
+*.user
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Supabase local data
+supabase/.branches/
+supabase/.temp/
+
+# Lock files (optional - uncomment if needed)
+# package-lock.json
+# yarn.lock

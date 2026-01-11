@@ -1,0 +1,232 @@
+/**
+ * Shared types for Stark Orchestrator
+ * @module @stark-o/shared/types
+ */
+
+// User types
+export type {
+  User,
+  UserRole,
+  CreateUserInput,
+  UpdateUserInput,
+  UserSession,
+} from './user.js';
+
+export {
+  hasRole,
+  hasAnyRole,
+  hasAllRoles,
+  canManageResources,
+  canDeploy,
+  ALL_ROLES,
+} from './user.js';
+
+// Pack types
+export type {
+  Pack,
+  RuntimeTag,
+  PackMetadata,
+  RegisterPackInput,
+  UpdatePackInput,
+  PackVersionSummary,
+  PackListItem,
+  SemVer,
+} from './pack.js';
+
+export {
+  isRuntimeCompatible,
+  parseSemVer,
+  compareSemVer,
+  ALL_RUNTIME_TAGS,
+} from './pack.js';
+
+// Node types
+export type {
+  Node,
+  RuntimeType,
+  NodeStatus,
+  NodeCapabilities,
+  AllocatableResources,
+  RegisterNodeInput,
+  UpdateNodeInput,
+  NodeHeartbeat,
+  NodeListItem,
+} from './node.js';
+
+export {
+  getAvailableResources,
+  hasAvailableResources,
+  isNodeSchedulable,
+  ALL_NODE_STATUSES,
+  ALL_RUNTIME_TYPES,
+  DEFAULT_ALLOCATABLE,
+  DEFAULT_ALLOCATED,
+} from './node.js';
+
+// Pod types
+export type {
+  Pod,
+  PodStatus,
+  ResourceRequirements,
+  PodSchedulingConfig,
+  CreatePodInput,
+  UpdatePodInput,
+  PodAction,
+  PodHistoryEntry,
+  PodListItem,
+} from './pod.js';
+
+export {
+  isPodActive,
+  isPodRunning,
+  isPodTerminated,
+  isPodSchedulable,
+  ALL_POD_STATUSES,
+  ALL_POD_ACTIONS,
+  DEFAULT_RESOURCE_REQUESTS,
+  DEFAULT_RESOURCE_LIMITS,
+} from './pod.js';
+
+// Labels types
+export type {
+  Labels,
+  Annotations,
+  LabelSelectorOperator,
+  LabelSelectorMatchExpression,
+  LabelSelector,
+} from './labels.js';
+
+export {
+  matchesExpression,
+  matchesSelector,
+  matchesLabels,
+  mergeLabels,
+  createSelector,
+  isValidLabelKey,
+  isValidLabelValue,
+  validateLabels,
+} from './labels.js';
+
+// Taints types
+export type {
+  Taint,
+  TaintEffect,
+  Toleration,
+  TolerationOperator,
+} from './taints.js';
+
+export {
+  tolerationMatchesTaint,
+  toleratesTaints,
+  toleratesBlockingTaints,
+  getEvictionTaints,
+  getUntoleratedPreferNoScheduleTaints,
+  CommonTaints,
+  CommonTolerations,
+  ALL_TAINT_EFFECTS,
+  ALL_TOLERATION_OPERATORS,
+} from './taints.js';
+
+// Scheduling types
+export type {
+  SchedulingPolicy,
+  NodeSelectorTerm,
+  NodeSelectorRequirement,
+  PreferredSchedulingTerm,
+  NodeAffinity,
+  PodAffinityTerm,
+  WeightedPodAffinityTerm,
+  PodAffinity,
+  PodAntiAffinity,
+  SchedulingConfig,
+} from './scheduling.js';
+
+export {
+  matchesRequirement,
+  matchesNodeSelectorTerm,
+  calculateAffinityScore,
+  ALL_SCHEDULING_POLICIES,
+} from './scheduling.js';
+
+// Namespace types
+export type {
+  Namespace,
+  NamespacePhase,
+  ResourceQuota,
+  ResourceQuotaHard,
+  LimitRange,
+  ResourceLimitValue,
+  ResourceUsage,
+  CreateNamespaceInput,
+  UpdateNamespaceInput,
+  NamespaceListItem,
+} from './namespace.js';
+
+export {
+  RESERVED_NAMESPACES,
+  isReservedNamespace,
+  hasQuotaAvailable,
+  getRemainingQuota,
+  applyLimitRangeDefaults,
+  validateAgainstLimitRange,
+  DEFAULT_RESOURCE_USAGE,
+  ALL_NAMESPACE_PHASES,
+} from './namespace.js';
+
+// Cluster types
+export type {
+  ClusterConfig,
+  DefaultResources,
+  UpdateClusterConfigInput,
+  ClusterStats,
+  ClusterHealthStatus,
+  ClusterHealth,
+  PriorityClass,
+  CreatePriorityClassInput,
+} from './cluster.js';
+
+export {
+  BUILTIN_PRIORITY_CLASSES,
+  DEFAULT_CLUSTER_CONFIG,
+  getClusterHealthStatus,
+  getResourceUtilization,
+} from './cluster.js';
+
+// Storage adapter types
+export type {
+  FileStats,
+  DirectoryEntry,
+  StorageAdapterConfig,
+  IStorageAdapter,
+  ISyncStorageAdapter,
+} from './storage-adapter.js';
+
+// HTTP adapter types
+export type {
+  HttpMethod,
+  HttpAdapterConfig,
+  HttpRequestOptions,
+  HttpResponse,
+  HttpAdapterErrorOptions,
+  IHttpAdapter,
+} from './http-adapter.js';
+
+export { HttpAdapterError } from './http-adapter.js';
+
+// Worker adapter types
+export type {
+  WorkerAdapterConfig,
+  TaskOptions,
+  TaskResult,
+  PoolStats,
+  TaskHandle,
+  IWorkerAdapter,
+  TransferableObject,
+} from './worker-adapter.js';
+
+export {
+  TaskCancelledError,
+  TaskTimeoutError,
+  WorkerNotInitializedError,
+  WorkerScriptRequiredError,
+} from './worker-adapter.js';

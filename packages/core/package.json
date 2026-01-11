@@ -1,0 +1,33 @@
+{
+  "name": "@stark-o/core",
+  "version": "0.0.1",
+  "description": "Isomorphic core with Vue reactivity for Stark Orchestrator",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint src --ext .ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@vue/reactivity": "^3.5.0",
+    "@stark-o/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "license": "MIT"
+}
