@@ -158,7 +158,7 @@ export class SchedulerService {
 
     const pendingPods = pendingResult.data.slice(0, this.config.maxPodsPerRun);
     if (pendingPods.length === 0) {
-      logger.debug('No pending pods to schedule');
+      // logger.debug('No pending pods to schedule');
       return;
     }
 

@@ -15,6 +15,7 @@
     "build:core": "pnpm --filter @stark-o/core run build",
     "build:server": "pnpm --filter @stark-o/server run build",
     "build:cli": "pnpm --filter @stark-o/cli run build",
+    "build:client": "pnpm --filter @stark-o/client run generate",
     "dev": "pnpm -r --parallel run dev",
     "dev:server": "pnpm --filter @stark-o/server run dev",
     "lint": "eslint packages/*/src --ext .ts",

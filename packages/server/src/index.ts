@@ -6,6 +6,8 @@
  */
 
 import http from 'http';
+import path from 'path';
+import { fileURLToPath } from 'node:url';
 import express, { Express } from 'express';
 import cors, { CorsOptions } from 'cors';
 import { WebSocketServer } from 'ws';
@@ -46,10 +48,10 @@ export interface ServerConfig {
  * Default server configuration
  */
 const DEFAULT_CONFIG: ServerConfig = {
-  port: parseInt(process.env.PORT || '3000', 10),
+  port: parseInt(process.env.PORT || '80', 10),
   host: process.env.HOST || '0.0.0.0',
   enableCors: true,
-  corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:*,http://127.0.0.1:*').split(','),
+  corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost,http://localhost:*,http://127.0.0.1,http://127.0.0.1:*').split(','),
   enableLogging: process.env.ENABLE_LOGGING !== 'false',
   wsPath: process.env.WS_PATH || '/ws',
   nodeEnv: (process.env.NODE_ENV || 'development') as ServerConfig['nodeEnv'],
@@ -177,6 +179,27 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
     enableLogging: finalConfig.enableLogging,
   });
   app.use(apiRouter);
+
+  // Serve static files from client build
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  // In dev mode (__dirname is src/), go up to package root then into dist/public
+  // In production (__dirname is dist/), public is a sibling folder
+  const publicPath = __dirname.endsWith('src') 
+    ? path.join(__dirname, '..', 'dist', 'public')
+    : path.join(__dirname, 'public');
+  
+  app.use(express.static(publicPath));
+  
+  // SPA fallback - serve index.html for any unmatched routes
+  app.get('*', (_req, res) => {
+    const indexPath = path.join(publicPath, 'index.html');
+    res.sendFile(indexPath, (err) => {
+      if (err) {
+        res.status(404).send('Not found');
+      }
+    });
+  });
 
   // Create HTTP server
   const httpServer = http.createServer(app);
@@ -327,7 +350,6 @@ async function main(): Promise<void> {
 
 // Run main if this is the entry point
 // Check if running directly (not imported as a module)
-import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
 const currentFile = fileURLToPath(import.meta.url);

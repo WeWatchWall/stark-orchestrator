@@ -89,7 +89,7 @@ describe('Config Module', () => {
 
       const config = loadConfig();
 
-      expect(config.apiUrl).toBe('http://127.0.0.1:3000');
+      expect(config.apiUrl).toBe('http://127.0.0.1:80');
       expect(config.supabaseUrl).toBe('http://127.0.0.1:54321');
       expect(config.defaultNamespace).toBe('default');
       expect(config.defaultOutputFormat).toBe('table');
@@ -116,7 +116,7 @@ describe('Config Module', () => {
 
       const config = loadConfig();
 
-      expect(config.apiUrl).toBe('http://127.0.0.1:3000');
+      expect(config.apiUrl).toBe('http://127.0.0.1:80');
     });
   });
 
