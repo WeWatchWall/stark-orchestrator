@@ -690,12 +690,12 @@ export class NodeAgent {
     // Report status change to orchestrator if connected
     if (this.ws && this.ws.readyState === WebSocket.OPEN && this.state === 'registered') {
       this.send({
-        type: 'pod:status',
+        type: 'pod:status:update',
         payload: {
           podId,
           status: this.mapLocalStatusToPodStatus(status),
           message,
-          timestamp: new Date().toISOString(),
+          reason: 'runtime_status_change',
         },
       });
     }
@@ -715,7 +715,7 @@ export class NodeAgent {
       case 'stopping':
         return 'stopping';
       case 'stopped':
-        return 'succeeded';
+        return 'stopped';
       case 'failed':
         return 'failed';
       default:

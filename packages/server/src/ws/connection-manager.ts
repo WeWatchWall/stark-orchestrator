@@ -16,6 +16,7 @@ import {
   handleNodeDisconnect,
   type WsConnection,
 } from './handlers/node-handler.js';
+import { routePodMessage } from './handlers/pod-handler.js';
 import type { RegisterNodeInput, NodeHeartbeat } from '@stark-o/shared';
 import { getSupabaseServiceClient } from '../supabase/client.js';
 
@@ -351,6 +352,23 @@ export class ConnectionManager {
         break;
 
       default:
+        // Check if it's a pod message
+        if (message.type.startsWith('pod:')) {
+          // Require authentication for pod operations
+          if (this.options.requireAuth && !conn.isAuthenticated) {
+            this.sendMessage(conn.ws, {
+              type: `${message.type}:error`,
+              payload: { code: 'UNAUTHORIZED', message: 'Authentication required' },
+              correlationId: message.correlationId,
+            });
+            return;
+          }
+          const result = routePodMessage(wsConnection, message);
+          if (result !== undefined) {
+            await result; // Message was handled by pod router
+            return;
+          }
+        }
         this.sendError(
           conn.ws,
           'UNKNOWN_MESSAGE_TYPE',
