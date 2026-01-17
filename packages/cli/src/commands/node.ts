@@ -9,6 +9,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import * as os from 'node:os';
 import { createApiClient, requireAuth, loadConfig, createCliSupabaseClient, saveCredentials, type Credentials } from '../config.js';
+import { randomBytes } from 'node:crypto';
 import {
   error,
   info,
@@ -469,6 +470,38 @@ export function createNodeCommand(): Command {
 }
 
 /**
+ * Generates a random string for email/password
+ */
+function generateRandomString(length: number): string {
+  return randomBytes(Math.ceil(length / 2)).toString('hex').slice(0, length);
+}
+
+/**
+ * Generates a secure random password meeting requirements
+ */
+function generateRandomPassword(): string {
+  // Ensure we have uppercase, lowercase, digit, and sufficient length
+  const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const lower = 'abcdefghijklmnopqrstuvwxyz';
+  const digits = '0123456789';
+  const all = upper + lower + digits;
+  
+  // Start with one of each required type
+  let password = 
+    upper[Math.floor(Math.random() * upper.length)]! +
+    lower[Math.floor(Math.random() * lower.length)]! +
+    digits[Math.floor(Math.random() * digits.length)]!;
+  
+  // Fill to 16 characters
+  for (let i = 0; i < 13; i++) {
+    password += all[Math.floor(Math.random() * all.length)];
+  }
+  
+  // Shuffle the password
+  return password.split('').sort(() => Math.random() - 0.5).join('');
+}
+
+/**
  * Agent start command handler - starts a node agent
  */
 async function agentStartHandler(options: {
@@ -521,9 +554,80 @@ async function agentStartHandler(options: {
     }
   }
 
+  // If still no auth token, try auto-registration if public registration is enabled
   if (!authToken) {
-    error('Authentication required. Provide --token or --email and --password');
-    process.exit(1);
+    info('No authentication provided. Checking if public registration is available...');
+    
+    try {
+      // Convert ws:// or wss:// URL to http:// or https:// for API calls
+      const httpUrl = options.url
+        .replace(/^wss:\/\//, 'https://')
+        .replace(/^ws:\/\//, 'http://')
+        .replace(/\/ws\/?$/, '');
+      
+      // Check setup status
+      const statusResponse = await fetch(`${httpUrl}/auth/setup/status`);
+      const statusResult = await statusResponse.json() as {
+        success: boolean;
+        data?: { needsSetup: boolean; registrationEnabled: boolean };
+        error?: { message: string };
+      };
+
+      if (!statusResult.success || !statusResult.data) {
+        error('Failed to check registration status', statusResult.error);
+        process.exit(1);
+      }
+
+      if (!statusResult.data.registrationEnabled) {
+        error('Authentication required and public registration is disabled. Provide --token or --email and --password');
+        process.exit(1);
+      }
+
+      // Generate random credentials for auto-registration
+      const randomId = generateRandomString(8);
+      const autoEmail = `node-${randomId}@stark.com`;
+      const autoPassword = generateRandomPassword();
+
+      info(`Public registration is enabled. Auto-registering as ${autoEmail}...`);
+
+      // Register the user with operator role
+      const registerResponse = await fetch(`${httpUrl}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: autoEmail,
+          password: autoPassword,
+          displayName: `Node Agent ${options.name}`,
+          roles: ['operator'], // Request operator role (will be filtered to non-admin by server)
+        }),
+      });
+
+      const registerResult = await registerResponse.json() as {
+        success: boolean;
+        data?: {
+          accessToken: string;
+          refreshToken?: string;
+          expiresAt: string;
+          user: { id: string; email: string };
+        };
+        error?: { code: string; message: string };
+      };
+
+      if (!registerResult.success || !registerResult.data) {
+        error('Auto-registration failed', registerResult.error);
+        process.exit(1);
+      }
+
+      authToken = registerResult.data.accessToken;
+
+      // Note: We intentionally don't save these credentials to avoid overwriting
+      // the user's existing CLI session. The auto-registered account is ephemeral
+      // and only used for this node agent session.
+      success(`Auto-registered and authenticated as ${autoEmail}`);
+    } catch (err) {
+      error('Auto-registration failed', err instanceof Error ? { message: err.message } : undefined);
+      process.exit(1);
+    }
   }
 
   // Parse labels

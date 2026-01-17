@@ -52,7 +52,7 @@ pnpm db:migrate
 pnpm dev:server
 ```
 
-The server will start at `http://localhost:3000`.
+The server will start at `http://localhost:80`.
 
 ### Production Deployment
 
@@ -180,6 +180,12 @@ node packages/cli/dist/index.js node rm my-node-1
 ### Starting a Node Agent
 
 The Node.js runtime agent connects to the orchestrator and registers itself to receive pod deployments.
+If you are logged in as admin, you can enable automatic registration of the node,
+which makes passing in authentification parameters optional:
+
+```bash
+node packages/cli/dist/index.js server-config set --enable-registration
+```
 
 ```bash
 # Start a node agent with basic configuration

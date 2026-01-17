@@ -230,3 +230,13 @@ export {
   WorkerNotInitializedError,
   WorkerScriptRequiredError,
 } from './worker-adapter.js';
+
+// App config types
+export type {
+  AppConfig,
+  UpdateAppConfigInput,
+} from './app-config.js';
+
+export {
+  DEFAULT_APP_CONFIG,
+} from './app-config.js';

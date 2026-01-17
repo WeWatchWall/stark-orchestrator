@@ -12,6 +12,7 @@ import { createPodsRouter } from './pods.js';
 import { createNodesRouter } from './nodes.js';
 import { createAuthRouter } from './auth.js';
 import { createNamespacesRouter } from './namespaces.js';
+import { createConfigRouter } from './config.js';
 import { apiRateLimiter, authRateLimiter } from '../middleware/rate-limit-middleware.js';
 
 /**
@@ -246,6 +247,9 @@ export function createApiRouter(options: ApiRouterOptions = {}): Router {
   apiRouter.use('/nodes', createNodesRouter());
   apiRouter.use('/namespaces', createNamespacesRouter());
 
+  // Config route (public read, admin-only write)
+  apiRouter.use('/config', createConfigRouter());
+
   // Mount API router at /api
   router.use('/api', apiRouter);
 
@@ -258,7 +262,7 @@ export function createApiRouter(options: ApiRouterOptions = {}): Router {
   logger.info('API router initialized', {
     version: apiVersion,
     rateLimiting: enableRateLimiting,
-    routes: ['/health', '/ready', '/live', '/auth/*', '/api/packs', '/api/pods', '/api/nodes', '/api/namespaces'],
+    routes: ['/health', '/ready', '/live', '/auth/*', '/api/packs', '/api/pods', '/api/nodes', '/api/namespaces', '/api/config'],
   });
 
   return router;

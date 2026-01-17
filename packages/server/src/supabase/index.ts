@@ -163,3 +163,11 @@ export {
   decrementNamespaceUsage,
   markNamespaceForDeletion,
 } from './namespaces.js';
+
+// App config queries
+export {
+  type AppConfigResult,
+  getAppConfig,
+  updateAppConfig,
+  isPublicRegistrationEnabled,
+} from './app-config.js';

@@ -14,6 +14,7 @@ import { createPackCommand } from './commands/pack.js';
 import { createNodeCommand } from './commands/node.js';
 import { createPodCommand } from './commands/pod.js';
 import { createNamespaceCommand } from './commands/namespace.js';
+import { createServerConfigCommand } from './commands/server-config.js';
 
 /**
  * CLI version from package.json
@@ -75,6 +76,7 @@ function createProgram(): Command {
   program.addCommand(createNodeCommand());
   program.addCommand(createPodCommand());
   program.addCommand(createNamespaceCommand());
+  program.addCommand(createServerConfigCommand());
 
   // Add config command for managing CLI settings
   program

@@ -10,3 +10,4 @@ export { createPackCommand } from './pack.js';
 export { createNodeCommand } from './node.js';
 export { createPodCommand } from './pod.js';
 export { createNamespaceCommand } from './namespace.js';
+export { createServerConfigCommand } from './server-config.js';

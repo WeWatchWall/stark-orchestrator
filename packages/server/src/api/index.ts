@@ -74,3 +74,10 @@ export {
   deleteNamespaceByName,
   getNamespaceQuota,
 } from './namespaces.js';
+
+// Config API
+export {
+  createConfigRouter,
+  getConfig,
+  putConfig,
+} from './config.js';

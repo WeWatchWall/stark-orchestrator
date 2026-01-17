@@ -457,6 +457,131 @@ async function listUsersHandler(): Promise<void> {
 }
 
 /**
+ * Register command handler - registers a new user (when public registration is enabled)
+ */
+async function registerHandler(options: { email?: string }): Promise<void> {
+  const config = loadConfig();
+  const apiClient = createApiClient(config);
+
+  // Check if already authenticated
+  if (isAuthenticated()) {
+    const creds = loadCredentials()!;
+    info(`Already logged in as ${creds.email}`);
+    return;
+  }
+
+  // Check if registration is enabled
+  info('Checking if registration is available...');
+
+  try {
+    const statusResponse = await apiClient.get('/auth/setup/status');
+    const statusData = await statusResponse.json() as { 
+      success: boolean; 
+      data?: { needsSetup: boolean; registrationEnabled: boolean }; 
+      error?: { message: string } 
+    };
+
+    if (!statusResponse.ok || !statusData.success) {
+      error('Failed to check registration status', { message: statusData.error?.message ?? 'Unknown error' });
+      process.exit(1);
+    }
+
+    if (statusData.data?.needsSetup) {
+      info('No users exist yet. Use `stark auth setup` to create the first admin account.');
+      return;
+    }
+
+    if (!statusData.data?.registrationEnabled) {
+      info('Public registration is disabled. Contact an administrator for access.');
+      info('Administrators can enable registration with: stark config set --enable-registration');
+      return;
+    }
+
+    console.log(chalk.green('\n✓ Public registration is enabled.\n'));
+
+    // Get email
+    let email = options.email;
+    if (!email) {
+      email = await prompt('Email: ');
+    }
+
+    if (!email || !email.includes('@')) {
+      error('Invalid email address');
+      process.exit(1);
+    }
+
+    // Get password
+    const password = await prompt('Password: ', true);
+    if (!password) {
+      error('Password is required');
+      process.exit(1);
+    }
+
+    if (password.length < 8) {
+      error('Password must be at least 8 characters');
+      process.exit(1);
+    }
+
+    // Confirm password
+    const confirmPassword = await prompt('Confirm Password: ', true);
+    if (password !== confirmPassword) {
+      error('Passwords do not match');
+      process.exit(1);
+    }
+
+    // Get display name (optional)
+    const displayName = await prompt('Display Name (optional): ');
+
+    info('Creating account...');
+
+    const registerResponse = await apiClient.post('/auth/register', {
+      email,
+      password,
+      displayName: displayName || undefined,
+    });
+
+    const registerData = await registerResponse.json() as {
+      success: boolean;
+      data?: {
+        user: { id: string; email: string; roles: string[] };
+        accessToken: string;
+        refreshToken?: string;
+        expiresAt: string;
+      };
+      error?: { code: string; message: string };
+    };
+
+    if (!registerResponse.ok || !registerData.success) {
+      if (registerResponse.status === 403) {
+        error('Public registration is disabled.');
+      } else if (registerResponse.status === 409) {
+        error('A user with this email already exists.');
+      } else {
+        error('Registration failed', { message: registerData.error?.message ?? 'Unknown error' });
+      }
+      process.exit(1);
+    }
+
+    // Save credentials
+    const credentials: Credentials = {
+      accessToken: registerData.data!.accessToken,
+      refreshToken: registerData.data!.refreshToken,
+      expiresAt: registerData.data!.expiresAt,
+      userId: registerData.data!.user.id,
+      email: registerData.data!.user.email,
+    };
+
+    saveCredentials(credentials);
+
+    success(`Account created and logged in as ${email}`);
+    console.log(chalk.dim(`Roles: ${registerData.data!.user.roles.join(', ')}`));
+  } catch (err) {
+    error('Registration failed', err instanceof Error ? { message: err.message } : undefined);
+    process.exit(1);
+  }
+}
+
+/**
  * Creates the auth command group
  */
 export function createAuthCommand(): Command {
@@ -496,6 +621,12 @@ export function createAuthCommand(): Command {
     .description('Create the initial admin account (only works when no users exist)')
     .option('-e, --email <email>', 'Admin email address')
     .action(setupHandler);
+
+  auth
+    .command('register')
+    .description('Register a new account (when public registration is enabled)')
+    .option('-e, --email <email>', 'Email address')
+    .action(registerHandler);
 
   auth
     .command('add-user')

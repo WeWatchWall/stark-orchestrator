@@ -12,6 +12,7 @@
 import { Router, Request, Response } from 'express';
 import { createServiceLogger, generateCorrelationId } from '@stark-o/shared';
 import { getAuthQueries, countUsers, getUserQueries, verifyToken } from '../supabase/auth.js';
+import { isPublicRegistrationEnabled } from '../supabase/app-config.js';
 
 /**
  * Logger for auth API operations
@@ -291,6 +292,34 @@ export async function register(req: Request, res: Response): Promise<void> {
   try {
     requestLogger.debug('Register request received');
 
+    // Check if requester is an admin (optional auth - allows admin bypass)
+    let isAdmin = false;
+    const authHeader = req.headers.authorization;
+    if (authHeader !== undefined && authHeader.startsWith('Bearer ')) {
+      const accessToken = authHeader.substring(7);
+      const tokenResult = await verifyToken(accessToken);
+      if (tokenResult.data !== null && tokenResult.data !== undefined && tokenResult.data.roles.includes('admin')) {
+        isAdmin = true;
+        requestLogger.debug('Admin user performing registration');
+      }
+    }
+
+    // Check if public registration is enabled (only required for non-admin requests)
+    if (!isAdmin) {
+      const registrationResult = await isPublicRegistrationEnabled();
+      if (registrationResult.error) {
+        requestLogger.error('Error checking registration status', new Error(registrationResult.error.message));
+        sendError(res, 'INTERNAL_ERROR', 'Failed to check registration status', 500);
+        return;
+      }
+
+      if (registrationResult.data !== true) {
+        requestLogger.info('Registration attempted but public registration is disabled');
+        sendError(res, 'FORBIDDEN', 'Public registration is disabled. Contact an administrator for access.', 403);
+        return;
+      }
+    }
+
     // Validate input
     const validationResult = validateRegisterInput(req.body);
     if (!validationResult.valid) {
@@ -299,14 +328,42 @@ export async function register(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const { email, password, displayName } = req.body as {
+    const { email, password, displayName, roles } = req.body as {
       email: string;
       password: string;
       displayName?: string;
+      roles?: string[];
     };
 
     // Normalize email
     const normalizedEmail = email.trim().toLowerCase();
+
+    // Determine roles:
+    // - Admins can specify any valid roles
+    // - Anonymous registration only allows non-admin roles (defaults to 'viewer')
+    const validRoles = ['admin', 'operator', 'developer', 'viewer'] as const;
+    const nonAdminRoles = ['operator', 'developer', 'viewer'] as const;
+    type UserRole = typeof validRoles[number];
+    
+    let userRoles: UserRole[];
+    if (isAdmin && roles) {
+      // Admin can assign any valid role
+      userRoles = roles.filter((r): r is UserRole => validRoles.includes(r as UserRole));
+      if (userRoles.length === 0) {
+        userRoles = ['viewer'];
+      }
+    } else if (roles && roles.length > 0) {
+      // Anonymous registration: filter to non-admin roles only
+      userRoles = roles.filter((r): r is UserRole => 
+        nonAdminRoles.includes(r as typeof nonAdminRoles[number])
+      );
+      if (userRoles.length === 0) {
+        userRoles = ['viewer'];
+      }
+    } else {
+      // Default role for anonymous registration
+      userRoles = ['viewer'];
+    }
 
     // Register user
     const authQueries = getAuthQueries();
@@ -314,6 +371,7 @@ export async function register(req: Request, res: Response): Promise<void> {
       email: normalizedEmail,
       password,
       displayName,
+      roles: userRoles,
     });
 
     if (result.error) {
@@ -496,7 +554,7 @@ export async function logout(req: Request, res: Response): Promise<void> {
 }
 
 /**
- * GET /auth/setup/status - Check if setup is needed (no users exist)
+ * GET /auth/setup/status - Check if setup is needed (no users exist) and registration status
  */
 export async function setupStatus(_req: Request, res: Response): Promise<void> {
   const correlationId = generateCorrelationId();
@@ -515,9 +573,14 @@ export async function setupStatus(_req: Request, res: Response): Promise<void> {
 
     const needsSetup = (countResult.data ?? 0) === 0;
 
+    // Get public registration status
+    const registrationResult = await isPublicRegistrationEnabled();
+    const registrationEnabled = registrationResult.data ?? false;
+
     sendSuccess(res, {
       needsSetup,
       userCount: countResult.data ?? 0,
+      registrationEnabled,
     }, 200);
   } catch (error) {
     requestLogger.error('Error checking setup status', error instanceof Error ? error : undefined);
