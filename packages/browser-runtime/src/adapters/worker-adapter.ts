@@ -48,6 +48,15 @@ export {
 } from '@stark-o/shared';
 
 /**
+ * Internal task tracking info including the worker promise for force termination.
+ */
+interface PendingTaskInfo<T = unknown> {
+  cancel: () => void;
+  workerPromise: WorkerPromise<T>;
+  cancelled: boolean;
+}
+
+/**
  * Get the number of logical processors available to the browser.
  * Falls back to 4 if navigator.hardwareConcurrency is not available.
  */
@@ -71,7 +80,7 @@ export class WorkerAdapter implements IWorkerAdapter {
     Pick<BrowserWorkerAdapterConfig, 'workerScript' | 'onError'>;
   private pool: Pool | null = null;
   private initialized: boolean = false;
-  private readonly pendingTasks: Map<string, { cancel: () => void }> = new Map();
+  private readonly pendingTasks: Map<string, PendingTaskInfo> = new Map();
   private taskIdCounter: number = 0;
 
   constructor(config: BrowserWorkerAdapterConfig = {}) {
@@ -179,12 +188,45 @@ export class WorkerAdapter implements IWorkerAdapter {
       if (!cancelled) {
         cancelled = true;
         workerPromise.cancel();
+        const taskInfo = this.pendingTasks.get(taskId);
+        if (taskInfo) {
+          taskInfo.cancelled = true;
+        }
         this.pendingTasks.delete(taskId);
         options.onCancel?.();
       }
     };
 
-    this.pendingTasks.set(taskId, { cancel });
+    const forceTerminate = async (): Promise<void> => {
+      if (!cancelled) {
+        cancelled = true;
+        const taskInfo = this.pendingTasks.get(taskId);
+        if (taskInfo) {
+          taskInfo.cancelled = true;
+        }
+        this.pendingTasks.delete(taskId);
+        options.onCancel?.();
+      }
+      // Force terminate all workers and reinitialize the pool
+      if (this.pool) {
+        await this.pool.terminate(true, 100);
+        // Reinitialize the pool
+        const poolOptions: WorkerPoolOptions = {
+          minWorkers: this.config.minWorkers,
+          maxWorkers: this.config.maxWorkers,
+          maxQueueSize: this.config.maxQueueSize,
+          workerType: 'web',
+          workerTerminateTimeout: this.config.workerTerminateTimeout,
+        };
+        if (this.config.workerScript) {
+          this.pool = workerpool.pool(this.config.workerScript, poolOptions);
+        } else {
+          this.pool = workerpool.pool(poolOptions);
+        }
+      }
+    };
+
+    this.pendingTasks.set(taskId, { cancel, workerPromise, cancelled: false });
 
     const promise = this.withTimeout(workerPromise, taskTimeout)
       .then((value) => {
@@ -206,6 +248,7 @@ export class WorkerAdapter implements IWorkerAdapter {
     return {
       promise,
       cancel,
+      forceTerminate,
       isCancelled: () => cancelled,
     };
   }
@@ -276,12 +319,45 @@ export class WorkerAdapter implements IWorkerAdapter {
       if (!cancelled) {
         cancelled = true;
         workerPromise.cancel();
+        const taskInfo = this.pendingTasks.get(taskId);
+        if (taskInfo) {
+          taskInfo.cancelled = true;
+        }
         this.pendingTasks.delete(taskId);
         options.onCancel?.();
       }
     };
 
-    this.pendingTasks.set(taskId, { cancel });
+    const forceTerminate = async (): Promise<void> => {
+      if (!cancelled) {
+        cancelled = true;
+        const taskInfo = this.pendingTasks.get(taskId);
+        if (taskInfo) {
+          taskInfo.cancelled = true;
+        }
+        this.pendingTasks.delete(taskId);
+        options.onCancel?.();
+      }
+      // Force terminate all workers and reinitialize the pool
+      if (this.pool) {
+        await this.pool.terminate(true, 100);
+        // Reinitialize the pool
+        const poolOptions: WorkerPoolOptions = {
+          minWorkers: this.config.minWorkers,
+          maxWorkers: this.config.maxWorkers,
+          maxQueueSize: this.config.maxQueueSize,
+          workerType: 'web',
+          workerTerminateTimeout: this.config.workerTerminateTimeout,
+        };
+        if (this.config.workerScript) {
+          this.pool = workerpool.pool(this.config.workerScript, poolOptions);
+        } else {
+          this.pool = workerpool.pool(poolOptions);
+        }
+      }
+    };
+
+    this.pendingTasks.set(taskId, { cancel, workerPromise, cancelled: false });
 
     const promise = this.withTimeout(workerPromise, taskTimeout)
       .then((value) => {
@@ -303,6 +379,7 @@ export class WorkerAdapter implements IWorkerAdapter {
     return {
       promise,
       cancel,
+      forceTerminate,
       isCancelled: () => cancelled,
     };
   }

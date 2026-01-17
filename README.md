@@ -191,8 +191,7 @@ node packages/cli/dist/index.js server-config set --enable-registration
 # Start a node agent with basic configuration
 node packages/cli/dist/index.js node agent start \
   --url ws://localhost:3000/ws \
-  --name my-node-1 \
-  --token <auth-token>
+  --name my-node-1
 
 # Start with username/password authentication
 node packages/cli/dist/index.js node agent start \
@@ -362,7 +361,7 @@ ws.send(JSON.stringify({
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORT` | `3000` | HTTP server port |
+| `PORT` | `80` | HTTP server port |
 | `HOST` | `0.0.0.0` | Server bind address |
 | `NODE_ENV` | `development` | Environment mode |
 | `CORS_ORIGINS` | `http://localhost:*` | Allowed CORS origins |

@@ -238,9 +238,9 @@ export class PodHandler {
     try {
       this.updateStatus(podId, 'stopping');
 
-      // Cancel the execution
+      // Force terminate the execution by killing the worker
       if (state.executionHandle) {
-        state.executionHandle.cancel();
+        await state.executionHandle.forceTerminate();
       }
 
       state.stoppedAt = new Date();

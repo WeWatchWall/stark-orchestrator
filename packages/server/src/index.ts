@@ -15,6 +15,7 @@ import { createServiceLogger } from '@stark-o/shared';
 import { createApiRouter } from './api/router.js';
 import { createConnectionManager, type ConnectionManagerOptions } from './ws/connection-manager.js';
 import { createSchedulerService } from './services/scheduler-service.js';
+import { setConnectionManager } from './services/connection-service.js';
 
 // ============================================================================
 // Configuration
@@ -219,6 +220,9 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
 
   // Attach connection manager to WebSocket server
   connectionManager.attach(wss);
+
+  // Register connection manager with the connection service for global access
+  setConnectionManager(connectionManager);
 
   logger.debug('WebSocket server attached', { path: finalConfig.wsPath });
 

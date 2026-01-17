@@ -121,6 +121,17 @@ function getUserId(req: Request): string | null {
 }
 
 /**
+ * Check if user has admin or operator role (can manage any node)
+ */
+function hasNodeManagementRole(req: Request): boolean {
+  const user = (req as Request & { user?: { id: string; roles?: string[] } }).user;
+  if (!user?.roles) {
+    return false;
+  }
+  return user.roles.includes('admin') || user.roles.includes('operator');
+}
+
+/**
  * POST /api/nodes - Register a new node
  */
 export async function registerNode(req: Request, res: Response): Promise<void> {
@@ -514,8 +525,9 @@ export async function deleteNode(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    // Check ownership (only the registerer can delete)
-    if (existingResult.data.registeredBy && existingResult.data.registeredBy !== userId) {
+    // Check ownership (admins/operators can delete any node, others only their own)
+    const isNodeManager = hasNodeManagementRole(req);
+    if (!isNodeManager && existingResult.data.registeredBy && existingResult.data.registeredBy !== userId) {
       sendError(res, 'FORBIDDEN', 'You do not have permission to delete this node', 403);
       return;
     }

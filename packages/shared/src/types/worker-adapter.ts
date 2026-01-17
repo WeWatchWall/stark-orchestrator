@@ -146,8 +146,18 @@ export interface TaskHandle<T = unknown> {
 
   /**
    * Cancel the task execution.
+   * This is a cooperative cancellation - the task may continue running
+   * until it checks for cancellation.
    */
   cancel: () => void;
+
+  /**
+   * Force terminate the worker executing this task.
+   * This immediately kills the worker thread, ensuring the task stops.
+   * Use this when you need guaranteed termination (e.g., when a pod is stopped).
+   * The worker will be replaced with a new one automatically.
+   */
+  forceTerminate: () => Promise<void>;
 
   /**
    * Whether the task has been cancelled.

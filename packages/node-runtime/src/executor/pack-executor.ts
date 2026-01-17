@@ -83,8 +83,10 @@ export interface ExecutionHandle {
   podId: string;
   /** Promise resolving to execution result */
   promise: Promise<PackExecutionResult>;
-  /** Cancel the execution */
+  /** Cancel the execution (cooperative - task may continue until it checks for cancellation) */
   cancel: () => void;
+  /** Force terminate the worker executing this task (immediate termination) */
+  forceTerminate: () => Promise<void>;
   /** Check if cancelled */
   isCancelled: () => boolean;
   /** Execution start time */
@@ -380,11 +382,24 @@ export class PackExecutor {
       }
     };
 
+    // Create force terminate function
+    const forceTerminate = async (): Promise<void> => {
+      if (state.handle) {
+        this.config.logger.info('Force terminating pack execution', {
+          executionId,
+          podId: pod.id,
+        });
+        await state.handle.forceTerminate();
+        state.status = 'cancelled';
+      }
+    };
+
     return {
       executionId,
       podId: pod.id,
       promise,
       cancel,
+      forceTerminate,
       isCancelled: () => state.status === 'cancelled',
       startedAt,
     };

@@ -10,6 +10,8 @@ import type { PodStatus, CreatePodInput, Pod } from '@stark-o/shared';
 import { validateCreatePodInput, validateResourceRequestsVsLimits, createServiceLogger, generateCorrelationId } from '@stark-o/shared';
 import { getPodQueriesAdmin } from '../supabase/pods.js';
 import { getPackQueries } from '../supabase/packs.js';
+import { getNodeQueries } from '../supabase/nodes.js';
+import { sendToNode } from '../services/connection-service.js';
 import {
   authMiddleware,
   abilityMiddleware,
@@ -561,10 +563,35 @@ async function deletePod(req: Request, res: Response): Promise<void> {
     }
 
     const previousStatus = existingResult.data.status;
+    const nodeId = existingResult.data.nodeId;
 
-    // If pod is running, stop it first
+    // If pod is running, stop it first and notify the node
     if (['running', 'starting', 'scheduled'].includes(existingResult.data.status)) {
       await podQueries.stopPod(id, 'Deleted by user');
+
+      // Send pod:stop message to the node via WebSocket if the pod was assigned to a node
+      if (nodeId) {
+        const nodeQueries = getNodeQueries();
+        const nodeResult = await nodeQueries.getNodeById(nodeId);
+        if (nodeResult.data?.connectionId) {
+          const sent = sendToNode(nodeResult.data.connectionId, {
+            type: 'pod:stop',
+            payload: {
+              podId: id,
+              reason: 'user_delete',
+              message: 'Pod stopped by user via API',
+            },
+          });
+
+          if (sent) {
+            logger.info('Pod stop message sent to node', { podId: id, nodeId, connectionId: nodeResult.data.connectionId });
+          } else {
+            logger.warn('Failed to send pod stop message - node connection not found', { podId: id, nodeId });
+          }
+        } else {
+          logger.debug('Node has no active connection, skipping WebSocket notification', { podId: id, nodeId });
+        }
+      }
     }
 
     // Log history entry before deletion

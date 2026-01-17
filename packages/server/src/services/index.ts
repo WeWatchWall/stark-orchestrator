@@ -10,3 +10,10 @@ export {
   resetSchedulerService,
   type SchedulerServiceConfig,
 } from './scheduler-service.js';
+
+export {
+  setConnectionManager,
+  getConnectionManager,
+  sendToNode,
+  resetConnectionService,
+} from './connection-service.js';
