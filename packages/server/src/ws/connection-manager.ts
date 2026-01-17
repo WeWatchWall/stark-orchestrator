@@ -13,8 +13,10 @@ import { createLogger } from '@stark-o/shared';
 import {
   handleNodeRegister,
   handleNodeHeartbeat,
+  handleNodeReconnect,
   handleNodeDisconnect,
   type WsConnection,
+  type ReconnectNodePayload,
 } from './handlers/node-handler.js';
 import { routePodMessage } from './handlers/pod-handler.js';
 import type { RegisterNodeInput, NodeHeartbeat } from '@stark-o/shared';
@@ -65,6 +67,9 @@ export type WsMessageType =
   | 'node:register'
   | 'node:register:ack'
   | 'node:register:error'
+  | 'node:reconnect'
+  | 'node:reconnect:ack'
+  | 'node:reconnect:error'
   | 'node:heartbeat'
   | 'node:heartbeat:ack'
   | 'node:heartbeat:error'
@@ -336,6 +341,19 @@ export class ConnectionManager {
           return;
         }
         await handleNodeRegister(wsConnection, message as WsMessage<RegisterNodeInput>);
+        break;
+
+      case 'node:reconnect':
+        // Require authentication for node reconnection
+        if (this.options.requireAuth && !conn.isAuthenticated) {
+          this.sendMessage(conn.ws, {
+            type: 'node:reconnect:error',
+            payload: { code: 'UNAUTHORIZED', message: 'Authentication required' },
+            correlationId: message.correlationId,
+          });
+          return;
+        }
+        await handleNodeReconnect(wsConnection, message as WsMessage<ReconnectNodePayload>);
         break;
 
       case 'node:heartbeat':

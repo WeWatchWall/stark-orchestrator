@@ -389,6 +389,28 @@ export class NodeQueries {
 
     return { data: undefined, error: null };
   }
+
+  /**
+   * Updates node connection ID and sets status to online (used on reconnect)
+   */
+  async reconnectNode(id: string, connectionId: string): Promise<NodeResult<Node>> {
+    const { data, error } = await this.client
+      .from('nodes')
+      .update({
+        connection_id: connectionId,
+        status: 'online' as NodeStatus,
+        last_heartbeat: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      return { data: null, error };
+    }
+
+    return { data: rowToNode(data as NodeRow), error: null };
+  }
 }
 
 /**

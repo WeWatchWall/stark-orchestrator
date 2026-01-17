@@ -16,10 +16,12 @@ export {
 
 export {
   handleNodeRegister,
+  handleNodeReconnect,
   handleNodeHeartbeat,
   handleNodeDisconnect,
   type WsConnection,
   type WsNodeMessageType,
+  type ReconnectNodePayload,
 } from './handlers/node-handler.js';
 
 export {

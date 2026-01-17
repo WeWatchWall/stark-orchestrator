@@ -488,7 +488,7 @@ export class NodeAgent {
     const wasRegistered = this.state === 'registered';
     this.state = 'disconnected';
     this.ws = null;
-    this.nodeId = null;
+    // Preserve nodeId for reconnection - don't reset it
     this.connectionId = null;
 
     this.emit('disconnected', { code, reason, wasRegistered });
@@ -562,8 +562,12 @@ export class NodeAgent {
       this.emit('authenticated');
       this.config.logger.info('Authenticated successfully');
 
-      // Proceed to registration
-      await this.register();
+      // If we have an existing nodeId, reconnect instead of registering
+      if (this.nodeId) {
+        await this.reconnect();
+      } else {
+        await this.register();
+      }
     } catch (error) {
       this.config.logger.error('Authentication failed', { error });
       this.emit('error', error);
@@ -605,6 +609,36 @@ export class NodeAgent {
       this.config.logger.error('Registration failed', { error });
       this.emit('error', error);
       throw error;
+    }
+  }
+
+  /**
+   * Reconnect an existing node to the orchestrator
+   * Used when reconnecting after a connection drop
+   */
+  private async reconnect(): Promise<void> {
+    this.state = 'registering';
+    this.config.logger.info('Reconnecting node', { nodeId: this.nodeId, nodeName: this.config.nodeName });
+
+    try {
+      const response = await this.sendRequest<{ node: Node }>('node:reconnect', {
+        nodeId: this.nodeId,
+      });
+
+      this.state = 'registered';
+      this.emit('registered', response.node);
+      this.config.logger.info('Node reconnected', {
+        nodeId: this.nodeId,
+        nodeName: this.config.nodeName,
+      });
+
+      // Start heartbeat
+      this.startHeartbeat();
+    } catch (error) {
+      this.config.logger.error('Reconnection failed, falling back to registration', { error });
+      // If reconnection fails (e.g., node was deleted), fall back to fresh registration
+      this.nodeId = null;
+      await this.register();
     }
   }
 

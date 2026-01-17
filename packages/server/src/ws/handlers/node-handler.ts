@@ -36,6 +36,9 @@ export type WsNodeMessageType =
   | 'node:register'
   | 'node:register:ack'
   | 'node:register:error'
+  | 'node:reconnect'
+  | 'node:reconnect:ack'
+  | 'node:reconnect:error'
   | 'node:heartbeat'
   | 'node:heartbeat:ack'
   | 'node:heartbeat:error'
@@ -257,6 +260,101 @@ export async function handleNodeHeartbeat(
     ws,
     'node:heartbeat:ack',
     { nodeId: payload.nodeId, lastHeartbeat: new Date().toISOString() },
+    correlationId,
+  );
+}
+
+/**
+ * Reconnect payload
+ */
+export interface ReconnectNodePayload {
+  nodeId: string;
+}
+
+/**
+ * Handle node reconnection via WebSocket
+ * Used when a node with an existing nodeId reconnects after a connection drop
+ */
+export async function handleNodeReconnect(
+  ws: WsConnection,
+  message: WsMessage<ReconnectNodePayload>,
+): Promise<void> {
+  const { payload, correlationId } = message;
+
+  // Check authentication
+  if (!ws.userId) {
+    sendResponse(
+      ws,
+      'node:reconnect:error',
+      { code: 'UNAUTHORIZED', message: 'Authentication required' },
+      correlationId,
+    );
+    return;
+  }
+
+  // Validate nodeId is present
+  if (!payload.nodeId) {
+    sendResponse(
+      ws,
+      'node:reconnect:error',
+      { code: 'VALIDATION_ERROR', message: 'nodeId is required' },
+      correlationId,
+    );
+    return;
+  }
+
+  // Validate nodeId format
+  if (!UUID_REGEX.test(payload.nodeId)) {
+    sendResponse(
+      ws,
+      'node:reconnect:error',
+      { code: 'VALIDATION_ERROR', message: 'Invalid node ID format' },
+      correlationId,
+    );
+    return;
+  }
+
+  const nodeQueries = getNodeQueries();
+
+  // Get the node to verify it exists and belongs to this user
+  const nodeResult = await nodeQueries.getNodeById(payload.nodeId);
+  if (nodeResult.error || !nodeResult.data) {
+    sendResponse(
+      ws,
+      'node:reconnect:error',
+      { code: 'NOT_FOUND', message: 'Node not found' },
+      correlationId,
+    );
+    return;
+  }
+
+  // Verify the node was registered by this user
+  if (nodeResult.data.registeredBy !== ws.userId) {
+    sendResponse(
+      ws,
+      'node:reconnect:error',
+      { code: 'FORBIDDEN', message: 'Node does not belong to this user' },
+      correlationId,
+    );
+    return;
+  }
+
+  // Reconnect the node - update connection ID and set online
+  const reconnectResult = await nodeQueries.reconnectNode(payload.nodeId, ws.id);
+  if (reconnectResult.error || !reconnectResult.data) {
+    sendResponse(
+      ws,
+      'node:reconnect:error',
+      { code: 'INTERNAL_ERROR', message: 'Failed to reconnect node' },
+      correlationId,
+    );
+    return;
+  }
+
+  sendResponse(
+    ws,
+    'node:reconnect:ack',
+    { node: reconnectResult.data },
     correlationId,
   );
 }
