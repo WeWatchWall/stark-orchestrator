@@ -8,28 +8,25 @@
 
 import WebSocket from 'ws';
 import { randomUUID } from 'crypto';
-import { createServiceLogger, type Logger } from '@stark-o/shared';
-import type {
-  RegisterNodeInput,
-  NodeHeartbeat,
-  Node,
-  RuntimeType,
-  AllocatableResources,
-  NodeCapabilities,
+import {
+  createServiceLogger,
+  type Logger,
+  type RegisterNodeInput,
+  type NodeHeartbeat,
+  type Node,
+  type RuntimeType,
+  type AllocatableResources,
+  type NodeCapabilities,
+  type Labels,
+  type Annotations,
+  type Taint,
+  type WsMessage,
+  type PodDeployPayload,
+  type PodStopPayload,
+  type LocalPodStatus,
 } from '@stark-o/shared';
-import type { Labels, Annotations } from '@stark-o/shared';
-import type { Taint } from '@stark-o/shared';
-import { PodHandler, createPodHandler, type PodDeployPayload, type PodStopPayload, type PodStatus as LocalPodStatus } from './pod-handler.js';
+import { PodHandler, createPodHandler } from './pod-handler.js';
 import { PackExecutor } from '../executor/pack-executor.js';
-
-/**
- * WebSocket message structure
- */
-interface WsMessage<T = unknown> {
-  type: string;
-  payload: T;
-  correlationId?: string;
-}
 
 /**
  * Node agent configuration

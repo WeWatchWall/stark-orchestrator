@@ -22,76 +22,13 @@ import {
   type Logger,
   type Pack,
   type Pod,
-  type RuntimeTag,
+  type PackExecutionContext,
+  type PackExecutionResult,
+  type ExecutionHandle,
 } from '@stark-o/shared';
 
-/**
- * Pack execution context passed to the pack's entry point
- */
-export interface PackExecutionContext {
-  /** Unique execution ID */
-  executionId: string;
-  /** Pod ID */
-  podId: string;
-  /** Pack ID */
-  packId: string;
-  /** Pack version */
-  packVersion: string;
-  /** Pack name */
-  packName: string;
-  /** Runtime tag */
-  runtimeTag: RuntimeTag;
-  /** Environment variables */
-  env: Record<string, string>;
-  /** Execution timeout in milliseconds */
-  timeout: number;
-  /** Additional metadata */
-  metadata: Record<string, unknown>;
-}
-
-/**
- * Pack execution result
- */
-export interface PackExecutionResult {
-  /** Execution ID */
-  executionId: string;
-  /** Pod ID */
-  podId: string;
-  /** Whether execution succeeded */
-  success: boolean;
-  /** Return value from the pack */
-  returnValue?: unknown;
-  /** Error message if failed */
-  error?: string;
-  /** Error stack trace if failed */
-  errorStack?: string;
-  /** Execution duration in milliseconds */
-  durationMs: number;
-  /** Memory usage in bytes (if available) */
-  memoryUsage?: number;
-  /** Exit code (0 for success) */
-  exitCode: number;
-}
-
-/**
- * Running execution handle
- */
-export interface ExecutionHandle {
-  /** Execution ID */
-  executionId: string;
-  /** Pod ID */
-  podId: string;
-  /** Promise resolving to execution result */
-  promise: Promise<PackExecutionResult>;
-  /** Cancel the execution (cooperative - task may continue until it checks for cancellation) */
-  cancel: () => void;
-  /** Force terminate the worker executing this task (immediate termination) */
-  forceTerminate: () => Promise<void>;
-  /** Check if cancelled */
-  isCancelled: () => boolean;
-  /** Execution start time */
-  startedAt: Date;
-}
+// Re-export for convenience
+export type { PackExecutionContext, PackExecutionResult, ExecutionHandle };
 
 /**
  * Pack executor configuration

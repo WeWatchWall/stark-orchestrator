@@ -21,8 +21,8 @@
   "dependencies": {
     "@stark-o/core": "workspace:*",
     "@stark-o/shared": "workspace:*",
-    "@zenfs/core": "^1.0.0",
-    "@zenfs/dom": "^1.0.0",
+    "@zenfs/core": "^2.3.11",
+    "@zenfs/dom": "^1.2.6",
     "axios": "^1.7.0",
     "workerpool": "^9.2.0"
   },

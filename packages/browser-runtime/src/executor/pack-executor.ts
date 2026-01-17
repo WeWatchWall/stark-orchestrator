@@ -21,7 +21,13 @@ import {
   type Pack,
   type Pod,
   type RuntimeTag,
+  type PackExecutionContext,
+  type PackExecutionResult,
+  type ExecutionHandle,
 } from '@stark-o/shared';
+
+// Re-export for convenience
+export type { PackExecutionContext, PackExecutionResult, ExecutionHandle };
 
 /**
  * Generate a UUID (browser-compatible)
@@ -36,72 +42,6 @@ function generateUUID(): string {
     const v = c === 'x' ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
-}
-
-/**
- * Pack execution context passed to the pack's entry point
- */
-export interface PackExecutionContext {
-  /** Unique execution ID */
-  executionId: string;
-  /** Pod ID */
-  podId: string;
-  /** Pack ID */
-  packId: string;
-  /** Pack version */
-  packVersion: string;
-  /** Pack name */
-  packName: string;
-  /** Runtime tag */
-  runtimeTag: RuntimeTag;
-  /** Environment variables */
-  env: Record<string, string>;
-  /** Execution timeout in milliseconds */
-  timeout: number;
-  /** Additional metadata */
-  metadata: Record<string, unknown>;
-}
-
-/**
- * Pack execution result
- */
-export interface PackExecutionResult {
-  /** Execution ID */
-  executionId: string;
-  /** Pod ID */
-  podId: string;
-  /** Whether execution succeeded */
-  success: boolean;
-  /** Return value from the pack */
-  returnValue?: unknown;
-  /** Error message if failed */
-  error?: string;
-  /** Error stack trace if failed */
-  errorStack?: string;
-  /** Execution duration in milliseconds */
-  durationMs: number;
-  /** Memory usage in bytes (if available) */
-  memoryUsage?: number;
-  /** Exit code (0 for success) */
-  exitCode: number;
-}
-
-/**
- * Running execution handle
- */
-export interface ExecutionHandle {
-  /** Execution ID */
-  executionId: string;
-  /** Pod ID */
-  podId: string;
-  /** Promise resolving to execution result */
-  promise: Promise<PackExecutionResult>;
-  /** Cancel the execution */
-  cancel: () => void;
-  /** Check if cancelled */
-  isCancelled: () => boolean;
-  /** Execution start time */
-  startedAt: Date;
 }
 
 /**
@@ -398,11 +338,24 @@ export class PackExecutor {
       }
     };
 
+    // Create force terminate function
+    const forceTerminate = async (): Promise<void> => {
+      if (state.handle) {
+        this.config.logger.info('Force terminating pack execution', {
+          executionId,
+          podId: pod.id,
+        });
+        await state.handle.forceTerminate();
+        state.status = 'cancelled';
+      }
+    };
+
     return {
       executionId,
       podId: pod.id,
       promise,
       cancel,
+      forceTerminate,
       isCancelled: () => state.status === 'cancelled',
       startedAt,
     };
@@ -487,11 +440,21 @@ export class PackExecutor {
    * Load a bundle for a pack
    *
    * Tries multiple sources:
+   * 0. Inline bundleContent (if provided in pack)
    * 1. IndexedDB cache (StorageAdapter)
    * 2. Remote URL download (if bundlePath is a URL)
    * 3. Orchestrator storage (if bundlePath starts with 'storage:')
    */
   private async loadBundle(pack: Pack): Promise<string> {
+    // First, check if bundle content is provided directly (most common for pod:deploy)
+    if (pack.bundleContent) {
+      this.config.logger.debug('Using inline bundle content', {
+        packId: pack.id,
+        bundleSize: pack.bundleContent.length,
+      });
+      return pack.bundleContent;
+    }
+
     const cacheKey = `${pack.id}-${pack.version}.js`;
     const cachePath = `${this.config.bundlePath}/${cacheKey}`;
 
@@ -643,73 +606,88 @@ export class PackExecutor {
    *
    * The function is self-contained and serializable for worker execution.
    * Note: Browser environment has more restrictions than Node.js
+   *
+   * IMPORTANT: This function must embed all data directly into the returned
+   * function body. Closure variables are NOT available when the function
+   * is serialized and sent to a Web Worker.
    */
   private createWorkerFunction(
     bundleCode: string,
     context: PackExecutionContext
   ): (args: unknown[]) => Promise<unknown> {
-    // Create a serializable function that will run in the worker
-    // The function constructs and executes the pack in isolation
-    return async (args: unknown[]) => {
-      // Create a mock environment for pack execution
-      const env = context.env;
+    // Serialize context and bundleCode into the function body
+    // so they are available when the function runs in the worker
+    const serializedContext = JSON.stringify(context);
+    const serializedBundleCode = JSON.stringify(bundleCode);
 
-      // Make environment variables available via a global object
-      // (since browser workers don't have process.env)
-      const globalScope = typeof self !== 'undefined' ? self : globalThis;
-      (globalScope as unknown as Record<string, unknown>).__STARK_ENV__ = env;
-      (globalScope as unknown as Record<string, unknown>).__STARK_CONTEXT__ = context;
+    // Create a self-contained function string that embeds all data
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval
+    const workerFn = new Function(
+      'args',
+      `
+      return (async function() {
+        // Reconstruct context and bundleCode from embedded data
+        const context = ${serializedContext};
+        const bundleCode = ${serializedBundleCode};
+        const env = context.env;
 
-      try {
-        // Create a sandboxed module context for browser
-        // Note: More limited than Node.js - no require, no fs, etc.
-        const moduleExports: Record<string, unknown> = {};
-        const module = { exports: moduleExports };
+        // Make environment variables available via a global object
+        // (since browser workers don't have process.env)
+        const globalScope = typeof self !== 'undefined' ? self : globalThis;
+        globalScope.__STARK_ENV__ = env;
+        globalScope.__STARK_CONTEXT__ = context;
 
-        // Execute the bundle code
-        // Using Function constructor for sandboxing (similar to eval but safer)
-        // eslint-disable-next-line @typescript-eslint/no-implied-eval
-        const moduleFactory = new Function(
-          'exports',
-          'module',
-          'context',
-          'args',
-          '__STARK_ENV__',
-          `${bundleCode}\n//# sourceURL=pack-${context.packId}-${context.packVersion}.js`
-        );
+        try {
+          // Create a sandboxed module context for browser
+          // Note: More limited than Node.js - no require, no fs, etc.
+          const moduleExports = {};
+          const module = { exports: moduleExports };
 
-        // Execute the bundle
-        moduleFactory(
-          moduleExports,
-          module,
-          context,
-          args,
-          env
-        );
-
-        // Get the entrypoint function
-        const entrypoint = (context.metadata.entrypoint as string | undefined) ?? 'default';
-        const packExports = module.exports;
-        const entrypointFn = packExports[entrypoint] ?? packExports.default;
-
-        if (typeof entrypointFn !== 'function') {
-          throw new Error(
-            `Pack entrypoint '${entrypoint}' is not a function. ` +
-            `Available exports: ${Object.keys(packExports).join(', ')}`
+          // Execute the bundle code
+          // Using Function constructor for sandboxing (similar to eval but safer)
+          const moduleFactory = new Function(
+            'exports',
+            'module',
+            'context',
+            'args',
+            '__STARK_ENV__',
+            bundleCode + '\\n//# sourceURL=pack-' + context.packId + '-' + context.packVersion + '.js'
           );
-        }
 
-        // Execute the entrypoint
-        const result: unknown = await Promise.resolve(
-          (entrypointFn as (ctx: PackExecutionContext, ...args: unknown[]) => unknown)(context, ...args)
-        );
-        return result;
-      } finally {
-        // Clean up globals
-        delete (globalScope as unknown as Record<string, unknown>).__STARK_ENV__;
-        delete (globalScope as unknown as Record<string, unknown>).__STARK_CONTEXT__;
-      }
-    };
+          // Execute the bundle
+          moduleFactory(
+            moduleExports,
+            module,
+            context,
+            args,
+            env
+          );
+
+          // Get the entrypoint function
+          const entrypoint = (context.metadata && context.metadata.entrypoint) || 'default';
+          const packExports = module.exports;
+          const entrypointFn = packExports[entrypoint] || packExports.default;
+
+          if (typeof entrypointFn !== 'function') {
+            throw new Error(
+              "Pack entrypoint '" + entrypoint + "' is not a function. " +
+              "Available exports: " + Object.keys(packExports).join(', ')
+            );
+          }
+
+          // Execute the entrypoint
+          const result = await Promise.resolve(entrypointFn(context, ...args));
+          return result;
+        } finally {
+          // Clean up globals
+          delete globalScope.__STARK_ENV__;
+          delete globalScope.__STARK_CONTEXT__;
+        }
+      })();
+      `
+    ) as (args: unknown[]) => Promise<unknown>;
+
+    return workerFn;
   }
 
   /**

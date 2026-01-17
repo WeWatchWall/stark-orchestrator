@@ -240,3 +240,25 @@ export type {
 export {
   DEFAULT_APP_CONFIG,
 } from './app-config.js';
+// Runtime types (shared between node-runtime and browser-runtime)
+export type {
+  WsMessage,
+  ConnectionState,
+  BaseAgentEvent,
+  PodAgentEvent,
+  AgentEvent,
+  AgentEventHandler,
+  PodDeployPayload,
+  PodStopPayload,
+  LocalPodStatus,
+  PodOperationResult,
+  PackExecutionContext,
+  PackExecutionResult,
+  ExecutionHandle,
+  BasePodHandlerConfig,
+  IPackExecutor,
+} from './runtime.js';
+
+export {
+  mapLocalStatusToPodStatus,
+} from './runtime.js';

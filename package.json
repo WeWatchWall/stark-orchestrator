@@ -35,11 +35,11 @@
     "db:migrate": "supabase db reset --no-seed"
   },
   "devDependencies": {
-    "@typescript-eslint/eslint-plugin": "^7.18.0",
-    "@typescript-eslint/parser": "^7.18.0",
+    "@typescript-eslint/eslint-plugin": "^8.32.0",
+    "@typescript-eslint/parser": "^8.32.0",
     "@vitest/coverage-v8": "^2.1.0",
     "@vitest/ui": "^2.1.0",
-    "eslint": "^8.57.0",
+    "eslint": "^9.27.0",
     "eslint-config-prettier": "^9.1.0",
     "prettier": "^3.3.0",
     "rimraf": "^6.0.0",

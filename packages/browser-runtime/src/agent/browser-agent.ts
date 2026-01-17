@@ -6,25 +6,24 @@
  * send heartbeats, and receive pod deployment commands.
  */
 
-import type {
-  RegisterNodeInput,
-  NodeHeartbeat,
-  Node,
-  RuntimeType,
-  AllocatableResources,
-  NodeCapabilities,
+import {
+  mapLocalStatusToPodStatus,
+  type RegisterNodeInput,
+  type NodeHeartbeat,
+  type Node,
+  type RuntimeType,
+  type AllocatableResources,
+  type NodeCapabilities,
+  type LocalPodStatus,
+  type Labels,
+  type Annotations,
+  type Taint,
+  type PodDeployPayload,
+  type PodStopPayload,
+  type WsMessage,
 } from '@stark-o/shared';
-import type { Labels, Annotations } from '@stark-o/shared';
-import type { Taint } from '@stark-o/shared';
-
-/**
- * WebSocket message structure
- */
-interface WsMessage<T = unknown> {
-  type: string;
-  payload: T;
-  correlationId?: string;
-}
+import { PodHandler, createPodHandler } from './pod-handler.js';
+import { PackExecutor } from '../executor/pack-executor.js';
 
 /**
  * Browser agent configuration
@@ -32,10 +31,12 @@ interface WsMessage<T = unknown> {
 export interface BrowserAgentConfig {
   /** Orchestrator WebSocket URL (e.g., ws://localhost:3000/ws) */
   orchestratorUrl: string;
-  /** Authentication token */
-  authToken: string;
+  /** Authentication token (optional if autoRegister is true) */
+  authToken?: string;
   /** Node name (must be unique) */
   nodeName: string;
+  /** Automatically register a user if no auth token provided and registration is open (default: true) */
+  autoRegister?: boolean;
   /** Runtime type (always 'browser' for this agent) */
   runtimeType?: RuntimeType;
   /** Node capabilities */
@@ -54,6 +55,8 @@ export interface BrowserAgentConfig {
   reconnectDelay?: number;
   /** Maximum reconnect attempts (default: 10, -1 for infinite) */
   maxReconnectAttempts?: number;
+  /** Base path for pack bundles in storage (default: '/packs') */
+  bundlePath?: string;
   /** Enable debug logging to console (default: false) */
   debug?: boolean;
 }
@@ -70,7 +73,11 @@ export type BrowserAgentEvent =
   | 'disconnected'
   | 'reconnecting'
   | 'error'
-  | 'stopped';
+  | 'stopped'
+  | 'pod:deployed'
+  | 'pod:started'
+  | 'pod:stopped'
+  | 'pod:failed';
 
 /**
  * Event handler type
@@ -113,7 +120,15 @@ function getBrowserVersion(): string {
  * Generate UUID using browser crypto API
  */
 function generateUUID(): string {
-  return crypto.randomUUID();
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback for older browsers
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }
 
 /**
@@ -158,12 +173,18 @@ function createBrowserLogger(component: string, debug: boolean): BrowserLogger {
  * Handles:
  * - WebSocket connection and reconnection
  * - Authentication with the orchestrator
- * - Node registration
+ * - Node registration and reconnection
  * - Periodic heartbeats
  * - Resource reporting
+ * - Pod deployment and lifecycle
  */
 export class BrowserAgent {
-  private readonly config: Required<Omit<BrowserAgentConfig, 'debug'>> & { debug: boolean };
+  private readonly config: Required<Omit<BrowserAgentConfig, 'debug' | 'bundlePath' | 'authToken' | 'autoRegister'>> & { 
+    debug: boolean;
+    bundlePath: string;
+    autoRegister: boolean;
+  };
+  private authToken: string;
   private readonly logger: BrowserLogger;
   private ws: WebSocket | null = null;
   private nodeId: string | null = null;
@@ -185,13 +206,14 @@ export class BrowserAgent {
     pods: 0,
     storage: 0,
   };
+  private executor: PackExecutor;
+  private podHandler: PodHandler;
 
   constructor(config: BrowserAgentConfig) {
     const debug = config.debug ?? false;
 
     this.config = {
       orchestratorUrl: config.orchestratorUrl,
-      authToken: config.authToken,
       nodeName: config.nodeName,
       runtimeType: config.runtimeType ?? 'browser',
       capabilities: config.capabilities ?? { version: getBrowserVersion() },
@@ -202,10 +224,28 @@ export class BrowserAgent {
       heartbeatInterval: config.heartbeatInterval ?? 15000,
       reconnectDelay: config.reconnectDelay ?? 5000,
       maxReconnectAttempts: config.maxReconnectAttempts ?? 10,
+      bundlePath: config.bundlePath ?? '/packs',
       debug,
+      autoRegister: config.autoRegister ?? true,
     };
 
+    this.authToken = config.authToken ?? '';
     this.logger = createBrowserLogger('browser-agent', debug);
+
+    // Initialize pack executor (authToken will be updated after auto-registration if needed)
+    this.executor = new PackExecutor({
+      bundlePath: this.config.bundlePath,
+      orchestratorUrl: this.config.orchestratorUrl.replace(/^ws/, 'http').replace('/ws', ''),
+      authToken: this.authToken,
+    });
+
+    // Initialize pod handler
+    this.podHandler = createPodHandler({
+      executor: this.executor,
+      onStatusChange: (podId, status, message) => {
+        this.handlePodStatusChange(podId, status, message);
+      },
+    });
   }
 
   /**
@@ -275,6 +315,9 @@ export class BrowserAgent {
     this.isShuttingDown = false;
     this.reconnectAttempts = 0;
 
+    // Initialize the pack executor before connecting
+    await this.executor.initialize();
+
     await this.connect();
   }
 
@@ -286,6 +329,9 @@ export class BrowserAgent {
     this.stopHeartbeat();
     this.cancelReconnect();
     this.clearPendingRequests('Agent stopped');
+
+    // Stop all running pods
+    await this.podHandler.stopAll();
 
     if (this.ws) {
       this.ws.close(1000, 'Agent stopped');
@@ -418,6 +464,99 @@ export class BrowserAgent {
         this.logger.info('Server requested disconnect', { payload: message.payload });
         break;
 
+      case 'pod:deploy': {
+        // Handle pod deployment request from orchestrator
+        const deployPayload = message.payload as PodDeployPayload;
+        this.logger.info('Received pod deploy command', {
+          podId: deployPayload.podId,
+          packName: deployPayload.pack?.name,
+        });
+        
+        try {
+          // Ensure executor is initialized before handling pod deploy
+          if (!this.executor.isInitialized()) {
+            this.logger.warn('Executor not initialized, initializing now before pod deploy');
+            await this.executor.initialize();
+          }
+          
+          const result = await this.podHandler.handleDeploy(deployPayload);
+          if (result.success) {
+            this.emit('pod:deployed', { podId: deployPayload.podId });
+            // Send success response if there's a correlationId
+            if (message.correlationId) {
+              this.send({
+                type: 'pod:deploy:success',
+                payload: { podId: deployPayload.podId },
+                correlationId: message.correlationId,
+              });
+            }
+          } else {
+            this.emit('pod:failed', { podId: deployPayload.podId, error: result.error });
+            if (message.correlationId) {
+              this.send({
+                type: 'pod:deploy:error',
+                payload: { podId: deployPayload.podId, error: result.error },
+                correlationId: message.correlationId,
+              });
+            }
+          }
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          this.logger.error('Pod deploy failed', { podId: deployPayload.podId, error: errorMessage });
+          this.emit('pod:failed', { podId: deployPayload.podId, error: errorMessage });
+          if (message.correlationId) {
+            this.send({
+              type: 'pod:deploy:error',
+              payload: { podId: deployPayload.podId, error: errorMessage },
+              correlationId: message.correlationId,
+            });
+          }
+        }
+        break;
+      }
+
+      case 'pod:stop': {
+        // Handle pod stop request from orchestrator
+        const stopPayload = message.payload as PodStopPayload;
+        this.logger.info('Received pod stop command', {
+          podId: stopPayload.podId,
+          reason: stopPayload.reason,
+        });
+        
+        try {
+          const result = await this.podHandler.handleStop(stopPayload);
+          if (result.success) {
+            this.emit('pod:stopped', { podId: stopPayload.podId });
+            if (message.correlationId) {
+              this.send({
+                type: 'pod:stop:success',
+                payload: { podId: stopPayload.podId },
+                correlationId: message.correlationId,
+              });
+            }
+          } else {
+            if (message.correlationId) {
+              this.send({
+                type: 'pod:stop:error',
+                payload: { podId: stopPayload.podId, error: result.error },
+                correlationId: message.correlationId,
+              });
+            }
+          }
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          this.logger.error('Pod stop failed', { podId: stopPayload.podId, error: errorMessage });
+          if (message.correlationId) {
+            this.send({
+              type: 'pod:stop:error',
+              payload: { podId: stopPayload.podId, error: errorMessage },
+              correlationId: message.correlationId,
+            });
+          }
+        }
+        break;
+      }
+
       default:
         this.logger.debug('Unhandled message type', { type: message.type });
     }
@@ -434,7 +573,7 @@ export class BrowserAgent {
     const wasRegistered = this.state === 'registered';
     this.state = 'disconnected';
     this.ws = null;
-    this.nodeId = null;
+    // Preserve nodeId for reconnection - don't reset it
     this.connectionId = null;
 
     this.emit('disconnected', { code, reason, wasRegistered });
@@ -474,6 +613,11 @@ export class BrowserAgent {
     this.reconnectTimer = window.setTimeout(async () => {
       this.reconnectTimer = null;
       try {
+        // Ensure executor is still initialized after reconnect
+        if (!this.executor.isInitialized()) {
+          this.logger.info('Re-initializing executor after reconnect');
+          await this.executor.initialize();
+        }
         await this.connect();
       } catch (error) {
         this.logger.error('Reconnect failed', { error: String(error) });
@@ -493,6 +637,154 @@ export class BrowserAgent {
   }
 
   /**
+   * Get HTTP base URL from WebSocket URL
+   */
+  private getHttpBaseUrl(): string {
+    return this.config.orchestratorUrl
+      .replace(/^wss:\/\//, 'https://')
+      .replace(/^ws:\/\//, 'http://')
+      .replace(/\/ws\/?$/, '');
+  }
+
+  /**
+   * Check if public registration is enabled
+   */
+  private async checkRegistrationStatus(): Promise<{ needsSetup: boolean; registrationEnabled: boolean }> {
+    const httpUrl = this.getHttpBaseUrl();
+    
+    try {
+      const response = await fetch(`${httpUrl}/auth/setup/status`);
+      const result = await response.json() as {
+        success: boolean;
+        data?: { needsSetup: boolean; registrationEnabled: boolean };
+        error?: { message: string };
+      };
+
+      if (!result.success || !result.data) {
+        throw new Error(result.error?.message ?? 'Failed to check registration status');
+      }
+
+      return result.data;
+    } catch (error) {
+      this.logger.error('Failed to check registration status', { error: String(error) });
+      throw error;
+    }
+  }
+
+  /**
+   * Generate a random string for unique identifiers
+   */
+  private generateRandomString(length: number): string {
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    const randomValues = new Uint8Array(length);
+    crypto.getRandomValues(randomValues);
+    for (let i = 0; i < length; i++) {
+      result += chars.charAt(randomValues[i]! % chars.length);
+    }
+    return result;
+  }
+
+  /**
+   * Generate a random password for auto-registration
+   */
+  private generateRandomPassword(): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+    let result = '';
+    const randomValues = new Uint8Array(16);
+    crypto.getRandomValues(randomValues);
+    for (let i = 0; i < 16; i++) {
+      result += chars.charAt(randomValues[i]! % chars.length);
+    }
+    return result;
+  }
+
+  /**
+   * Auto-register a new user with operator role
+   * Returns the access token on success
+   */
+  private async autoRegisterUser(): Promise<string> {
+    const httpUrl = this.getHttpBaseUrl();
+    const randomId = this.generateRandomString(8);
+    const autoEmail = `browser-${randomId}@stark.local`;
+    const autoPassword = this.generateRandomPassword();
+
+    this.logger.info('Auto-registering browser agent user', { email: autoEmail });
+
+    try {
+      const response = await fetch(`${httpUrl}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: autoEmail,
+          password: autoPassword,
+          displayName: `Browser Agent ${this.config.nodeName}`,
+          roles: ['operator'],
+        }),
+      });
+
+      const result = await response.json() as {
+        success: boolean;
+        data?: {
+          accessToken: string;
+          refreshToken?: string;
+          expiresAt: string;
+          user: { id: string; email: string };
+        };
+        error?: { code: string; message: string };
+      };
+
+      if (!result.success || !result.data) {
+        throw new Error(result.error?.message ?? 'Auto-registration failed');
+      }
+
+      this.logger.info('Auto-registered successfully', { email: autoEmail, userId: result.data.user.id });
+      return result.data.accessToken;
+    } catch (error) {
+      this.logger.error('Auto-registration failed', { error: String(error) });
+      throw error;
+    }
+  }
+
+  /**
+   * Ensure we have an auth token, auto-registering if needed
+   */
+  private async ensureAuthToken(): Promise<void> {
+    if (this.authToken) {
+      return;
+    }
+
+    if (!this.config.autoRegister) {
+      throw new Error('No auth token provided and autoRegister is disabled');
+    }
+
+    this.logger.info('No auth token provided. Checking if public registration is available...');
+
+    const status = await this.checkRegistrationStatus();
+
+    if (!status.registrationEnabled) {
+      throw new Error('Authentication required and public registration is disabled. Provide an authToken.');
+    }
+
+    this.authToken = await this.autoRegisterUser();
+
+    // Update the executor with the new auth token
+    this.executor = new PackExecutor({
+      bundlePath: this.config.bundlePath,
+      orchestratorUrl: this.getHttpBaseUrl(),
+      authToken: this.authToken,
+    });
+
+    // Re-initialize the pod handler with the new executor
+    this.podHandler = createPodHandler({
+      executor: this.executor,
+      onStatusChange: (podId, status, message) => {
+        this.handlePodStatusChange(podId, status, message);
+      },
+    });
+  }
+
+  /**
    * Authenticate with the orchestrator
    */
   private async authenticate(): Promise<void> {
@@ -500,16 +792,23 @@ export class BrowserAgent {
     this.logger.info('Authenticating with orchestrator');
 
     try {
+      // Ensure we have an auth token (auto-register if needed)
+      await this.ensureAuthToken();
+
       await this.sendRequest<{ userId: string }>('auth:authenticate', {
-        token: this.config.authToken,
+        token: this.authToken,
       });
 
       this.state = 'authenticated';
       this.emit('authenticated');
       this.logger.info('Authenticated successfully');
 
-      // Proceed to registration
-      await this.register();
+      // If we have an existing nodeId, reconnect instead of registering
+      if (this.nodeId) {
+        await this.reconnect();
+      } else {
+        await this.register();
+      }
     } catch (error) {
       this.logger.error('Authentication failed', { error: String(error) });
       this.emit('error', error);
@@ -551,6 +850,36 @@ export class BrowserAgent {
       this.logger.error('Registration failed', { error: String(error) });
       this.emit('error', error);
       throw error;
+    }
+  }
+
+  /**
+   * Reconnect an existing node to the orchestrator
+   * Used when reconnecting after a connection drop
+   */
+  private async reconnect(): Promise<void> {
+    this.state = 'registering';
+    this.logger.info('Reconnecting node', { nodeId: this.nodeId, nodeName: this.config.nodeName });
+
+    try {
+      const response = await this.sendRequest<{ node: Node }>('node:reconnect', {
+        nodeId: this.nodeId,
+      });
+
+      this.state = 'registered';
+      this.emit('registered', response.node);
+      this.logger.info('Node reconnected', {
+        nodeId: this.nodeId,
+        nodeName: this.config.nodeName,
+      });
+
+      // Start heartbeat
+      this.startHeartbeat();
+    } catch (error) {
+      this.logger.error('Reconnection failed, falling back to registration', { error: String(error) });
+      // If reconnection fails (e.g., node was deleted), fall back to fresh registration
+      this.nodeId = null;
+      await this.register();
     }
   }
 
@@ -653,6 +982,61 @@ export class BrowserAgent {
       pending.reject(new Error(reason));
     }
     this.pendingRequests.clear();
+  }
+
+  /**
+   * Handle pod status change from PodHandler
+   * Reports the status change to the orchestrator
+   */
+  private handlePodStatusChange(podId: string, status: LocalPodStatus, message?: string): void {
+    this.logger.info('Pod status changed', { podId, status, message });
+
+    // Map local status to pod events
+    switch (status) {
+      case 'running':
+        this.emit('pod:started', { podId });
+        break;
+      case 'stopped':
+        this.emit('pod:stopped', { podId, message });
+        break;
+      case 'failed':
+        this.emit('pod:failed', { podId, error: message });
+        break;
+    }
+
+    // Update allocated resources based on pod status
+    if (status === 'running') {
+      this.allocatedResources.pods++;
+    } else if (status === 'stopped' || status === 'failed') {
+      this.allocatedResources.pods = Math.max(0, this.allocatedResources.pods - 1);
+    }
+
+    // Report status change to orchestrator if connected
+    if (this.ws && this.ws.readyState === WebSocket.OPEN && this.state === 'registered') {
+      this.send({
+        type: 'pod:status:update',
+        payload: {
+          podId,
+          status: mapLocalStatusToPodStatus(status),
+          message,
+          reason: 'runtime_status_change',
+        },
+      });
+    }
+  }
+
+  /**
+   * Get the pod handler for direct access to pod operations
+   */
+  getPodHandler(): PodHandler {
+    return this.podHandler;
+  }
+
+  /**
+   * Get the pack executor for direct access to execution operations
+   */
+  getExecutor(): PackExecutor {
+    return this.executor;
   }
 }
 

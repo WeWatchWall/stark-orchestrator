@@ -9,21 +9,43 @@ export {
   type BrowserAgentEvent,
   type BrowserAgentEventHandler,
   type ConnectionState,
-} from './agent/browser-agent';
+} from './agent/browser-agent.js';
+
+// Pod Handler (handles pod deployment and lifecycle)
+export {
+  PodHandler,
+  createPodHandler,
+  type PodHandlerConfig,
+  type PodDeployPayload,
+  type PodStopPayload,
+  type LocalPodStatus,
+  type PodOperationResult,
+} from './agent/pod-handler.js';
+
+// Pack Executor (executes pack bundles in Web Workers)
+export {
+  PackExecutor,
+  createPackExecutor,
+  defaultPackExecutor,
+  type PackExecutorConfig,
+  type PackExecutionContext,
+  type PackExecutionResult,
+  type ExecutionHandle,
+} from './executor/pack-executor.js';
 
 // Storage adapter (IndexedDB via ZenFS)
 export {
   StorageAdapter,
   createStorageAdapter,
   type BrowserStorageConfig,
-} from './adapters/storage-adapter';
+} from './adapters/storage-adapter.js';
 
 // HTTP adapter (Axios-based Fetch wrapper)
 export {
   FetchAdapter,
   createFetchAdapter,
   type BrowserHttpAdapterConfig,
-} from './adapters/fetch-adapter';
+} from './adapters/fetch-adapter.js';
 
 // Worker adapter (Web Workers via Workerpool)
 export {
@@ -32,7 +54,7 @@ export {
   defaultWorkerAdapter,
   workerpool,
   type BrowserWorkerAdapterConfig,
-} from './adapters/worker-adapter';
+} from './adapters/worker-adapter.js';
 
 // Re-export shared types for convenience
 export type {

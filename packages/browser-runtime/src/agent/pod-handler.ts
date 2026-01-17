@@ -1,24 +1,21 @@
 /**
- * Pod Handler
- * @module @stark-o/node-runtime/agent/pod-handler
+ * Pod Handler (Browser Runtime)
+ * @module @stark-o/browser-runtime/agent/pod-handler
  *
  * Handles pod deployment and lifecycle events received from the orchestrator.
+ * Browser-compatible implementation using Web Workers for pack execution.
  */
 
-import {
-  createServiceLogger,
-  type Logger,
-  type Pack,
-  type Pod,
-  type PodDeployPayload,
-  type PodStopPayload,
-  type LocalPodStatus,
-  type PodOperationResult,
-  type BasePodHandlerConfig,
-  type ExecutionHandle,
-  type PackExecutionResult,
+import { createServiceLogger, type Logger, type RuntimeTag } from '@stark-o/shared';
+import type { ResourceRequirements, Labels, Annotations, Pack, Pod } from '@stark-o/shared';
+import type {
+  PodDeployPayload,
+  PodStopPayload,
+  LocalPodStatus,
+  PodOperationResult,
+  BasePodHandlerConfig,
 } from '@stark-o/shared';
-import { PackExecutor } from '../executor/pack-executor.js';
+import { PackExecutor, type ExecutionHandle, type PackExecutionResult } from '../executor/pack-executor.js';
 
 /**
  * Pod handler configuration
@@ -44,28 +41,61 @@ interface LocalPodState {
 }
 
 /**
- * Pod Handler
+ * Browser-compatible logger interface
+ */
+interface BrowserLogger {
+  debug: (message: string, meta?: Record<string, unknown>) => void;
+  info: (message: string, meta?: Record<string, unknown>) => void;
+  warn: (message: string, meta?: Record<string, unknown>) => void;
+  error: (message: string, error?: Error, meta?: Record<string, unknown>) => void;
+}
+
+/**
+ * Create a browser-compatible logger wrapper
+ */
+function createBrowserLoggerWrapper(logger: Logger): BrowserLogger {
+  return {
+    debug: (message: string, meta?: Record<string, unknown>) => {
+      logger.debug(message, meta);
+    },
+    info: (message: string, meta?: Record<string, unknown>) => {
+      logger.info(message, meta);
+    },
+    warn: (message: string, meta?: Record<string, unknown>) => {
+      logger.warn(message, meta);
+    },
+    error: (message: string, error?: Error, meta?: Record<string, unknown>) => {
+      logger.error(message, error, meta);
+    },
+  };
+}
+
+/**
+ * Pod Handler (Browser Runtime)
  *
- * Manages pod lifecycle on the node:
+ * Manages pod lifecycle in the browser:
  * - Receives pod:deploy messages from orchestrator
- * - Executes pack bundles using PackExecutor
+ * - Executes pack bundles using PackExecutor with Web Workers
  * - Reports status changes back to orchestrator
  * - Handles graceful shutdown of running pods
  */
 export class PodHandler {
-  private readonly config: Required<Omit<PodHandlerConfig, 'logger' | 'onStatusChange'>> & {
-    logger: Logger;
-    onStatusChange?: PodHandlerConfig['onStatusChange'];
+  private readonly config: {
+    executor: PackExecutor;
+    logger: BrowserLogger;
+    onStatusChange?: BasePodHandlerConfig['onStatusChange'];
   };
   private readonly pods: Map<string, LocalPodState> = new Map();
 
   constructor(config: PodHandlerConfig) {
     this.config = {
       executor: config.executor,
-      logger: config.logger ?? createServiceLogger({
-        component: 'pod-handler',
-        service: 'stark-node-runtime',
-      }),
+      logger: createBrowserLoggerWrapper(
+        config.logger ?? createServiceLogger({
+          component: 'pod-handler',
+          service: 'stark-browser-runtime',
+        })
+      ),
       onStatusChange: config.onStatusChange,
     };
   }
@@ -73,7 +103,7 @@ export class PodHandler {
   /**
    * Handle a pod:deploy message
    */
-  async handleDeploy(payload: PodDeployPayload): Promise<{ success: boolean; error?: string }> {
+  async handleDeploy(payload: PodDeployPayload): Promise<PodOperationResult> {
     const { podId, pack } = payload;
 
     this.config.logger.info('Received pod deploy request', {
@@ -154,10 +184,11 @@ export class PodHandler {
       return { success: true };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.config.logger.error('Failed to deploy pod', error instanceof Error ? error : undefined, {
-        podId,
-        packId: pack.id,
-      });
+      this.config.logger.error(
+        'Failed to deploy pod',
+        error instanceof Error ? error : undefined,
+        { podId, packId: pack.id }
+      );
       this.updateStatus(podId, 'failed', errorMessage);
       return { success: false, error: errorMessage };
     }
@@ -195,7 +226,7 @@ export class PodHandler {
   /**
    * Handle a pod:stop message
    */
-  async handleStop(payload: PodStopPayload): Promise<{ success: boolean; error?: string }> {
+  async handleStop(payload: PodStopPayload): Promise<PodOperationResult> {
     const { podId, reason } = payload;
 
     this.config.logger.info('Received pod stop request', { podId, reason });
@@ -223,7 +254,11 @@ export class PodHandler {
       return { success: true };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.config.logger.error('Failed to stop pod', error instanceof Error ? error : undefined, { podId });
+      this.config.logger.error(
+        'Failed to stop pod',
+        error instanceof Error ? error : undefined,
+        { podId }
+      );
       this.updateStatus(podId, 'failed', errorMessage);
       return { success: false, error: errorMessage };
     }
@@ -293,7 +328,7 @@ export class PodHandler {
     this.config.logger.info('Stopping all running pods', { count: runningPods.length });
 
     const stopPromises = runningPods.map(podId =>
-      this.handleStop({ podId, reason: 'Node shutdown' })
+      this.handleStop({ podId, reason: 'Agent shutdown' })
     );
 
     await Promise.all(stopPromises);
@@ -306,5 +341,6 @@ export class PodHandler {
 export function createPodHandler(config: PodHandlerConfig): PodHandler {
   return new PodHandler(config);
 }
+
 // Re-export types for convenience
 export type { PodDeployPayload, PodStopPayload, LocalPodStatus, PodOperationResult };
