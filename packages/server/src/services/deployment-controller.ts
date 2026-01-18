@@ -141,7 +141,7 @@ export class DeploymentController {
       return;
     }
 
-    logger.debug('Reconciling deployments', { count: deployments.length });
+    // logger.debug('Reconciling deployments', { count: deployments.length });
 
     // Reconcile each deployment
     for (const deployment of deployments) {

@@ -15,6 +15,7 @@ import { createServiceLogger } from '@stark-o/shared';
 import { createApiRouter } from './api/router.js';
 import { createConnectionManager, type ConnectionManagerOptions } from './ws/connection-manager.js';
 import { createSchedulerService } from './services/scheduler-service.js';
+import { getDeploymentController } from './services/deployment-controller.js';
 import { setConnectionManager } from './services/connection-service.js';
 
 // ============================================================================
@@ -134,6 +135,8 @@ export interface ServerInstance {
   connectionManager: ReturnType<typeof createConnectionManager>;
   /** Scheduler service for pod scheduling */
   schedulerService: ReturnType<typeof createSchedulerService>;
+  /** Deployment controller for reconciling deployments */
+  deploymentController: ReturnType<typeof getDeploymentController>;
   /** Server configuration */
   config: ServerConfig;
   /** Start the server */
@@ -236,6 +239,12 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
   // Attach scheduler to connection manager
   schedulerService.attach(connectionManager);
 
+  // Create deployment controller for reconciling deployments
+  const deploymentController = getDeploymentController({
+    reconcileInterval: 10000,
+    autoStart: false, // We'll start it after the server is listening
+  });
+
   // Server instance
   const instance: ServerInstance = {
     app,
@@ -243,6 +252,7 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
     wss,
     connectionManager,
     schedulerService,
+    deploymentController,
     config: finalConfig,
 
     start: async () => {
@@ -258,6 +268,10 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
             // Start the scheduler service after server is running
             schedulerService.start();
             logger.info('Scheduler service started');
+
+            // Start the deployment controller after server is running
+            deploymentController.start();
+            logger.info('Deployment controller started');
 
             resolve();
           });
@@ -275,6 +289,10 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
     stop: async () => {
       return new Promise<void>((resolve, reject) => {
         logger.info('Stopping server...');
+
+        // Stop the deployment controller
+        deploymentController.stop();
+        logger.info('Deployment controller stopped');
 
         // Stop the scheduler service
         schedulerService.stop();
