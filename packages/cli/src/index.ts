@@ -13,6 +13,7 @@ import { createAuthCommand } from './commands/auth.js';
 import { createPackCommand } from './commands/pack.js';
 import { createNodeCommand } from './commands/node.js';
 import { createPodCommand } from './commands/pod.js';
+import { createDeploymentCommand } from './commands/deployment.js';
 import { createNamespaceCommand } from './commands/namespace.js';
 import { createServerConfigCommand } from './commands/server-config.js';
 
@@ -35,12 +36,15 @@ Commands:
   pack        Pack management (register, list, versions)
   node        Node management (list, status)
   pod         Pod management (create, list, status, rollback)
+  deployment  Deployment management (create, list, scale, pause)
   namespace   Namespace management (create, list, delete)
 
 Examples:
   $ stark auth login
   $ stark pack list
   $ stark pod create my-pack --node my-node
+  $ stark deployment create --pack my-pack --replicas 3
+  $ stark deployment create --pack my-pack --replicas 0 --node-selector gpu=true
   $ stark node list --status healthy
 `;
 
@@ -75,6 +79,7 @@ function createProgram(): Command {
   program.addCommand(createPackCommand());
   program.addCommand(createNodeCommand());
   program.addCommand(createPodCommand());
+  program.addCommand(createDeploymentCommand());
   program.addCommand(createNamespaceCommand());
   program.addCommand(createServerConfigCommand());
 

@@ -278,10 +278,7 @@ async function createPod(req: Request, res: Response): Promise<void> {
 
     // Create pod
     const podQueries = getPodQueriesAdmin();
-    const createResult = await podQueries.createPod({
-      ...input,
-      createdBy: userId,
-    });
+    const createResult = await podQueries.createPod(input, userId);
 
     if (createResult.error) {
       requestLogger.error('Failed to create pod in database', undefined, {

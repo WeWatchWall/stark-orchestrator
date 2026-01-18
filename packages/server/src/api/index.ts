@@ -81,3 +81,9 @@ export {
   getConfig,
   putConfig,
 } from './config.js';
+
+// Deployment API
+export {
+  createDeploymentsRouter,
+  deploymentsRouter,
+} from './deployments.js';

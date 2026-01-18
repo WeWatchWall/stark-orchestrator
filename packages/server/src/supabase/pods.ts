@@ -30,6 +30,7 @@ interface PodRow {
   pack_id: string;
   pack_version: string;
   node_id: string | null;
+  deployment_id: string | null;
   status: PodStatus;
   status_message: string | null;
   namespace: string;
@@ -170,35 +171,45 @@ export class PodQueries {
   /**
    * Creates a new pod in the database
    */
-  async createPod(input: CreatePodInput & { createdBy: string }): Promise<PodResult<Pod>> {
+  async createPod(
+    input: CreatePodInput,
+    createdBy: string,
+    deploymentId?: string
+  ): Promise<PodResult<Pod>> {
     const defaultResourceRequests = { cpu: 100, memory: 128 };
     const defaultResourceLimits = { cpu: 500, memory: 512 };
 
+    const insertData: Record<string, unknown> = {
+      pack_id: input.packId,
+      pack_version: input.packVersion ?? 'latest',
+      namespace: input.namespace ?? 'default',
+      labels: input.labels ?? {},
+      annotations: input.annotations ?? {},
+      priority_class_name: input.priorityClassName ?? null,
+      tolerations: input.tolerations ?? [],
+      node_selector: input.scheduling?.nodeSelector ?? {},
+      node_affinity: input.scheduling?.nodeAffinity ?? null,
+      pod_affinity: input.scheduling?.podAffinity ?? null,
+      pod_anti_affinity: input.scheduling?.podAntiAffinity ?? null,
+      resource_requests: {
+        cpu: input.resourceRequests?.cpu ?? defaultResourceRequests.cpu,
+        memory: input.resourceRequests?.memory ?? defaultResourceRequests.memory,
+      },
+      resource_limits: {
+        cpu: input.resourceLimits?.cpu ?? defaultResourceLimits.cpu,
+        memory: input.resourceLimits?.memory ?? defaultResourceLimits.memory,
+      },
+      created_by: createdBy,
+      metadata: input.metadata ?? {},
+    };
+
+    if (deploymentId) {
+      insertData.deployment_id = deploymentId;
+    }
+
     const { data, error } = await this.client
       .from('pods')
-      .insert({
-        pack_id: input.packId,
-        pack_version: input.packVersion ?? 'latest',
-        namespace: input.namespace ?? 'default',
-        labels: input.labels ?? {},
-        annotations: input.annotations ?? {},
-        priority_class_name: input.priorityClassName ?? null,
-        tolerations: input.tolerations ?? [],
-        node_selector: input.scheduling?.nodeSelector ?? {},
-        node_affinity: input.scheduling?.nodeAffinity ?? null,
-        pod_affinity: input.scheduling?.podAffinity ?? null,
-        pod_anti_affinity: input.scheduling?.podAntiAffinity ?? null,
-        resource_requests: {
-          cpu: input.resourceRequests?.cpu ?? defaultResourceRequests.cpu,
-          memory: input.resourceRequests?.memory ?? defaultResourceRequests.memory,
-        },
-        resource_limits: {
-          cpu: input.resourceLimits?.cpu ?? defaultResourceLimits.cpu,
-          memory: input.resourceLimits?.memory ?? defaultResourceLimits.memory,
-        },
-        created_by: input.createdBy,
-        metadata: input.metadata ?? {},
-      })
+      .insert(insertData)
       .select()
       .single();
 
@@ -320,6 +331,24 @@ export class PodQueries {
       orderBy: 'priority',
       orderDirection: 'desc',
     });
+  }
+
+  /**
+   * Lists pods belonging to a deployment
+   */
+  async listPodsByDeployment(deploymentId: string): Promise<PodResult<PodListItem[]>> {
+    const { data, error } = await this.client
+      .from('pods')
+      .select('*')
+      .eq('deployment_id', deploymentId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      return { data: null, error };
+    }
+
+    const pods = (data as PodRow[]).map(rowToPodListItem);
+    return { data: pods, error: null };
   }
 
   /**
@@ -688,8 +717,11 @@ export function resetPodQueries(): void {
 }
 
 // Export convenience functions that use the default instance
-export const createPod = (input: CreatePodInput & { createdBy: string }) =>
-  getPodQueries().createPod(input);
+export const createPod = (
+  input: CreatePodInput,
+  createdBy: string,
+  deploymentId?: string
+) => getPodQueries().createPod(input, createdBy, deploymentId);
 
 export const getPodById = (id: string) =>
   getPodQueries().getPodById(id);

@@ -78,6 +78,16 @@ export {
   validatePodAffinity as validatePodAffinityInput,
   validatePodAntiAffinity,
   validateSchedulingConfig,
+  // Deployment validation
+  validateDeploymentName,
+  validateDeploymentPackId,
+  validateDeploymentPackName,
+  validateReplicas,
+  validateDeploymentNamespace,
+  validateDeploymentStatus,
+  validateDeploymentMetadata,
+  validateCreateDeploymentInput,
+  validateUpdateDeploymentInput,
 } from './validation/index.js';
 
 // Logging

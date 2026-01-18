@@ -209,6 +209,88 @@ Pods are scheduled to nodes based on these Kubernetes-like constraints:
 - **Resource Requests**: Pods fit onto nodes with sufficient capacity
   - Node has `--cpu 2000 --memory 4096` → Pod requesting `--cpu 500 --memory 256` fits 4× per node
 
+### Deployment Management
+
+Deployments are persistent resources that automatically create and manage pods. They are useful for:
+
+- **Auto-healing**: Automatically recreate pods when nodes fail
+- **Scaling**: Easily scale the number of replicas
+- **DaemonSet mode**: Deploy to all nodes matching scheduling constraints
+
+```bash
+# Create a deployment with 3 replicas
+node packages/cli/dist/index.js deployment create my-deployment \
+  --pack my-pack \
+  --replicas 3
+
+# Create a DaemonSet-like deployment (deploys to all matching nodes)
+node packages/cli/dist/index.js deployment create gpu-worker \
+  --pack ml-pack \
+  --replicas 0 \
+  --node-selector gpu=true \
+  --toleration gpu=dedicated:NoSchedule
+
+# Create a deployment with scheduling constraints
+node packages/cli/dist/index.js deployment create web-app \
+  --pack web-pack \
+  --replicas 5 \
+  --namespace production \
+  --node-selector env=production \
+  --node-selector tier=frontend \
+  --label app=web
+
+# List all deployments
+node packages/cli/dist/index.js deployment list
+
+# Check deployment status
+node packages/cli/dist/index.js deployment status my-deployment
+
+# Scale a deployment
+node packages/cli/dist/index.js deployment scale my-deployment --replicas 10
+
+# Convert a scaled deployment to DaemonSet mode
+node packages/cli/dist/index.js deployment scale my-deployment --replicas 0
+
+# Pause reconciliation (stops creating/deleting pods)
+node packages/cli/dist/index.js deployment pause my-deployment
+
+# Resume reconciliation
+node packages/cli/dist/index.js deployment resume my-deployment
+
+# Delete a deployment (stops all pods)
+node packages/cli/dist/index.js deployment delete my-deployment --force
+```
+
+#### Deployment Create Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--pack <name>` | Pack name to deploy | (required) |
+| `-V, --ver <version>` | Pack version | latest |
+| `--namespace <ns>` | Target namespace | `default` |
+| `-r, --replicas <n>` | Number of replicas (0 = all matching nodes) | `1` |
+| `-l, --label <k=v>` | Deployment label (can be repeated) | - |
+| `--pod-label <k=v>` | Label for created pods (can be repeated) | - |
+| `-s, --node-selector <k=v>` | Node selector (can be repeated) | - |
+| `-t, --toleration <k=v:effect>` | Toleration (can be repeated) | - |
+| `--cpu <millicores>` | CPU request in millicores | `100` |
+| `--memory <mb>` | Memory request in MB | `128` |
+
+#### Deployment vs Pod
+
+| Aspect | Pod | Deployment |
+|--------|-----|------------|
+| **Lifecycle** | Manual - you create and delete | Managed - controller creates pods |
+| **Auto-healing** | None - pod stays failed | Yes - recreates failed pods |
+| **Scaling** | Create more pods manually | Single scale command |
+| **New nodes** | Manual pod creation | Auto-deploys (if replicas=0) |
+| **Use case** | One-off tasks, testing | Production workloads |
+
+When `replicas=0`, the deployment operates in **DaemonSet mode**:
+- Automatically creates one pod on every node matching the scheduling constraints
+- When new nodes join with matching labels, pods are automatically deployed
+- When nodes leave, their pods are removed
+
 ### Node Management
 
 ```bash

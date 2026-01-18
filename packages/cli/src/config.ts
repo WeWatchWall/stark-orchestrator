@@ -203,6 +203,7 @@ export function createApiClient(config?: CliConfig): {
   get: (path: string) => Promise<Response>;
   post: (path: string, body?: unknown) => Promise<Response>;
   put: (path: string, body?: unknown) => Promise<Response>;
+  patch: (path: string, body?: unknown) => Promise<Response>;
   delete: (path: string) => Promise<Response>;
 } {
   const cfg = config ?? loadConfig();
@@ -231,6 +232,13 @@ export function createApiClient(config?: CliConfig): {
     put: (path: string, body?: unknown) =>
       fetch(`${baseUrl}${path}`, {
         method: 'PUT',
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+      }),
+
+    patch: (path: string, body?: unknown) =>
+      fetch(`${baseUrl}${path}`, {
+        method: 'PATCH',
         headers,
         body: body ? JSON.stringify(body) : undefined,
       }),

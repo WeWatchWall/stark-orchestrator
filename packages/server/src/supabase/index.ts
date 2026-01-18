@@ -171,3 +171,11 @@ export {
   updateAppConfig,
   isPublicRegistrationEnabled,
 } from './app-config.js';
+
+// Deployment queries
+export {
+  type DeploymentResult,
+  DeploymentQueries,
+  getDeploymentQueries,
+  getDeploymentQueriesAdmin,
+} from './deployments.js';

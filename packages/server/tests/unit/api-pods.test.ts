@@ -273,8 +273,8 @@ describe('Pod API Handlers', () => {
       expect(mockPodQueries.createPod).toHaveBeenCalledWith(
         expect.objectContaining({
           packId: samplePack.id,
-          createdBy: 'dev-user-id', // From getUserId fallback
-        })
+        }),
+        'dev-user-id' // userId is passed as second argument
       );
 
       // Verify history was recorded
@@ -338,7 +338,8 @@ describe('Pod API Handlers', () => {
           packVersion: '2.0.0',
           namespace: 'production',
           labels: { app: 'web', tier: 'frontend' },
-        })
+        }),
+        'dev-user-id' // userId is passed as second argument
       );
     });
 

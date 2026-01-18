@@ -231,6 +231,23 @@ export {
   WorkerScriptRequiredError,
 } from './worker-adapter.js';
 
+// Deployment types
+export type {
+  Deployment,
+  DeploymentStatus,
+  CreateDeploymentInput,
+  UpdateDeploymentInput,
+  DeploymentListItem,
+} from './deployment.js';
+
+export {
+  isDeploymentActive,
+  isDeploymentDaemonSet,
+  isDeploymentReady,
+  DEFAULT_DEPLOYMENT_RESOURCE_REQUESTS,
+  DEFAULT_DEPLOYMENT_RESOURCE_LIMITS,
+} from './deployment.js';
+
 // App config types
 export type {
   AppConfig,

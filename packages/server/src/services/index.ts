@@ -17,3 +17,11 @@ export {
   sendToNode,
   resetConnectionService,
 } from './connection-service.js';
+
+export {
+  DeploymentController,
+  createDeploymentController,
+  getDeploymentController,
+  resetDeploymentController,
+  type DeploymentControllerConfig,
+} from './deployment-controller.js';

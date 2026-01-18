@@ -90,3 +90,16 @@ export {
   validatePodAntiAffinity,
   validateSchedulingConfig,
 } from './scheduling-validation';
+
+// Deployment validation
+export {
+  validateDeploymentName,
+  validateDeploymentPackId,
+  validateDeploymentPackName,
+  validateReplicas,
+  validateDeploymentNamespace,
+  validateDeploymentStatus,
+  validateDeploymentMetadata,
+  validateCreateDeploymentInput,
+  validateUpdateDeploymentInput,
+} from './deployment-validation';

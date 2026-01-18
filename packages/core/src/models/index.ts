@@ -49,3 +49,11 @@ export {
   type NamespaceListFilters,
   type ResourceAllocationRequest,
 } from './namespace';
+
+export {
+  DeploymentModel,
+  createReactiveDeploymentListItem,
+  type DeploymentCreationResult,
+  type DeploymentListResponse,
+  type DeploymentListFilters,
+} from './deployment';
