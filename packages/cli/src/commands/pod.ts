@@ -84,6 +84,10 @@ async function createHandler(
     priority?: string;
     label?: string[];
     replicas?: string;
+    nodeSelector?: string[];
+    toleration?: string[];
+    cpu?: string;
+    memory?: string;
   }
 ): Promise<void> {
   // Support both positional argument and --pack option
@@ -126,6 +130,49 @@ async function createHandler(
         }
       }
       podRequest.labels = labels;
+    }
+
+    // Parse node selectors (key=value pairs)
+    if (options.nodeSelector && options.nodeSelector.length > 0) {
+      const nodeSelector: Record<string, string> = {};
+      for (const s of options.nodeSelector) {
+        const [key, value] = s.split('=');
+        if (key && value) {
+          nodeSelector[key] = value;
+        }
+      }
+      podRequest.scheduling = { nodeSelector };
+    }
+
+    // Parse tolerations (key=value:effect format)
+    if (options.toleration && options.toleration.length > 0) {
+      const tolerations: Array<{ key: string; value?: string; effect?: string; operator: string }> = [];
+      for (const t of options.toleration) {
+        // Format: key=value:effect or key:effect or key
+        const effectMatch = t.match(/^(.+):([A-Za-z]+)$/);
+        if (effectMatch && effectMatch[1] && effectMatch[2]) {
+          const keyValuePart = effectMatch[1];
+          const effect = effectMatch[2];
+          const kvMatch = keyValuePart.match(/^([^=]+)=(.+)$/);
+          if (kvMatch && kvMatch[1] && kvMatch[2]) {
+            tolerations.push({ key: kvMatch[1], value: kvMatch[2], effect, operator: 'Equal' });
+          } else {
+            tolerations.push({ key: keyValuePart, effect, operator: 'Exists' });
+          }
+        } else {
+          // Just a key
+          tolerations.push({ key: t, operator: 'Exists' });
+        }
+      }
+      podRequest.tolerations = tolerations;
+    }
+
+    // Parse resource requests
+    if (options.cpu || options.memory) {
+      podRequest.resourceRequests = {
+        cpu: options.cpu ? parseInt(options.cpu, 10) : 100,
+        memory: options.memory ? parseInt(options.memory, 10) : 128,
+      };
     }
 
     const replicas = parseInt(options.replicas ?? '1', 10);
@@ -494,6 +541,10 @@ export function createPodCommand(): Command {
     .option('-p, --priority <priority>', 'Pod priority (0-1000)', '100')
     .option('-l, --label <key=value...>', 'Pod labels')
     .option('-r, --replicas <count>', 'Number of replicas', '1')
+    .option('-s, --node-selector <key=value...>', 'Node selector (can be repeated)')
+    .option('-t, --toleration <key=value:effect...>', 'Toleration (can be repeated)')
+    .option('--cpu <millicores>', 'CPU request in millicores')
+    .option('--memory <mb>', 'Memory request in MB')
     .action(createHandler);
 
   // List pods

@@ -157,12 +157,57 @@ node packages/cli/dist/index.js pack versions my-pack
 # Deploy a pack to a node
 node packages/cli/dist/index.js pod create --pack my-pack --node node-1
 
+# Deploy with scheduling constraints
+node packages/cli/dist/index.js pod create --pack my-pack \
+  --node-selector env=production \
+  --node-selector tier=backend \
+  --toleration dedicated=gpu:NoSchedule \
+  --cpu 500 \
+  --memory 256
+
+# Deploy with labels and priority
+node packages/cli/dist/index.js pod create --pack my-pack \
+  --label app=web \
+  --label version=v1 \
+  --priority 200 \
+  --replicas 3
+
 # Check pod status
 node packages/cli/dist/index.js pod status <pod-id>
+
+# List pods with filters
+node packages/cli/dist/index.js pod list --namespace production --status running
 
 # Rollback to a previous version
 node packages/cli/dist/index.js pod rollback <pod-id> --ver 0.9.0
 ```
+
+#### Pod Create Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--pack <name>` | Pack name to deploy | (required) |
+| `-V, --ver <version>` | Pack version | latest |
+| `-n, --node <nodeId>` | Target specific node | auto-scheduled |
+| `--namespace <ns>` | Target namespace | `default` |
+| `-p, --priority <n>` | Priority (0-1000) | `100` |
+| `-l, --label <k=v>` | Pod label (can be repeated) | - |
+| `-r, --replicas <n>` | Number of replicas | `1` |
+| `-s, --node-selector <k=v>` | Node selector (can be repeated) | - |
+| `-t, --toleration <k=v:effect>` | Toleration (can be repeated) | - |
+| `--cpu <millicores>` | CPU request in millicores | `100` |
+| `--memory <mb>` | Memory request in MB | `128` |
+
+#### Scheduling Concepts
+
+Pods are scheduled to nodes based on these Kubernetes-like constraints:
+
+- **Node Selectors**: Pods only schedule on nodes with matching labels
+  - Node has `--label env=production` → Pod needs `--node-selector env=production`
+- **Tolerations**: Allow pods to schedule on tainted nodes
+  - Node has `--taint dedicated=gpu:NoSchedule` → Pod needs `--toleration dedicated=gpu:NoSchedule`
+- **Resource Requests**: Pods fit onto nodes with sufficient capacity
+  - Node has `--cpu 2000 --memory 4096` → Pod requesting `--cpu 500 --memory 256` fits 4× per node
 
 ### Node Management
 
