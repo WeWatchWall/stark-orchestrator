@@ -6,6 +6,7 @@
 import type { PodStatus, ResourceRequirements } from '../types/pod';
 import type { ValidationResult, ValidationError } from './pack-validation';
 import { validateLabels, validateAnnotations } from './node-validation';
+import { validateSchedulingConfig } from './scheduling-validation';
 
 /**
  * Valid pod statuses
@@ -425,6 +426,12 @@ export function validateCreatePodInput(input: unknown): ValidationResult {
   errors.push(...validateTolerations(data.tolerations));
   errors.push(...validateResourceRequirements(data.resourceRequests, 'resourceRequests'));
   errors.push(...validateResourceRequirements(data.resourceLimits, 'resourceLimits'));
+
+  // Validate scheduling config (nodeSelector, affinities)
+  const schedulingResult = validateSchedulingConfig(data.scheduling);
+  if (!schedulingResult.valid) {
+    errors.push(...schedulingResult.errors);
+  }
 
   const metadataError = validatePodMetadata(data.metadata);
   if (metadataError) errors.push(metadataError);
