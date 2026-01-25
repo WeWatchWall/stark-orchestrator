@@ -405,8 +405,8 @@ describe('AuthService', () => {
       expect(service.canManageResources.value).toBe(false);
     });
 
-    it('should return false for canDeploy', () => {
-      expect(service.canDeploy.value).toBe(false);
+    it('should return false for isNodeAgent', () => {
+      expect(service.isNodeAgent.value).toBe(false);
     });
   });
 

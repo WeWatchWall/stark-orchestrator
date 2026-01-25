@@ -132,6 +132,12 @@ node packages/cli/dist/index.js auth add-user --email newuser@example.com --role
 node packages/cli/dist/index.js auth list-users
 ```
 
+#### User Roles
+
+- admin: Full access to everything (manage all)
+- node: Node agents - can create/update own node, update pods assigned to it, read packs/pods/namespaces
+- viewer: Read-only access to packs, pods, nodes, namespaces
+
 ### Pack Management
 
 ```bash

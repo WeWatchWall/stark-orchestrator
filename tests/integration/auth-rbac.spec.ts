@@ -17,28 +17,28 @@ import { defineAbilityFor, type Action, type Subject } from '@stark-o/server/mid
 /**
  * RBAC Permission Matrix
  *
- * | Resource    | Action    | admin | operator | developer | viewer |
- * |-------------|-----------|-------|----------|-----------|--------|
- * | packs       | create    | ✓     | ✗        | ✓         | ✗      |
- * | packs       | read      | ✓     | ✓        | ✓         | ✓      |
- * | packs       | update    | ✓     | ✗        | ✓         | ✗      |
- * | packs       | delete    | ✓     | ✗        | ✓         | ✗      |
- * | pods        | create    | ✓     | ✓        | ✓         | ✗      |
- * | pods        | read      | ✓     | ✓        | ✓         | ✓      |
- * | pods        | update    | ✓     | ✓        | ✓         | ✗      |
- * | pods        | delete    | ✓     | ✓        | ✓         | ✗      |
- * | nodes       | create    | ✓     | ✓        | ✗         | ✗      |
- * | nodes       | read      | ✓     | ✓        | ✓         | ✓      |
- * | nodes       | update    | ✓     | ✓        | ✗         | ✗      |
- * | nodes       | delete    | ✓     | ✓        | ✗         | ✗      |
- * | namespaces  | create    | ✓     | ✓        | ✗         | ✗      |
- * | namespaces  | read      | ✓     | ✓        | ✓         | ✓      |
- * | namespaces  | update    | ✓     | ✓        | ✗         | ✗      |
- * | namespaces  | delete    | ✓     | ✓        | ✗         | ✗      |
- * | users       | create    | ✓     | ✗        | ✗         | ✗      |
- * | users       | read      | ✓     | ✓        | ✗         | ✗      |
- * | users       | update    | ✓     | ✗        | ✗         | ✗      |
- * | users       | delete    | ✓     | ✗        | ✗         | ✗      |
+ * | Resource    | Action    | admin | node  | viewer |
+ * |-------------|-----------|-------|-------|--------|
+ * | packs       | create    | ✓     | ✗     | ✗      |
+ * | packs       | read      | ✓     | ✓     | ✓      |
+ * | packs       | update    | ✓     | ✗     | ✗      |
+ * | packs       | delete    | ✓     | ✗     | ✗      |
+ * | pods        | create    | ✓     | ✗     | ✗      |
+ * | pods        | read      | ✓     | ✓     | ✓      |
+ * | pods        | update    | ✓     | ✓     | ✗      |
+ * | pods        | delete    | ✓     | ✗     | ✗      |
+ * | nodes       | create    | ✓     | ✓     | ✗      |
+ * | nodes       | read      | ✓     | ✓     | ✓      |
+ * | nodes       | update    | ✓     | ✓     | ✗      |
+ * | nodes       | delete    | ✓     | ✗     | ✗      |
+ * | namespaces  | create    | ✓     | ✗     | ✗      |
+ * | namespaces  | read      | ✓     | ✓     | ✓      |
+ * | namespaces  | update    | ✓     | ✗     | ✗      |
+ * | namespaces  | delete    | ✓     | ✗     | ✗      |
+ * | users       | create    | ✓     | ✗     | ✗      |
+ * | users       | read      | ✓     | ✗     | ✗      |
+ * | users       | update    | ✓     | ✗     | ✗      |
+ * | users       | delete    | ✓     | ✗     | ✗      |
  */
 
 /**
@@ -113,8 +113,7 @@ function checkAbility(role: UserRole, action: Action, subject: Subject): boolean
 describe('RBAC Enforcement Integration Tests', () => {
   // Test users for each role
   let adminUser: User;
-  let operatorUser: User;
-  let developerUser: User;
+  let nodeUser: User;
   let viewerUser: User;
 
   beforeEach(() => {
@@ -122,8 +121,7 @@ describe('RBAC Enforcement Integration Tests', () => {
 
     // Create test users for each role
     adminUser = createTestUser('admin', 'admin-user-1');
-    operatorUser = createTestUser('operator', 'operator-user-1');
-    developerUser = createTestUser('developer', 'developer-user-1');
+    nodeUser = createTestUser('node', 'node-user-1');
     viewerUser = createTestUser('viewer', 'viewer-user-1');
   });
 
@@ -147,10 +145,10 @@ describe('RBAC Enforcement Integration Tests', () => {
       });
 
       it('should attach user to authenticated request', () => {
-        const req = createAuthenticatedRequest(developerUser);
+        const req = createAuthenticatedRequest(nodeUser);
         expect(req.user).toBeDefined();
-        expect(req.user?.id).toBe('developer-user-1');
-        expect(req.user?.roles).toContain('developer');
+        expect(req.user?.id).toBe('node-user-1');
+        expect(req.user?.roles).toContain('node');
       });
 
       it('should create valid session with expiration', () => {
@@ -161,14 +159,14 @@ describe('RBAC Enforcement Integration Tests', () => {
       });
 
       it('should include user in session', () => {
-        const session = createTestSession(operatorUser);
-        expect(session.user).toEqual(operatorUser);
-        expect(session.user.roles).toContain('operator');
+        const session = createTestSession(nodeUser);
+        expect(session.user).toEqual(nodeUser);
+        expect(session.user.roles).toContain('node');
       });
 
       it('should generate unique tokens for different users', () => {
         const session1 = createTestSession(adminUser);
-        const session2 = createTestSession(developerUser);
+        const session2 = createTestSession(nodeUser);
         expect(session1.accessToken).not.toBe(session2.accessToken);
         expect(session1.refreshToken).not.toBe(session2.refreshToken);
       });
@@ -182,14 +180,9 @@ describe('RBAC Enforcement Integration Tests', () => {
         expect(ability.can('create', 'Pack')).toBe(true);
       });
 
-      it('should deny operator from creating pack', () => {
-        const ability = defineAbilityFor(operatorUser);
+      it('should deny node from creating pack', () => {
+        const ability = defineAbilityFor(nodeUser);
         expect(ability.can('create', 'Pack')).toBe(false);
-      });
-
-      it('should allow developer to create pack', () => {
-        const ability = defineAbilityFor(developerUser);
-        expect(ability.can('create', 'Pack')).toBe(true);
       });
 
       it('should deny viewer from creating pack', () => {
@@ -200,7 +193,7 @@ describe('RBAC Enforcement Integration Tests', () => {
 
     describe('GET /api/packs - List Packs', () => {
       it('should allow all roles to list packs', () => {
-        const roles: UserRole[] = ['admin', 'operator', 'developer', 'viewer'];
+        const roles: UserRole[] = ['admin', 'node', 'viewer'];
         for (const role of roles) {
           const user = createTestUser(role);
           const ability = defineAbilityFor(user);
@@ -215,14 +208,9 @@ describe('RBAC Enforcement Integration Tests', () => {
         expect(ability.can('update', 'Pack')).toBe(true);
       });
 
-      it('should deny operator from updating pack', () => {
-        const ability = defineAbilityFor(operatorUser);
+      it('should deny node from updating pack', () => {
+        const ability = defineAbilityFor(nodeUser);
         expect(ability.can('update', 'Pack')).toBe(false);
-      });
-
-      it('should allow developer to update pack (ownership checked in handler)', () => {
-        const ability = defineAbilityFor(developerUser);
-        expect(ability.can('update', 'Pack')).toBe(true);
       });
 
       it('should deny viewer from updating pack', () => {
@@ -237,13 +225,8 @@ describe('RBAC Enforcement Integration Tests', () => {
         expect(ability.can('delete', 'Pack')).toBe(true);
       });
 
-      it('should deny operator from deleting pack', () => {
-        const ability = defineAbilityFor(operatorUser);
-        expect(ability.can('delete', 'Pack')).toBe(false);
-      });
-
-      it('should deny developer from deleting pack (only admin can delete)', () => {
-        const ability = defineAbilityFor(developerUser);
+      it('should deny node from deleting pack', () => {
+        const ability = defineAbilityFor(nodeUser);
         expect(ability.can('delete', 'Pack')).toBe(false);
       });
 
@@ -261,14 +244,9 @@ describe('RBAC Enforcement Integration Tests', () => {
         expect(ability.can('create', 'Pod')).toBe(true);
       });
 
-      it('should allow operator to create pod', () => {
-        const ability = defineAbilityFor(operatorUser);
-        expect(ability.can('create', 'Pod')).toBe(true);
-      });
-
-      it('should allow developer to create pod', () => {
-        const ability = defineAbilityFor(developerUser);
-        expect(ability.can('create', 'Pod')).toBe(true);
+      it('should deny node from creating pod', () => {
+        const ability = defineAbilityFor(nodeUser);
+        expect(ability.can('create', 'Pod')).toBe(false);
       });
 
       it('should deny viewer from creating pod', () => {
@@ -279,12 +257,29 @@ describe('RBAC Enforcement Integration Tests', () => {
 
     describe('GET /api/pods - List Pods', () => {
       it('should allow all roles to list pods', () => {
-        const roles: UserRole[] = ['admin', 'operator', 'developer', 'viewer'];
+        const roles: UserRole[] = ['admin', 'node', 'viewer'];
         for (const role of roles) {
           const user = createTestUser(role);
           const ability = defineAbilityFor(user);
           expect(ability.can('read', 'Pod')).toBe(true);
         }
+      });
+    });
+
+    describe('PUT /api/pods/:id - Update Pod', () => {
+      it('should allow admin to update any pod', () => {
+        const ability = defineAbilityFor(adminUser);
+        expect(ability.can('update', 'Pod')).toBe(true);
+      });
+
+      it('should allow node to update pod (ownership checked in handler)', () => {
+        const ability = defineAbilityFor(nodeUser);
+        expect(ability.can('update', 'Pod')).toBe(true);
+      });
+
+      it('should deny viewer from updating pod', () => {
+        const ability = defineAbilityFor(viewerUser);
+        expect(ability.can('update', 'Pod')).toBe(false);
       });
     });
 
@@ -294,14 +289,9 @@ describe('RBAC Enforcement Integration Tests', () => {
         expect(ability.can('delete', 'Pod')).toBe(true);
       });
 
-      it('should allow operator to delete any pod', () => {
-        const ability = defineAbilityFor(operatorUser);
-        expect(ability.can('delete', 'Pod')).toBe(true);
-      });
-
-      it('should allow developer to delete pod (ownership checked in handler)', () => {
-        const ability = defineAbilityFor(developerUser);
-        expect(ability.can('delete', 'Pod')).toBe(true);
+      it('should deny node from deleting pod', () => {
+        const ability = defineAbilityFor(nodeUser);
+        expect(ability.can('delete', 'Pod')).toBe(false);
       });
 
       it('should deny viewer from deleting pod', () => {
@@ -318,14 +308,9 @@ describe('RBAC Enforcement Integration Tests', () => {
         expect(ability.can('create', 'Node')).toBe(true);
       });
 
-      it('should allow operator to register node', () => {
-        const ability = defineAbilityFor(operatorUser);
+      it('should allow node to register itself', () => {
+        const ability = defineAbilityFor(nodeUser);
         expect(ability.can('create', 'Node')).toBe(true);
-      });
-
-      it('should deny developer from registering node', () => {
-        const ability = defineAbilityFor(developerUser);
-        expect(ability.can('create', 'Node')).toBe(false);
       });
 
       it('should deny viewer from registering node', () => {
@@ -336,7 +321,7 @@ describe('RBAC Enforcement Integration Tests', () => {
 
     describe('GET /api/nodes - List Nodes', () => {
       it('should allow all roles to list nodes', () => {
-        const roles: UserRole[] = ['admin', 'operator', 'developer', 'viewer'];
+        const roles: UserRole[] = ['admin', 'node', 'viewer'];
         for (const role of roles) {
           const user = createTestUser(role);
           const ability = defineAbilityFor(user);
@@ -351,14 +336,9 @@ describe('RBAC Enforcement Integration Tests', () => {
         expect(ability.can('update', 'Node')).toBe(true);
       });
 
-      it('should allow operator to update node', () => {
-        const ability = defineAbilityFor(operatorUser);
+      it('should allow node to update itself (ownership checked in handler)', () => {
+        const ability = defineAbilityFor(nodeUser);
         expect(ability.can('update', 'Node')).toBe(true);
-      });
-
-      it('should deny developer from updating node', () => {
-        const ability = defineAbilityFor(developerUser);
-        expect(ability.can('update', 'Node')).toBe(false);
       });
 
       it('should deny viewer from updating node', () => {
@@ -373,13 +353,8 @@ describe('RBAC Enforcement Integration Tests', () => {
         expect(ability.can('delete', 'Node')).toBe(true);
       });
 
-      it('should allow operator to delete node', () => {
-        const ability = defineAbilityFor(operatorUser);
-        expect(ability.can('delete', 'Node')).toBe(true);
-      });
-
-      it('should deny developer from deleting node', () => {
-        const ability = defineAbilityFor(developerUser);
+      it('should deny node from deleting nodes', () => {
+        const ability = defineAbilityFor(nodeUser);
         expect(ability.can('delete', 'Node')).toBe(false);
       });
 
@@ -397,13 +372,8 @@ describe('RBAC Enforcement Integration Tests', () => {
         expect(ability.can('create', 'Namespace')).toBe(true);
       });
 
-      it('should allow operator to create namespace', () => {
-        const ability = defineAbilityFor(operatorUser);
-        expect(ability.can('create', 'Namespace')).toBe(true);
-      });
-
-      it('should deny developer from creating namespace', () => {
-        const ability = defineAbilityFor(developerUser);
+      it('should deny node from creating namespace', () => {
+        const ability = defineAbilityFor(nodeUser);
         expect(ability.can('create', 'Namespace')).toBe(false);
       });
 
@@ -415,7 +385,7 @@ describe('RBAC Enforcement Integration Tests', () => {
 
     describe('GET /api/namespaces - List Namespaces', () => {
       it('should allow all roles to list namespaces', () => {
-        const roles: UserRole[] = ['admin', 'operator', 'developer', 'viewer'];
+        const roles: UserRole[] = ['admin', 'node', 'viewer'];
         for (const role of roles) {
           const user = createTestUser(role);
           const ability = defineAbilityFor(user);
@@ -430,13 +400,8 @@ describe('RBAC Enforcement Integration Tests', () => {
         expect(ability.can('delete', 'Namespace')).toBe(true);
       });
 
-      it('should allow operator to delete namespace', () => {
-        const ability = defineAbilityFor(operatorUser);
-        expect(ability.can('delete', 'Namespace')).toBe(true);
-      });
-
-      it('should deny developer from deleting namespace', () => {
-        const ability = defineAbilityFor(developerUser);
+      it('should deny node from deleting namespace', () => {
+        const ability = defineAbilityFor(nodeUser);
         expect(ability.can('delete', 'Namespace')).toBe(false);
       });
 
@@ -454,13 +419,8 @@ describe('RBAC Enforcement Integration Tests', () => {
         expect(ability.can('read', 'User')).toBe(true);
       });
 
-      it('should allow operator to list users', () => {
-        const ability = defineAbilityFor(operatorUser);
-        expect(ability.can('read', 'User')).toBe(true);
-      });
-
-      it('should deny developer from listing all users', () => {
-        const ability = defineAbilityFor(developerUser);
+      it('should deny node from listing all users', () => {
+        const ability = defineAbilityFor(nodeUser);
         expect(ability.can('read', 'User')).toBe(false);
       });
 
@@ -476,17 +436,12 @@ describe('RBAC Enforcement Integration Tests', () => {
         expect(ability.can('read', 'User')).toBe(true);
       });
 
-      it('should allow operator to get any user', () => {
-        const ability = defineAbilityFor(operatorUser);
-        expect(ability.can('read', 'User')).toBe(true);
-      });
-
-      it('should deny developer from getting other user (self access checked in handler)', () => {
-        const ability = defineAbilityFor(developerUser);
+      it('should deny node from getting other user', () => {
+        const ability = defineAbilityFor(nodeUser);
         expect(ability.can('read', 'User')).toBe(false);
       });
 
-      it('should deny viewer from getting other user (self access checked in handler)', () => {
+      it('should deny viewer from getting other user', () => {
         const ability = defineAbilityFor(viewerUser);
         expect(ability.can('read', 'User')).toBe(false);
       });
@@ -498,13 +453,8 @@ describe('RBAC Enforcement Integration Tests', () => {
         expect(ability.can('update', 'User')).toBe(true);
       });
 
-      it('should deny operator from updating users', () => {
-        const ability = defineAbilityFor(operatorUser);
-        expect(ability.can('update', 'User')).toBe(false);
-      });
-
-      it('should deny developer from updating users (self profile managed via auth)', () => {
-        const ability = defineAbilityFor(developerUser);
+      it('should deny node from updating users', () => {
+        const ability = defineAbilityFor(nodeUser);
         expect(ability.can('update', 'User')).toBe(false);
       });
 
@@ -520,13 +470,8 @@ describe('RBAC Enforcement Integration Tests', () => {
         expect(ability.can('delete', 'User')).toBe(true);
       });
 
-      it('should deny operator from deleting users', () => {
-        const ability = defineAbilityFor(operatorUser);
-        expect(ability.can('delete', 'User')).toBe(false);
-      });
-
-      it('should deny developer from deleting users', () => {
-        const ability = defineAbilityFor(developerUser);
+      it('should deny node from deleting users', () => {
+        const ability = defineAbilityFor(nodeUser);
         expect(ability.can('delete', 'User')).toBe(false);
       });
 
@@ -550,35 +495,24 @@ describe('RBAC Enforcement Integration Tests', () => {
         expect(ability.can('manage', 'ClusterConfig')).toBe(true);
       });
 
-      it('should grant operator resource management permissions', () => {
-        const ability = defineAbilityFor(operatorUser);
-        // Operators manage infrastructure
-        expect(ability.can('manage', 'Node')).toBe(true);
-        expect(ability.can('manage', 'Namespace')).toBe(true);
-        expect(ability.can('manage', 'Pod')).toBe(true);
-        expect(ability.can('manage', 'ClusterConfig')).toBe(true);
-        // Operators read packs and users
-        expect(ability.can('read', 'Pack')).toBe(true);
-        expect(ability.can('read', 'User')).toBe(true);
-        // Operators cannot manage packs or users
-        expect(ability.can('create', 'Pack')).toBe(false);
-        expect(ability.can('manage', 'User')).toBe(false);
-      });
-
-      it('should grant developer deployment permissions', () => {
-        const ability = defineAbilityFor(developerUser);
-        // Developers work with packs and pods
-        expect(ability.can('create', 'Pack')).toBe(true);
-        expect(ability.can('read', 'Pack')).toBe(true);
-        expect(ability.can('update', 'Pack')).toBe(true);
-        expect(ability.can('create', 'Pod')).toBe(true);
-        expect(ability.can('read', 'Pod')).toBe(true);
-        // Developers can read nodes and namespaces
+      it('should grant node agent permissions', () => {
+        const ability = defineAbilityFor(nodeUser);
+        // Nodes can register and update themselves
+        expect(ability.can('create', 'Node')).toBe(true);
         expect(ability.can('read', 'Node')).toBe(true);
+        expect(ability.can('update', 'Node')).toBe(true);
+        // Nodes can read and update pods assigned to them
+        expect(ability.can('read', 'Pod')).toBe(true);
+        expect(ability.can('update', 'Pod')).toBe(true);
+        // Nodes can read packs to execute them
+        expect(ability.can('read', 'Pack')).toBe(true);
+        // Nodes can read namespaces for pod filtering
         expect(ability.can('read', 'Namespace')).toBe(true);
-        // Developers cannot manage infrastructure
-        expect(ability.can('create', 'Node')).toBe(false);
-        expect(ability.can('manage', 'Namespace')).toBe(false);
+        // Nodes cannot delete resources or manage users
+        expect(ability.can('delete', 'Node')).toBe(false);
+        expect(ability.can('create', 'Pod')).toBe(false);
+        expect(ability.can('delete', 'Pod')).toBe(false);
+        expect(ability.can('manage', 'User')).toBe(false);
       });
 
       it('should grant viewer read-only access', () => {
@@ -599,27 +533,27 @@ describe('RBAC Enforcement Integration Tests', () => {
 
     describe('Multi-Role Users', () => {
       it('should combine permissions for users with multiple roles', () => {
-        // User with both developer and operator roles should have both sets of permissions
+        // User with both node and viewer roles should have both sets of permissions
         const multiRoleUser: User = {
-          ...developerUser,
-          roles: ['developer', 'operator'],
+          ...nodeUser,
+          roles: ['node', 'viewer'],
         };
         const ability = defineAbilityFor(multiRoleUser);
         
-        // Developer permissions
-        expect(ability.can('create', 'Pack')).toBe(true);
-        expect(ability.can('read', 'Pack')).toBe(true);
+        // Node permissions
+        expect(ability.can('create', 'Node')).toBe(true);
+        expect(ability.can('update', 'Node')).toBe(true);
+        expect(ability.can('update', 'Pod')).toBe(true);
         
-        // Operator permissions
-        expect(ability.can('manage', 'Node')).toBe(true);
-        expect(ability.can('manage', 'Namespace')).toBe(true);
-        expect(ability.can('manage', 'ClusterConfig')).toBe(true);
+        // Viewer permissions (already covered by node)
+        expect(ability.can('read', 'Pack')).toBe(true);
+        expect(ability.can('read', 'Pod')).toBe(true);
       });
 
       it('should handle user with all roles', () => {
         const allRolesUser: User = {
           ...adminUser,
-          roles: ['admin', 'operator', 'developer', 'viewer'],
+          roles: ['admin', 'node', 'viewer'],
         };
         const ability = defineAbilityFor(allRolesUser);
         
@@ -630,7 +564,7 @@ describe('RBAC Enforcement Integration Tests', () => {
 
     describe('Ability Creation', () => {
       it('should create ability for each role without error', () => {
-        const roles: UserRole[] = ['admin', 'operator', 'developer', 'viewer'];
+        const roles: UserRole[] = ['admin', 'node', 'viewer'];
         for (const role of roles) {
           const user = createTestUser(role);
           const ability = defineAbilityFor(user);
@@ -656,13 +590,8 @@ describe('RBAC Enforcement Integration Tests', () => {
         expect(ability.can('manage', 'ClusterConfig')).toBe(true);
       });
 
-      it('should allow operator to manage cluster config', () => {
-        const ability = defineAbilityFor(operatorUser);
-        expect(ability.can('manage', 'ClusterConfig')).toBe(true);
-      });
-
-      it('should deny developer from managing cluster config', () => {
-        const ability = defineAbilityFor(developerUser);
+      it('should deny node from managing cluster config', () => {
+        const ability = defineAbilityFor(nodeUser);
         expect(ability.can('manage', 'ClusterConfig')).toBe(false);
       });
 
