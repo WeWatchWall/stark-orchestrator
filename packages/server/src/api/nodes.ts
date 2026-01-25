@@ -122,14 +122,14 @@ function getUserId(req: Request): string | null {
 }
 
 /**
- * Check if user has admin or operator role (can manage any node)
+ * Check if user has admin role (can manage any node)
  */
 function hasNodeManagementRole(req: Request): boolean {
   const user = (req as Request & { user?: { id: string; roles?: string[] } }).user;
   if (!user?.roles) {
     return false;
   }
-  return user.roles.includes('admin') || user.roles.includes('operator');
+  return user.roles.includes('admin');
 }
 
 /**

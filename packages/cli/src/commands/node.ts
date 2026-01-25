@@ -768,7 +768,7 @@ async function agentStartHandler(options: {
 
       info(`Public registration is enabled. Auto-registering as ${autoEmail}...`);
 
-      // Register the user with operator role
+      // Register the user with node role
       const registerResponse = await fetch(`${httpUrl}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -776,7 +776,7 @@ async function agentStartHandler(options: {
           email: autoEmail,
           password: autoPassword,
           displayName: `Node Agent ${options.name}`,
-          roles: ['operator'], // Request operator role (will be filtered to non-admin by server)
+          roles: ['node'], // Request node role for node agents
         }),
       });
 

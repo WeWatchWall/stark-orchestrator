@@ -5,12 +5,11 @@
 
 /**
  * User roles for RBAC
- * - admin: Full access to all resources
- * - operator: Manage nodes and deployments
- * - developer: Register packs and deploy to nodes
- * - viewer: Read-only access
+ * - admin: Full access to all resources (manage users, cluster config, all entities)
+ * - node: Node agents - can register/update own node and update pods assigned to it
+ * - viewer: Read-only access to packs, pods, nodes, namespaces
  */
-export type UserRole = 'admin' | 'operator' | 'developer' | 'viewer';
+export type UserRole = 'admin' | 'node' | 'viewer';
 
 /**
  * User entity
@@ -83,20 +82,20 @@ export function hasAllRoles(user: User, roles: UserRole[]): boolean {
 }
 
 /**
- * Check if user can manage resources (operator or admin)
+ * Check if user can manage resources (admin only)
  */
 export function canManageResources(user: User): boolean {
-  return hasAnyRole(user, ['admin', 'operator']);
+  return hasRole(user, 'admin');
 }
 
 /**
- * Check if user can deploy packs (developer, operator, or admin)
+ * Check if user is a node agent
  */
-export function canDeploy(user: User): boolean {
-  return hasAnyRole(user, ['admin', 'operator', 'developer']);
+export function isNodeAgent(user: User): boolean {
+  return hasRole(user, 'node');
 }
 
 /**
  * All available roles
  */
-export const ALL_ROLES: readonly UserRole[] = ['admin', 'operator', 'developer', 'viewer'] as const;
+export const ALL_ROLES: readonly UserRole[] = ['admin', 'node', 'viewer'] as const;

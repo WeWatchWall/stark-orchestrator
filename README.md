@@ -105,7 +105,7 @@ When starting fresh, create the first admin account:
 node packages/cli/dist/index.js auth setup
 ```
 
-This will prompt for an email, password, and optional display name. The first user is automatically granted all roles (admin, operator, developer, viewer).
+This will prompt for an email, password, and optional display name. The first user is automatically granted the admin role.
 
 ### Authentication
 
@@ -126,7 +126,7 @@ Administrators can create and manage users:
 
 ```bash
 # Add a new user
-node packages/cli/dist/index.js auth add-user --email newuser@example.com --role developer --role viewer
+node packages/cli/dist/index.js auth add-user --email newuser@example.com --role node
 
 # List all users
 node packages/cli/dist/index.js auth list-users

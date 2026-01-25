@@ -700,7 +700,7 @@ export class BrowserAgent {
   }
 
   /**
-   * Auto-register a new user with operator role
+   * Auto-register a new user with node role
    * Returns the access token on success
    */
   private async autoRegisterUser(): Promise<string> {
@@ -719,7 +719,7 @@ export class BrowserAgent {
           email: autoEmail,
           password: autoPassword,
           displayName: `Browser Agent ${this.config.nodeName}`,
-          roles: ['operator'],
+          roles: ['node'],
         }),
       });
 

@@ -14,7 +14,7 @@ import {
   hasRole,
   hasAnyRole,
   canManageResources,
-  canDeploy,
+  isNodeAgent,
   createServiceLogger,
 } from '@stark-o/shared';
 import {
@@ -499,15 +499,15 @@ export class AuthService {
   }
 
   /**
-   * Whether current user can deploy (reactive)
+   * Whether current user is a node agent (reactive)
    */
-  get canDeploy(): ComputedRef<boolean> {
+  get isNodeAgent(): ComputedRef<boolean> {
     return computed(() => {
       const user = this._currentSession.value?.user;
       if (!user) {
         return false;
       }
-      return canDeploy(user.data);
+      return isNodeAgent(user.data);
     });
   }
 

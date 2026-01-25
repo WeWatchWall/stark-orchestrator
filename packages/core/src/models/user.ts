@@ -16,7 +16,7 @@ import {
   hasAnyRole,
   hasAllRoles,
   canManageResources,
-  canDeploy,
+  isNodeAgent,
 } from '@stark-o/shared';
 
 /**
@@ -135,17 +135,10 @@ export class UserModel {
   }
 
   /**
-   * Computed: Check if user is an operator
+   * Computed: Check if user is a node agent
    */
-  get isOperator(): ComputedRef<boolean> {
-    return computed(() => hasRole(this._user, 'operator'));
-  }
-
-  /**
-   * Computed: Check if user is a developer
-   */
-  get isDeveloper(): ComputedRef<boolean> {
-    return computed(() => hasRole(this._user, 'developer'));
+  get isNode(): ComputedRef<boolean> {
+    return computed(() => hasRole(this._user, 'node'));
   }
 
   /**
@@ -158,17 +151,17 @@ export class UserModel {
   }
 
   /**
-   * Computed: Check if user can manage resources (admin or operator)
+   * Computed: Check if user can manage resources (admin only)
    */
   get canManageResources(): ComputedRef<boolean> {
     return computed(() => canManageResources(this._user));
   }
 
   /**
-   * Computed: Check if user can deploy packs (admin, operator, or developer)
+   * Computed: Check if user is a node agent
    */
-  get canDeploy(): ComputedRef<boolean> {
-    return computed(() => canDeploy(this._user));
+  get isNodeAgent(): ComputedRef<boolean> {
+    return computed(() => isNodeAgent(this._user));
   }
 
   /**
@@ -303,7 +296,7 @@ export function createReactiveUserListItem(user: User): {
   email: string;
   displayName: ComputedRef<string>;
   roles: ComputedRef<string>;
-  canDeploy: ComputedRef<boolean>;
+  isNodeAgent: ComputedRef<boolean>;
   canManageResources: ComputedRef<boolean>;
 } {
   const model = new UserModel(user);
@@ -312,7 +305,7 @@ export function createReactiveUserListItem(user: User): {
     email: model.email,
     displayName: model.displayNameOrEmail,
     roles: model.roleDisplay,
-    canDeploy: model.canDeploy,
+    isNodeAgent: model.isNodeAgent,
     canManageResources: model.canManageResources,
   };
 }

@@ -30,8 +30,7 @@ export {
   // Pre-configured middleware instances
   abilityMiddleware,
   requireAdmin,
-  requireOperator,
-  requireDeveloper,
+  requireNode,
   requireViewer,
   // Pack authorization
   canCreatePack,

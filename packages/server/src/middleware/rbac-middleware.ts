@@ -85,9 +85,11 @@ const logger = createServiceLogger(
  *
  * Role permissions:
  * - admin: Full access to all resources (manage all)
- * - operator: Manage nodes, read/update/delete pods, read packs, manage namespaces
- * - developer: Create/read/update packs (own), create/read pods, read nodes
- * - viewer: Read-only access to packs, pods, nodes
+ * - node: Node agents - can create/update own node, update pods assigned to it, read packs
+ * - viewer: Read-only access to packs, pods, nodes, namespaces
+ *
+ * Note: The 'node' role provides baseline permissions. Ownership-based access control
+ * (e.g., node can only update its own record) is enforced in route handlers.
  *
  * @param user - The authenticated user
  * @returns CASL MongoAbility instance
@@ -103,34 +105,18 @@ export function defineAbilityFor(user: User): AppAbility {
         can('manage', 'all');
         break;
 
-      case 'operator':
-        // Operators manage nodes and infrastructure
-        can('manage', 'Node');
-        can('manage', 'Namespace');
-        can('manage', 'ClusterConfig');
-        // Operators can manage all pods (scheduling, stopping, etc.)
-        can('manage', 'Pod');
-        // Operators can read packs but not create/modify
+      case 'node':
+        // Node agents manage their own node and assigned pods
+        // Note: Ownership checks are enforced in route handlers/WebSocket handlers
+        can('create', 'Node');  // Register own node
+        can('read', 'Node');    // Read own node (for reconnection)
+        can('update', 'Node');  // Update own node (heartbeat, status)
+        // Nodes can update pod status for pods assigned to them
+        can('read', 'Pod');     // Read pods assigned to this node
+        can('update', 'Pod');   // Update pod status (running, failed, etc.)
+        // Nodes need to read packs to execute them
         can('read', 'Pack');
-        // Operators can read users
-        can('read', 'User');
-        break;
-
-      case 'developer':
-        // Developers work with packs and pods
-        can('create', 'Pack');
-        can('read', 'Pack');
-        can('update', 'Pack');
-        // Note: Developers can only update/delete their own packs
-        // This is enforced via conditions in route handlers
-        // Developers can create and manage their own pods
-        can('create', 'Pod');
-        can('read', 'Pod');
-        can('update', 'Pod');
-        can('delete', 'Pod');
-        // Developers can read nodes to select deployment targets
-        can('read', 'Node');
-        // Developers can read namespaces
+        // Nodes can read namespaces for pod filtering
         can('read', 'Namespace');
         break;
 
@@ -344,11 +330,11 @@ export function authorize(
  *
  * @example
  * ```typescript
- * // Allow admin or operator
- * router.delete('/nodes/:id',
+ * // Allow admin or node agents
+ * router.put('/nodes/:id',
  *   authMiddleware,
- *   requireAnyRole(['admin', 'operator']),
- *   deleteNodeHandler
+ *   requireAnyRole(['admin', 'node']),
+ *   updateNodeHandler
  * );
  * ```
  */
@@ -480,8 +466,8 @@ export function requireAllRoles(roles: UserRole[]): RequestHandler {
  * ```
  */
 export function checkOwnership(user: User, resourceOwnerId: string): boolean {
-  // Admins and operators can access any resource
-  if (user.roles.includes('admin') || user.roles.includes('operator')) {
+  // Admins can access any resource
+  if (user.roles.includes('admin')) {
     return true;
   }
 
@@ -509,9 +495,8 @@ export const abilityMiddleware: RequestHandler = attachAbility();
  * Pre-configured authorization middlewares for common patterns
  */
 export const requireAdmin: RequestHandler = requireAnyRole(['admin']);
-export const requireOperator: RequestHandler = requireAnyRole(['admin', 'operator']);
-export const requireDeveloper: RequestHandler = requireAnyRole(['admin', 'operator', 'developer']);
-export const requireViewer: RequestHandler = requireAnyRole(['admin', 'operator', 'developer', 'viewer']);
+export const requireNode: RequestHandler = requireAnyRole(['admin', 'node']);
+export const requireViewer: RequestHandler = requireAnyRole(['admin', 'node', 'viewer']);
 
 // Pack authorization
 export const canCreatePack: RequestHandler = authorize('create', 'Pack');

@@ -17,7 +17,7 @@ export {
   hasAnyRole,
   hasAllRoles,
   canManageResources,
-  canDeploy,
+  isNodeAgent,
   ALL_ROLES,
 } from './user.js';
 

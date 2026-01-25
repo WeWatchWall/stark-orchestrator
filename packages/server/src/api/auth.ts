@@ -341,8 +341,8 @@ export async function register(req: Request, res: Response): Promise<void> {
     // Determine roles:
     // - Admins can specify any valid roles
     // - Anonymous registration only allows non-admin roles (defaults to 'viewer')
-    const validRoles = ['admin', 'operator', 'developer', 'viewer'] as const;
-    const nonAdminRoles = ['operator', 'developer', 'viewer'] as const;
+    const validRoles = ['admin', 'node', 'viewer'] as const;
+    const nonAdminRoles = ['node', 'viewer'] as const;
     type UserRole = typeof validRoles[number];
     
     let userRoles: UserRole[];
@@ -636,7 +636,7 @@ export async function setup(req: Request, res: Response): Promise<void> {
       email: normalizedEmail,
       password,
       displayName,
-      roles: ['admin', 'operator', 'developer', 'viewer'],
+      roles: ['admin'],
     });
 
     if (result.error) {
@@ -732,7 +732,7 @@ export async function createUser(req: Request, res: Response): Promise<void> {
     const normalizedEmail = email.trim().toLowerCase();
 
     // Validate roles if provided
-    const validRoles = ['admin', 'operator', 'developer', 'viewer'];
+    const validRoles = ['admin', 'node', 'viewer'];
     const userRoles = roles?.filter(r => validRoles.includes(r)) ?? ['viewer'];
 
     // Register user
@@ -741,7 +741,7 @@ export async function createUser(req: Request, res: Response): Promise<void> {
       email: normalizedEmail,
       password,
       displayName,
-      roles: userRoles as ('admin' | 'operator' | 'developer' | 'viewer')[],
+      roles: userRoles as ('admin' | 'node' | 'viewer')[],
     });
 
     if (result.error) {
@@ -826,7 +826,7 @@ export async function listUsers(req: Request, res: Response): Promise<void> {
     const { role, search, limit, offset } = req.query;
 
     // Validate role if provided
-    const validRoles = ['admin', 'operator', 'developer', 'viewer'] as const;
+    const validRoles = ['admin', 'node', 'viewer'] as const;
     type UserRole = typeof validRoles[number];
     const roleFilter = role && validRoles.includes(role as UserRole) 
       ? (role as UserRole) 
