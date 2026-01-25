@@ -1393,6 +1393,61 @@ export class PodScheduler {
   }
 
   /**
+   * Fail all active pods on a node
+   * Used when a node goes offline, becomes unhealthy, or is deleted
+   * @param nodeId - The node ID
+   * @param reason - Reason for failing the pods (e.g., 'Node went offline')
+   * @returns Result with count of pods failed and their IDs
+   */
+  failPodsOnNode(
+    nodeId: string,
+    reason: string,
+  ): PodOperationResult<{ failedCount: number; podIds: string[] }> {
+    logger.debug('Attempting to fail all pods on node', { nodeId, reason });
+
+    // Find all active pods on the node
+    const podsOnNode = findPodsByNode(nodeId);
+    const activeStatuses: PodStatus[] = ['pending', 'scheduled', 'starting', 'running', 'stopping'];
+    const activePods = podsOnNode.filter(pod => activeStatuses.includes(pod.status));
+
+    if (activePods.length === 0) {
+      logger.debug('No active pods found on node', { nodeId });
+      return {
+        success: true,
+        data: { failedCount: 0, podIds: [] },
+      };
+    }
+
+    const failedPodIds: string[] = [];
+
+    for (const pod of activePods) {
+      const result = this.fail(pod.id, reason);
+      if (result.success) {
+        failedPodIds.push(pod.id);
+      } else {
+        logger.warn('Failed to mark pod as failed', {
+          podId: pod.id,
+          nodeId,
+          error: result.error,
+        });
+      }
+    }
+
+    logger.info('Failed pods on node', {
+      nodeId,
+      reason,
+      failedCount: failedPodIds.length,
+      totalActive: activePods.length,
+      podIds: failedPodIds,
+    });
+
+    return {
+      success: true,
+      data: { failedCount: failedPodIds.length, podIds: failedPodIds },
+    };
+  }
+
+  /**
    * Rollback a pod to a different version of the same pack
    * @param podId - Pod ID
    * @param targetVersion - Target pack version to rollback to

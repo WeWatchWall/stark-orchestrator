@@ -47,6 +47,7 @@ interface Node {
   labels: Record<string, string>;
   annotations: Record<string, string>;
   taints: Array<{ key: string; value?: string; effect: string }>;
+  unschedulable: boolean;
   allocatable: {
     cpu: number;
     memory: number;
@@ -335,6 +336,172 @@ async function deleteHandler(
 }
 
 /**
+ * Update command handler - updates node properties (labels, taints, etc.)
+ */
+async function updateHandler(
+  nodeName: string,
+  options: {
+    label?: string[];
+    removeLabel?: string[];
+    taint?: string[];
+    removeTaint?: string[];
+    unschedulable?: boolean;
+    schedulable?: boolean;
+  }
+): Promise<void> {
+  requireAuth();
+
+  try {
+    const api = createApiClient();
+
+    // First, look up the node by name to get the ID and current state
+    const lookupResponse = await api.get(`/api/nodes/name/${encodeURIComponent(nodeName)}`);
+    const lookupResult = (await lookupResponse.json()) as ApiResponse<{ node: Node }>;
+
+    if (!lookupResult.success || !lookupResult.data) {
+      error(`Node not found: ${nodeName}`, lookupResult.error);
+      process.exit(1);
+    }
+
+    const node = lookupResult.data.node;
+
+    // Build update payload
+    const updatePayload: {
+      labels?: Record<string, string>;
+      taints?: Array<{ key: string; value?: string; effect: string }>;
+      unschedulable?: boolean;
+    } = {};
+
+    // Handle labels
+    if (options.label || options.removeLabel) {
+      const newLabels = { ...node.labels };
+
+      // Add new labels
+      if (options.label) {
+        for (const label of options.label) {
+          const [key, value] = label.split('=');
+          if (key && value !== undefined) {
+            newLabels[key] = value;
+          } else {
+            error(`Invalid label format: ${label}. Use key=value`);
+            process.exit(1);
+          }
+        }
+      }
+
+      // Remove labels
+      if (options.removeLabel) {
+        for (const key of options.removeLabel) {
+          delete newLabels[key];
+        }
+      }
+
+      updatePayload.labels = newLabels;
+    }
+
+    // Handle taints
+    if (options.taint || options.removeTaint) {
+      const validEffects: TaintEffect[] = ['NoSchedule', 'PreferNoSchedule', 'NoExecute'];
+      let newTaints = [...node.taints];
+
+      // Add new taints
+      if (options.taint) {
+        for (const taint of options.taint) {
+          // Format: key=value:effect or key:effect
+          const colonIdx = taint.lastIndexOf(':');
+          if (colonIdx === -1) {
+            error(`Invalid taint format: ${taint}. Use key=value:effect or key:effect`);
+            process.exit(1);
+          }
+          const effect = taint.slice(colonIdx + 1);
+          if (!validEffects.includes(effect as TaintEffect)) {
+            error(`Invalid taint effect: ${effect}. Must be one of: ${validEffects.join(', ')}`);
+            process.exit(1);
+          }
+          const keyValue = taint.slice(0, colonIdx);
+          const eqIdx = keyValue.indexOf('=');
+
+          let newTaint: { key: string; value?: string; effect: string };
+          if (eqIdx !== -1) {
+            newTaint = {
+              key: keyValue.slice(0, eqIdx),
+              value: keyValue.slice(eqIdx + 1),
+              effect,
+            };
+          } else {
+            newTaint = { key: keyValue, effect };
+          }
+
+          // Replace existing taint with same key or add new
+          const existingIdx = newTaints.findIndex(t => t.key === newTaint.key);
+          if (existingIdx !== -1) {
+            newTaints[existingIdx] = newTaint;
+          } else {
+            newTaints.push(newTaint);
+          }
+        }
+      }
+
+      // Remove taints by key
+      if (options.removeTaint) {
+        newTaints = newTaints.filter(t => !options.removeTaint!.includes(t.key));
+      }
+
+      updatePayload.taints = newTaints;
+    }
+
+    // Handle schedulability
+    if (options.unschedulable !== undefined && options.unschedulable) {
+      updatePayload.unschedulable = true;
+    } else if (options.schedulable !== undefined && options.schedulable) {
+      updatePayload.unschedulable = false;
+    }
+
+    // Check if there's anything to update
+    if (Object.keys(updatePayload).length === 0) {
+      error('No updates specified. Use --label, --remove-label, --taint, --remove-taint, --schedulable, or --unschedulable');
+      process.exit(1);
+    }
+
+    // Perform the update
+    const updateResponse = await api.patch(`/api/nodes/${node.id}`, updatePayload);
+    const updateResult = (await updateResponse.json()) as ApiResponse<{ node: Node }>;
+
+    if (!updateResult.success || !updateResult.data) {
+      error('Failed to update node', updateResult.error);
+      process.exit(1);
+    }
+
+    if (getOutputFormat() === 'json') {
+      console.log(JSON.stringify(updateResult.data.node, null, 2));
+      return;
+    }
+
+    success(`Node updated: ${nodeName}`);
+
+    // Show what changed
+    const updatedNode = updateResult.data.node;
+
+    if (updatePayload.labels) {
+      const labelCount = Object.keys(updatedNode.labels).length;
+      console.log(chalk.gray(`  Labels: ${labelCount > 0 ? Object.entries(updatedNode.labels).map(([k, v]) => `${k}=${v}`).join(', ') : '(none)'}`));
+    }
+
+    if (updatePayload.taints) {
+      const taintCount = updatedNode.taints.length;
+      console.log(chalk.gray(`  Taints: ${taintCount > 0 ? updatedNode.taints.map(t => `${t.key}${t.value ? '=' + t.value : ''}:${t.effect}`).join(', ') : '(none)'}`));
+    }
+
+    if (updatePayload.unschedulable !== undefined) {
+      console.log(chalk.gray(`  Schedulable: ${!updatedNode.unschedulable}`));
+    }
+  } catch (err) {
+    error('Failed to update node', err instanceof Error ? { message: err.message } : undefined);
+    process.exit(1);
+  }
+}
+
+/**
  * Watch command handler - watches node status changes
  */
 async function watchHandler(options: { interval?: string }): Promise<void> {
@@ -438,6 +605,17 @@ export function createNodeCommand(): Command {
     .description('Delete a node by name')
     .option('-f, --force', 'Skip confirmation prompt')
     .action(deleteHandler);
+
+  node
+    .command('update <name>')
+    .description('Update node properties (labels, taints, schedulability)')
+    .option('-l, --label <label...>', 'Add or update labels (format: key=value)')
+    .option('--remove-label <key...>', 'Remove labels by key')
+    .option('--taint <taint...>', 'Add or update taints (format: key=value:effect or key:effect)')
+    .option('--remove-taint <key...>', 'Remove taints by key')
+    .option('--unschedulable', 'Mark node as unschedulable (cordon)')
+    .option('--schedulable', 'Mark node as schedulable (uncordon)')
+    .action(updateHandler);
 
   node
     .command('watch')

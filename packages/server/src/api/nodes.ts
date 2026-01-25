@@ -21,6 +21,7 @@ import {
   ALL_NODE_STATUSES,
 } from '@stark-o/shared';
 import { getNodeQueries } from '../supabase/nodes.js';
+import { getPodQueriesAdmin } from '../supabase/pods.js';
 import {
   authMiddleware,
   abilityMiddleware,
@@ -532,6 +533,19 @@ export async function deleteNode(req: Request, res: Response): Promise<void> {
       return;
     }
 
+    // Delete all pods on this node before deleting the node
+    const podQueries = getPodQueriesAdmin();
+    const deletePodsResult = await podQueries.deletePodsOnNode(id);
+    
+    if (deletePodsResult.data && deletePodsResult.data.deletedCount > 0) {
+      requestLogger.info('Deleted pods due to node deletion', {
+        nodeId: id,
+        nodeName: existingResult.data.name,
+        deletedCount: deletePodsResult.data.deletedCount,
+        podIds: deletePodsResult.data.podIds,
+      });
+    }
+
     const deleteResult = await nodeQueries.deleteNode(id);
     if (deleteResult.error) {
       sendError(res, 'INTERNAL_ERROR', 'Failed to delete node', 500);
@@ -540,7 +554,7 @@ export async function deleteNode(req: Request, res: Response): Promise<void> {
 
     requestLogger.info('Node deleted successfully', { nodeId: id });
 
-    sendSuccess(res, { deleted: true });
+    sendSuccess(res, { deleted: true, deletedPodsCount: deletePodsResult.data?.deletedCount ?? 0 });
   } catch (error) {
     requestLogger.error(
       'Error deleting node',

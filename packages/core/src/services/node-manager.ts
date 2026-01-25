@@ -74,6 +74,11 @@ const logger = createServiceLogger({
 // ============================================================================
 
 /**
+ * Callback when a node becomes unhealthy
+ */
+export type OnNodeUnhealthyCallback = (nodeId: string, nodeName: string) => void | Promise<void>;
+
+/**
  * Node manager options
  */
 export interface NodeManagerOptions {
@@ -83,6 +88,8 @@ export interface NodeManagerOptions {
   heartbeatCheckIntervalMs?: number;
   /** Enable automatic heartbeat monitoring */
   enableHeartbeatMonitoring?: boolean;
+  /** Callback when a node becomes unhealthy (e.g., to fail pods) */
+  onNodeUnhealthy?: OnNodeUnhealthyCallback;
 }
 
 /**
@@ -144,12 +151,14 @@ export class NodeManager {
   private readonly heartbeatTimeoutMs: number;
   private readonly heartbeatCheckIntervalMs: number;
   private readonly enableHeartbeatMonitoring: boolean;
+  private readonly onNodeUnhealthy?: OnNodeUnhealthyCallback;
   private heartbeatCheckTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: NodeManagerOptions = {}) {
     this.heartbeatTimeoutMs = options.heartbeatTimeoutMs ?? HEARTBEAT_TIMEOUT_MS;
     this.heartbeatCheckIntervalMs = options.heartbeatCheckIntervalMs ?? 10_000;
     this.enableHeartbeatMonitoring = options.enableHeartbeatMonitoring ?? false;
+    this.onNodeUnhealthy = options.onNodeUnhealthy;
 
     if (this.enableHeartbeatMonitoring) {
       this.startHeartbeatMonitoring();
@@ -412,8 +421,8 @@ export class NodeManager {
     const unhealthyNodeIds: string[] = [];
 
     for (const node of staleNodes) {
-      // Don't mark already offline nodes
-      if (node.status === 'offline') {
+      // Don't mark already offline or unhealthy nodes
+      if (node.status === 'offline' || node.status === 'unhealthy') {
         continue;
       }
 
@@ -426,6 +435,27 @@ export class NodeManager {
 
       markNodeUnhealthy(node.id);
       unhealthyNodeIds.push(node.id);
+
+      // Call the unhealthy callback if provided (e.g., to fail pods)
+      if (this.onNodeUnhealthy) {
+        try {
+          const result = this.onNodeUnhealthy(node.id, node.name);
+          // Handle async callbacks
+          if (result instanceof Promise) {
+            result.catch((error) => {
+              logger.error('Error in onNodeUnhealthy callback', error instanceof Error ? error : undefined, {
+                nodeId: node.id,
+                nodeName: node.name,
+              });
+            });
+          }
+        } catch (error) {
+          logger.error('Error in onNodeUnhealthy callback', error instanceof Error ? error : undefined, {
+            nodeId: node.id,
+            nodeName: node.name,
+          });
+        }
+      }
     }
 
     if (unhealthyNodeIds.length > 0) {

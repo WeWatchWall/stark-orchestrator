@@ -483,6 +483,58 @@ export class PodQueries {
   }
 
   /**
+   * Fails all active pods on a node
+   * Used when a node goes offline, becomes unhealthy, or is deleted
+   * @param nodeId - The node ID
+   * @param reason - Reason for failing the pods (e.g., 'Node went offline')
+   * @returns Result with count of pods failed
+   */
+  async failPodsOnNode(
+    nodeId: string,
+    reason: string,
+  ): Promise<PodResult<{ failedCount: number; podIds: string[] }>> {
+    // First, get all active pods on the node
+    const activeStatuses: PodStatus[] = ['pending', 'scheduled', 'starting', 'running', 'stopping'];
+    
+    const { data: pods, error: listError } = await this.client
+      .from('pods')
+      .select('id')
+      .eq('node_id', nodeId)
+      .in('status', activeStatuses);
+
+    if (listError) {
+      return { data: null, error: listError };
+    }
+
+    if (!pods || pods.length === 0) {
+      return { data: { failedCount: 0, podIds: [] }, error: null };
+    }
+
+    const podIds = pods.map((p: { id: string }) => p.id);
+
+    // Update all pods to failed status
+    const { error: updateError } = await this.client
+      .from('pods')
+      .update({
+        status: 'failed' as PodStatus,
+        status_message: reason,
+        stopped_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('node_id', nodeId)
+      .in('status', activeStatuses);
+
+    if (updateError) {
+      return { data: null, error: updateError };
+    }
+
+    return { 
+      data: { failedCount: podIds.length, podIds }, 
+      error: null,
+    };
+  }
+
+  /**
    * Rolls back a pod to a different version
    */
   async rollbackPod(
@@ -541,6 +593,47 @@ export class PodQueries {
     }
 
     return { data: { deletedCount: count }, error: null };
+  }
+
+  /**
+   * Deletes all pods on a node
+   * Used when a node is deleted to clean up orphaned pods
+   * @param nodeId - The node ID
+   * @returns Result with count of pods deleted and their IDs
+   */
+  async deletePodsOnNode(
+    nodeId: string,
+  ): Promise<PodResult<{ deletedCount: number; podIds: string[] }>> {
+    // First, get all pods on the node
+    const { data: pods, error: listError } = await this.client
+      .from('pods')
+      .select('id')
+      .eq('node_id', nodeId);
+
+    if (listError) {
+      return { data: null, error: listError };
+    }
+
+    if (!pods || pods.length === 0) {
+      return { data: { deletedCount: 0, podIds: [] }, error: null };
+    }
+
+    const podIds = pods.map((p: { id: string }) => p.id);
+
+    // Delete all pods on the node
+    const { error: deleteError } = await this.client
+      .from('pods')
+      .delete()
+      .eq('node_id', nodeId);
+
+    if (deleteError) {
+      return { data: null, error: deleteError };
+    }
+
+    return { 
+      data: { deletedCount: podIds.length, podIds }, 
+      error: null,
+    };
   }
 
   /**
@@ -759,11 +852,17 @@ export const failPod = (id: string, message: string) =>
 export const evictPod = (id: string, reason: string) =>
   getPodQueries().evictPod(id, reason);
 
+export const failPodsOnNode = (nodeId: string, reason: string) =>
+  getPodQueries().failPodsOnNode(nodeId, reason);
+
 export const deletePod = (id: string) =>
   getPodQueries().deletePod(id);
 
 export const deletePodsInNamespace = (namespace: string) =>
   getPodQueries().deletePodsInNamespace(namespace);
+
+export const deletePodsOnNode = (nodeId: string) =>
+  getPodQueries().deletePodsOnNode(nodeId);
 
 export const countPods = (options?: Parameters<PodQueries['countPods']>[0]) =>
   getPodQueries().countPods(options);

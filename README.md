@@ -184,7 +184,7 @@ node packages/cli/dist/index.js pod rollback <pod-id> --ver 0.9.0
 
 #### Pod Create Options
 
-| Option | Description | Default |
+| Option | Description | De+fault |
 |--------|-------------|---------|
 | `--pack <name>` | Pack name to deploy | (required) |
 | `-V, --ver <version>` | Pack version | latest |
@@ -300,9 +300,40 @@ node packages/cli/dist/index.js node list
 # Get detailed node status
 node packages/cli/dist/index.js node status my-node-1
 
+# Update node labels
+node packages/cli/dist/index.js node update my-node-1 \
+  --label env=staging \
+  --label tier=frontend
+
+# Add a taint to a node
+node packages/cli/dist/index.js node update my-node-1 \
+  --taint dedicated=gpu:NoSchedule
+
+# Remove a label and taint
+node packages/cli/dist/index.js node update my-node-1 \
+  --remove-label tier \
+  --remove-taint dedicated
+
+# Cordon a node (prevent new pods from scheduling)
+node packages/cli/dist/index.js node update my-node-1 --unschedulable
+
+# Uncordon a node (allow scheduling again)
+node packages/cli/dist/index.js node update my-node-1 --schedulable
+
 # Delete node
 node packages/cli/dist/index.js node rm my-node-1
 ```
+
+#### Node Update Options
+
+| Option | Description |
+|--------|-------------|
+| `-l, --label <k=v>` | Add or update a label (can be repeated) |
+| `--remove-label <key>` | Remove a label by key (can be repeated) |
+| `--taint <k=v:effect>` | Add or update a taint (can be repeated) |
+| `--remove-taint <key>` | Remove a taint by key (can be repeated) |
+| `--unschedulable` | Mark node as unschedulable (cordon) |
+| `--schedulable` | Mark node as schedulable (uncordon) |
 
 ### Starting a Node Agent
 

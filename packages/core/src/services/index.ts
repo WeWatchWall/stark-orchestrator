@@ -30,6 +30,7 @@ export {
   type NodeOperationResult,
   type NodeConnectionInfo,
   type HeartbeatCheckResult,
+  type OnNodeUnhealthyCallback,
 } from './node-manager';
 
 export {

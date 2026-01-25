@@ -6,8 +6,17 @@
  */
 
 import type { RegisterNodeInput, NodeHeartbeat } from '@stark-o/shared';
-import { validateRegisterNodeInput } from '@stark-o/shared';
+import { validateRegisterNodeInput, createServiceLogger } from '@stark-o/shared';
 import { getNodeQueries } from '../../supabase/nodes.js';
+import { getPodQueriesAdmin } from '../../supabase/pods.js';
+
+/**
+ * Logger for node handler operations
+ */
+const logger = createServiceLogger({
+  level: 'debug',
+  service: 'stark-orchestrator',
+}, { component: 'ws-node-handler' });
 
 /**
  * Simple validation error (from validation functions)
@@ -361,9 +370,11 @@ export async function handleNodeReconnect(
 
 /**
  * Handle node disconnect (connection closed)
+ * Marks nodes as offline and fails all active pods on those nodes
  */
 export async function handleNodeDisconnect(ws: WsConnection): Promise<void> {
   const nodeQueries = getNodeQueries();
+  const podQueries = getPodQueriesAdmin();
 
   try {
     // Find all nodes associated with this connection
@@ -372,12 +383,32 @@ export async function handleNodeDisconnect(ws: WsConnection): Promise<void> {
       return;
     }
 
-    // Mark all nodes as offline and clear connection ID
+    // Mark all nodes as offline, fail their pods, and clear connection ID
     for (const node of nodesResult.data) {
+      // Fail all active pods on this node
+      const failResult = await podQueries.failPodsOnNode(
+        node.id,
+        'Node went offline',
+      );
+      
+      if (failResult.data && failResult.data.failedCount > 0) {
+        logger.info('Failed pods due to node disconnect', {
+          nodeId: node.id,
+          nodeName: node.name,
+          failedCount: failResult.data.failedCount,
+          podIds: failResult.data.podIds,
+        });
+      }
+
       await nodeQueries.setNodeStatus(node.id, 'offline');
       await nodeQueries.clearConnectionId(node.id);
     }
-  } catch {
+  } catch (error) {
+    logger.error(
+      'Error handling node disconnect',
+      error instanceof Error ? error : undefined,
+      { connectionId: ws.id },
+    );
     // Handle gracefully - node disconnect should not throw
   }
 }
