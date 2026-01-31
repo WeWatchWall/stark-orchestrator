@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bundle Test Page</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .pack-container {
+      width: calc(100% - 340px);
+      min-height: 200px;
+      background: #1a1a2e;
+      border: 2px dashed rgba(255,255,255,0.2);
+      border-radius: 8px;
+      margin: 20px;
+      position: relative;
+    }
+    .pack-container::before {
+      content: 'Pack Container: ' attr(id);
+      position: absolute;
+      top: -12px;
+      left: 12px;
+      background: #0f0f1a;
+      padding: 0 8px;
+      font-size: 0.7rem;
+      color: #667eea;
+    }
+    .pack-container.loaded {
+      border-color: #4ade80;
+    }
+    .pack-container.loaded::before {
+      color: #4ade80;
+    }
+    .test-panel {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      padding: 1.5rem;
+      border-radius: 12px;
+      z-index: 9999;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      border: 1px solid rgba(255,255,255,0.1);
+      min-width: 280px;
+    }
+    .test-panel h3 {
+      margin: 0 0 1rem 0;
+      font-size: 1rem;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .test-panel .buttons {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .test-panel button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 0.6rem 1.2rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .test-panel button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    .test-panel button:active {
+      transform: translateY(0);
+    }
+    .test-panel button.secondary {
+      background: rgba(255,255,255,0.1);
+    }
+    .test-panel button.secondary:hover {
+      background: rgba(255,255,255,0.2);
+      box-shadow: none;
+    }
+    #output {
+      background: rgba(0,0,0,0.3);
+      border-radius: 6px;
+      padding: 0.75rem;
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      font-size: 0.75rem;
+      max-height: 120px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #a0a0a0;
+    }
+    #output.success {
+      color: #4ade80;
+    }
+    #output.error {
+      color: #f87171;
+    }
+    .meta-info {
+      margin-top: 0.75rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      font-size: 0.7rem;
+      color: #888;
+    }
+    .meta-info div {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.25rem;
+    }
+    .meta-info span:last-child {
+      color: #a0a0a0;
+    }
+    .loading {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <!-- Container where the pack will be rendered -->
+  <div id="stark-pack-nuxt-pack-example" class="pack-container"></div>
+
+  <div class="test-panel">
+    <h3>🧪 Pack Bundle Tester</h3>
+    <div class="buttons">
+      <button id="loadBtn" onclick="loadBundle()">Load Bundle</button>
+      <button class="secondary" onclick="location.reload()">Reset</button>
+    </div>
+    <div id="output">Ready. Click "Load Bundle" to test.</div>
+    <div id="metaInfo" class="meta-info hidden"></div>
+  </div>
+
+  <script>
+    // CommonJS shim for browser
+    var module = { exports: {} };
+    var exports = module.exports;
+  </script>
+  <script src="./dist/bundle.js"></script>
+  <script>
+    let bundleModule = module.exports;
+
+    async function loadBundle() {
+      const output = document.getElementById('output');
+      const loadBtn = document.getElementById('loadBtn');
+      const metaInfo = document.getElementById('metaInfo');
+      
+      output.className = '';
+      output.innerHTML = '<span class="loading"></span> Loading bundle...';
+      loadBtn.disabled = true;
+
+      try {
+        // Display metadata if available
+        if (bundleModule.meta) {
+          const meta = bundleModule.meta;
+          metaInfo.innerHTML = `
+            <div><span>Name:</span><span>${meta.name || 'unknown'}</span></div>
+            <div><span>Version:</span><span>${meta.version || 'unknown'}</span></div>
+            <div><span>Size:</span><span>${meta.bundleSizeKb || 'unknown'}</span></div>
+            <div><span>Framework:</span><span>${meta.framework || 'unknown'}</span></div>
+            <div><span>Container:</span><span>${meta.defaultContainerId || 'auto'}</span></div>
+          `;
+          metaInfo.classList.remove('hidden');
+        }
+
+        output.textContent = 'Bundle loaded! Executing...';
+        
+        // Execute the bundle's default export
+        const entryFn = bundleModule.default;
+        if (typeof entryFn === 'function') {
+          // Pass context with optional containerId override
+          // If not specified, bundle uses its default container ID based on pack name
+          const result = await entryFn({
+            // containerId: 'custom-container-id', // Uncomment to use custom container
+            style: { minHeight: '100%' } // Custom iframe styles
+          });
+          
+          output.className = 'success';
+          output.textContent = 'Success! Result:\n' + JSON.stringify(result, null, 2);
+          
+          // Mark container as loaded
+          if (result.containerId) {
+            const container = document.getElementById(result.containerId);
+            if (container) {
+              container.classList.add('loaded');
+            }
+          }
+        } else {
+          output.className = 'error';
+          output.textContent = 'Error: Bundle does not export a default function';
+        }
+      } catch (err) {
+        output.className = 'error';
+        output.textContent = 'Error: ' + err.message;
+        console.error('Bundle error:', err);
+      } finally {
+        loadBtn.disabled = false;
+      }
+    }
+
+    // Check if bundle loaded correctly
+    if (!bundleModule.default) {
+      document.getElementById('output').textContent = 
+        'Bundle not found or invalid at ./dist/bundle.js\n\n' +
+        'Build it first:\n' +
+        'node packages/cli/dist/index.js pack bundle . --out ./dist/bundle.js';
+    } else if (bundleModule.meta) {
+      // Show the expected container ID
+      document.getElementById('output').textContent = 
+        'Ready. Click "Load Bundle" to render into container:\n' +
+        bundleModule.meta.defaultContainerId;
+    }
+  </script>
+</body>
+</html>

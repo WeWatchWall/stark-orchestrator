@@ -141,8 +141,8 @@ node packages/cli/dist/index.js auth list-users
 ### Pack Management
 
 ```bash
-# Bundle a pack from source
-node packages/cli/dist/index.js pack bundle ./src/my-pack --output ./bundle.js
+# Bundle a pack from source (auto-detects Nuxt projects)
+node packages/cli/dist/index.js pack bundle ./src/my-pack --out ./bundle.js
 
 # Register a pack with the orchestrator
 node packages/cli/dist/index.js pack register ./bundle.js \
@@ -156,6 +156,39 @@ node packages/cli/dist/index.js pack list
 # List versions of a specific pack
 node packages/cli/dist/index.js pack versions my-pack
 ```
+
+#### Bundling Requirements
+
+For web apps (Nuxt/Vue) to be bundled as self-contained packs:
+
+| Requirement | Description |
+|-------------|-------------|
+| **pnpm** | Project must use pnpm as package manager |
+| **Static output** | Must generate static HTML/JS/CSS (no SSR) |
+| **No code-splitting** | Disable dynamic imports (`inlineDynamicImports: true`) |
+| **Inline assets** | Assets must be inlined as base64 data URIs |
+
+**Nuxt configuration example** (`nuxt.config.ts`):
+
+```typescript
+export default defineNuxtConfig({
+  ssr: false,
+  nitro: { preset: 'static' },
+  vite: {
+    build: {
+      assetsInlineLimit: 100 * 1024, // 100KB
+      rollupOptions: {
+        output: {
+          inlineDynamicImports: true,
+          manualChunks: undefined,
+        },
+      },
+    },
+  },
+})
+```
+
+See [examples/nuxt-pack](examples/nuxt-pack) for a complete example.
 
 ### Pod Management
 

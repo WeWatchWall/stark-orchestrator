@@ -6,8 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "nuxt dev",
-    "build": "nuxt generate && node scripts/build-pack.mjs",
-    "build:pack": "node scripts/build-pack.mjs",
+    "build": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare"
   },

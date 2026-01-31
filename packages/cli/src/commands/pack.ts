@@ -21,6 +21,7 @@ import {
   relativeTime,
   truncate,
 } from '../output.js';
+import { bundleNuxtProject, bundleSimple, isNuxtProject } from '../bundler.js';
 import type { RuntimeTag } from '@stark-o/shared';
 
 /**
@@ -65,7 +66,7 @@ interface PackVersionsResponse {
  */
 async function bundleHandler(
   sourcePath: string,
-  options: { output?: string; name?: string }
+  options: { out?: string; name?: string; skipInstall?: boolean; skipBuild?: boolean }
 ): Promise<void> {
   info('Bundling pack...');
 
@@ -77,32 +78,46 @@ async function bundleHandler(
   }
 
   // Determine output path
-  const outputPath = options.output ?? path.join(process.cwd(), 'bundle.js');
+  const outputPath = path.resolve(options.out ?? path.join(process.cwd(), 'bundle.js'));
   const packName = options.name ?? path.basename(absPath, path.extname(absPath));
 
-  // Note: Currently copies the file as-is. In a future enhancement, this could 
-  // bundle/transpile with Vite for production-ready packs with tree-shaking and optimization.
   try {
-    const stats = fs.statSync(absPath);
+    // Check if it's a Nuxt project
+    if (fs.statSync(absPath).isDirectory() && isNuxtProject(absPath)) {
+      info('Detected Nuxt project, using Nuxt bundler...');
+      
+      const result = await bundleNuxtProject({
+        sourceDir: absPath,
+        outputPath,
+        packName,
+        skipInstall: options.skipInstall,
+        skipBuild: options.skipBuild,
+      });
 
-    if (stats.isFile()) {
-      fs.copyFileSync(absPath, outputPath);
-    } else if (stats.isDirectory()) {
-      // Look for index.js or index.ts
-      const indexFile = ['index.js', 'index.ts', 'main.js', 'main.ts']
-        .map((f) => path.join(absPath, f))
-        .find((f) => fs.existsSync(f));
-
-      if (!indexFile) {
-        error('Could not find entry point (index.js, index.ts, main.js, or main.ts)');
+      if (!result.success) {
+        error(`Failed to bundle Nuxt project: ${result.error}`);
         process.exit(1);
       }
 
-      fs.copyFileSync(indexFile, outputPath);
-    }
+      success(`Bundle created: ${outputPath}`);
+      info(`Pack name: ${packName}`);
+      info(`Bundle size: ${result.bundleSizeKb} KB`);
+    } else {
+      // Use simple bundler for non-Nuxt projects
+      const result = await bundleSimple({
+        sourceDir: absPath,
+        outputPath,
+        packName,
+      });
 
-    success(`Bundle created: ${outputPath}`);
-    info(`Pack name: ${packName}`);
+      if (!result.success) {
+        error(`Failed to create bundle: ${result.error}`);
+        process.exit(1);
+      }
+
+      success(`Bundle created: ${outputPath}`);
+      info(`Pack name: ${packName}`);
+    }
   } catch (err) {
     error('Failed to create bundle', err instanceof Error ? { message: err.message } : undefined);
     process.exit(1);
@@ -429,9 +444,11 @@ export function createPackCommand(): Command {
 
   pack
     .command('bundle <source>')
-    .description('Bundle source files into a pack')
-    .option('-o, --output <path>', 'Output bundle path')
+    .description('Bundle source files into a pack (auto-detects Nuxt projects)')
+    .option('--out <path>', 'Output bundle path')
     .option('-n, --name <name>', 'Pack name')
+    .option('--skip-install', 'Skip pnpm install step (for Nuxt projects)')
+    .option('--skip-build', 'Skip build step (for Nuxt projects)')
     .action(bundleHandler);
 
   pack

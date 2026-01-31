@@ -22,7 +22,22 @@ export default defineNuxtConfig({
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },
         { name: 'description', content: 'Example Nuxt app built as a self-contained bundle' }
       ]
+    },
+    // Use base of '/' for iframe compatibility
+    baseURL: '/'
+  },
+
+  // Use hash-based routing for iframe/srcdoc compatibility
+  // This avoids relying on location.pathname which breaks in about:srcdoc
+  router: {
+    options: {
+      hashMode: true
     }
+  },
+
+  // Disable app manifest to prevent 404 fetches in bundled mode
+  experimental: {
+    appManifest: false
   },
 
   // Configure Vite for building
@@ -52,8 +67,5 @@ export default defineNuxtConfig({
   // Inline all CSS to avoid external file references
   css: [],
   
-  experimental: {
-    // Inline SSR styles (useful if SSR is ever enabled)
-    inlineSSRStyles: true,
-  },
+  // Note: experimental.appManifest is set above
 })
