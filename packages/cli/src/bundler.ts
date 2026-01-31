@@ -350,21 +350,43 @@ export async function bundleNuxtProject(options: BundleOptions): Promise<BundleR
   };
   
   // Auto-resize: Report content dimensions to parent window
+  var lastHeight = 0;
   function reportSize() {
+    // Temporarily set html/body to auto height to get true content height
+    var html = document.documentElement;
+    var body = document.body;
+    var origHtmlHeight = html.style.height;
+    var origBodyHeight = body.style.height;
+    html.style.height = 'auto';
+    body.style.height = 'auto';
+    
     var height = Math.max(
-      document.body.scrollHeight,
-      document.body.offsetHeight,
-      document.documentElement.scrollHeight,
-      document.documentElement.offsetHeight
+      body.scrollHeight,
+      body.offsetHeight
     );
+    
+    // Restore original styles
+    html.style.height = origHtmlHeight;
+    body.style.height = origBodyHeight;
+    
     var width = Math.max(
-      document.body.scrollWidth,
-      document.body.offsetWidth,
-      document.documentElement.scrollWidth,
-      document.documentElement.offsetWidth
+      body.scrollWidth,
+      body.offsetWidth,
+      html.scrollWidth,
+      html.offsetWidth
     );
-    parent.postMessage({ type: 'stark-pack-resize', height: height, width: width }, '*');
+    
+    // Only post if height actually changed
+    if (height !== lastHeight) {
+      lastHeight = height;
+      parent.postMessage({ type: 'stark-pack-resize', height: height, width: width }, '*');
+    }
   }
+  // Reset scroll on window resize (container size changed)
+  window.addEventListener('resize', function() {
+    window.scrollTo(0, 0);
+    reportSize();
+  });
   // Report size on load, mutations, and resize
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', reportSize);

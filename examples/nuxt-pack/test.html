@@ -17,29 +17,67 @@
       display: flex;
       flex-direction: column;
     }
-    .pack-container {
+    .pack-wrapper {
+      position: relative;
       width: calc(100% - 340px);
-      min-height: 200px;
+      height: 500px;
+      min-height: 100px;
+      min-width: 100px;
+      max-width: calc(100% - 40px);
+      max-height: 90vh;
+      margin: 40px 20px 20px 20px;
+    }
+    .pack-container {
+      width: 100%;
+      height: 100%;
       background: #1a1a2e;
       border: 2px dashed rgba(255,255,255,0.2);
       border-radius: 8px;
-      margin: 20px;
       position: relative;
+      overflow: auto;
     }
-    .pack-container::before {
-      content: 'Pack Container: ' attr(id);
+    .pack-container iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+    }
+    /* Resize handles */
+    .resize-handle {
       position: absolute;
-      top: -12px;
+      background: rgba(102, 126, 234, 0.2);
+      z-index: 100;
+    }
+    .resize-handle:hover {
+      background: rgba(102, 126, 234, 0.5);
+    }
+    .resize-handle.active {
+      background: rgba(102, 126, 234, 0.7);
+    }
+    .resize-n { top: -6px; left: 12px; right: 12px; height: 10px; cursor: n-resize; border-radius: 4px; }
+    .resize-s { bottom: -6px; left: 12px; right: 12px; height: 10px; cursor: s-resize; border-radius: 4px; }
+    .resize-e { right: -6px; top: 12px; bottom: 12px; width: 10px; cursor: e-resize; border-radius: 4px; }
+    .resize-w { left: -6px; top: 12px; bottom: 12px; width: 10px; cursor: w-resize; border-radius: 4px; }
+    .resize-nw { top: -6px; left: -6px; width: 16px; height: 16px; cursor: nw-resize; border-radius: 4px; }
+    .resize-ne { top: -6px; right: -6px; width: 16px; height: 16px; cursor: ne-resize; border-radius: 4px; }
+    .resize-sw { bottom: -6px; left: -6px; width: 16px; height: 16px; cursor: sw-resize; border-radius: 4px; }
+    .resize-se { bottom: -6px; right: -6px; width: 16px; height: 16px; cursor: se-resize; border-radius: 4px; }
+    .pack-wrapper::before {
+      content: 'Pack Container: ' attr(data-container-id);
+      position: absolute;
+      top: -24px;
       left: 12px;
       background: #0f0f1a;
-      padding: 0 8px;
-      font-size: 0.7rem;
+      padding: 2px 8px;
+      font-size: 0.75rem;
       color: #667eea;
+      z-index: 50;
+      white-space: nowrap;
     }
-    .pack-container.loaded {
+    .pack-wrapper.loaded .pack-container {
       border-color: #4ade80;
     }
-    .pack-container.loaded::before {
+    .pack-wrapper.loaded::before {
       color: #4ade80;
     }
     .test-panel {
@@ -144,7 +182,17 @@
 </head>
 <body>
   <!-- Container where the pack will be rendered -->
-  <div id="stark-pack-nuxt-pack-example" class="pack-container"></div>
+  <div class="pack-wrapper" data-container-id="stark-pack-nuxt-pack-example">
+    <div class="resize-handle resize-n"></div>
+    <div class="resize-handle resize-s"></div>
+    <div class="resize-handle resize-e"></div>
+    <div class="resize-handle resize-w"></div>
+    <div class="resize-handle resize-nw"></div>
+    <div class="resize-handle resize-ne"></div>
+    <div class="resize-handle resize-sw"></div>
+    <div class="resize-handle resize-se"></div>
+    <div id="stark-pack-nuxt-pack-example" class="pack-container"></div>
+  </div>
 
   <div class="test-panel">
     <h3>🧪 Pack Bundle Tester</h3>
@@ -155,6 +203,115 @@
     <div id="output">Ready. Click "Load Bundle" to test.</div>
     <div id="metaInfo" class="meta-info hidden"></div>
   </div>
+
+  <script>
+    // Custom resize functionality
+    (function() {
+      const wrapper = document.querySelector('.pack-wrapper');
+      const handles = document.querySelectorAll('.resize-handle');
+      let isResizing = false;
+      let currentHandle = null;
+      let startX, startY, startWidth, startHeight, startMarginLeft, startMarginTop;
+
+      handles.forEach(handle => {
+        handle.addEventListener('mousedown', initResize);
+      });
+
+      function initResize(e) {
+        e.preventDefault();
+        isResizing = true;
+        currentHandle = e.target;
+        currentHandle.classList.add('active');
+        
+        startX = e.clientX;
+        startY = e.clientY;
+        startWidth = wrapper.offsetWidth;
+        startHeight = wrapper.offsetHeight;
+        
+        const style = getComputedStyle(wrapper);
+        startMarginLeft = parseInt(style.marginLeft) || 20;
+        startMarginTop = parseInt(style.marginTop) || 40;
+
+        document.addEventListener('mousemove', resize);
+        document.addEventListener('mouseup', stopResize);
+        document.body.style.cursor = getComputedStyle(currentHandle).cursor;
+        document.body.style.userSelect = 'none';
+      }
+
+      function resize(e) {
+        if (!isResizing) return;
+
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        const classList = currentHandle.classList;
+        const minW = 100, minH = 100;
+        const maxW = window.innerWidth - 60;
+        const maxH = window.innerHeight * 0.9;
+
+        let newWidth = startWidth;
+        let newHeight = startHeight;
+        let newMarginLeft = startMarginLeft;
+        let newMarginTop = startMarginTop;
+
+        // East (right edge)
+        if (classList.contains('resize-e') || classList.contains('resize-ne') || classList.contains('resize-se')) {
+          newWidth = Math.min(maxW, Math.max(minW, startWidth + dx));
+        }
+        // West (left edge) - adjust margin and width
+        if (classList.contains('resize-w') || classList.contains('resize-nw') || classList.contains('resize-sw')) {
+          const potentialWidth = startWidth - dx;
+          if (potentialWidth >= minW && potentialWidth <= maxW) {
+            newWidth = potentialWidth;
+            newMarginLeft = Math.max(0, startMarginLeft + dx);
+          }
+        }
+        // South (bottom edge)
+        if (classList.contains('resize-s') || classList.contains('resize-se') || classList.contains('resize-sw')) {
+          newHeight = Math.min(maxH, Math.max(minH, startHeight + dy));
+        }
+        // North (top edge) - adjust margin and height
+        if (classList.contains('resize-n') || classList.contains('resize-ne') || classList.contains('resize-nw')) {
+          const potentialHeight = startHeight - dy;
+          if (potentialHeight >= minH && potentialHeight <= maxH) {
+            newHeight = potentialHeight;
+            newMarginTop = Math.max(0, startMarginTop + dy);
+          }
+        }
+
+        wrapper.style.width = newWidth + 'px';
+        wrapper.style.height = newHeight + 'px';
+        wrapper.style.marginLeft = newMarginLeft + 'px';
+        wrapper.style.marginTop = newMarginTop + 'px';
+      }
+
+      function stopResize() {
+        isResizing = false;
+        if (currentHandle) {
+          currentHandle.classList.remove('active');
+        }
+        currentHandle = null;
+        document.removeEventListener('mousemove', resize);
+        document.removeEventListener('mouseup', stopResize);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        
+        // Reset scroll position of container after resize
+        const container = wrapper.querySelector('.pack-container');
+        if (container) {
+          container.scrollTop = 0;
+          container.scrollLeft = 0;
+        }
+        // Reset iframe height to min and scroll, then let it recalculate
+        const iframe = wrapper.querySelector('iframe');
+        if (iframe) {
+          iframe.style.height = '100px';
+          if (iframe.contentWindow) {
+            try { iframe.contentWindow.scrollTo(0, 0); } catch(e) {}
+          }
+        }
+      }
+    })();
+  </script>
 
   <script>
     // CommonJS shim for browser
@@ -206,8 +363,8 @@
           // Mark container as loaded
           if (result.containerId) {
             const container = document.getElementById(result.containerId);
-            if (container) {
-              container.classList.add('loaded');
+            if (container && container.parentElement) {
+              container.parentElement.classList.add('loaded');
             }
           }
         } else {
