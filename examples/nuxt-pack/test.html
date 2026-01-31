@@ -212,6 +212,7 @@
       let isResizing = false;
       let currentHandle = null;
       let startX, startY, startWidth, startHeight, startMarginLeft, startMarginTop;
+      let overlay = null;
 
       handles.forEach(handle => {
         handle.addEventListener('mousedown', initResize);
@@ -231,6 +232,11 @@
         const style = getComputedStyle(wrapper);
         startMarginLeft = parseInt(style.marginLeft) || 20;
         startMarginTop = parseInt(style.marginTop) || 40;
+
+        // Create overlay to capture mouse events over iframe
+        overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:9998;cursor:' + getComputedStyle(currentHandle).cursor;
+        document.body.appendChild(overlay);
 
         document.addEventListener('mousemove', resize);
         document.addEventListener('mouseup', stopResize);
@@ -294,6 +300,12 @@
         document.removeEventListener('mouseup', stopResize);
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
+        
+        // Remove overlay
+        if (overlay) {
+          overlay.remove();
+          overlay = null;
+        }
         
         // Reset scroll position of container after resize
         const container = wrapper.querySelector('.pack-container');
