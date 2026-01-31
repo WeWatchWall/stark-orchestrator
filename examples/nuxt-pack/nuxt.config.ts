@@ -16,11 +16,11 @@ export default defineNuxtConfig({
   
   app: {
     head: {
-      title: 'Nuxt Pack Example',
+      title: 'Nuxt Bundle Example',
       meta: [
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-        { name: 'description', content: 'Example Nuxt app packaged for Stark Orchestrator' }
+        { name: 'description', content: 'Example Nuxt app built as a self-contained bundle' }
       ]
     }
   },

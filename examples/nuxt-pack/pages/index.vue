@@ -1,19 +1,19 @@
 <template>
   <div class="container">
     <div class="card">
-      <h1>🚀 Nuxt Pack Example</h1>
-      <p class="subtitle">A Nuxt app built as a Stark Orchestrator pack</p>
+      <h1>🚀 Nuxt Bundle Example</h1>
+      <p class="subtitle">A self-contained Nuxt app bundle</p>
       
-      <div class="pack-info">
-        <div class="pack-label">Pack Name:</div>
-        <div class="pack-name">{{ packName }}</div>
+      <div class="info-box">
+        <div class="info-label">Bundle Name:</div>
+        <div class="info-value">{{ bundleName }}</div>
       </div>
 
       <div class="status-section">
-        <h2>Node Status</h2>
+        <h2>Environment</h2>
         <div class="status-item">
-          <span class="status-indicator" :class="connectionState"></span>
-          <span class="status-text">{{ statusText }}</span>
+          <span class="status-indicator" :class="environmentType"></span>
+          <span class="status-text">{{ environmentText }}</span>
         </div>
       </div>
 
@@ -27,20 +27,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 
-// Pack metadata - this would come from the orchestrator context
-const packName = ref('nuxt-pack-example');
-const connectionState = ref<'disconnected' | 'connecting' | 'connected' | 'registered'>('disconnected');
+const bundleName = ref('nuxt-pack-example');
+const environmentType = ref<'unknown' | 'browser' | 'worker'>('unknown');
 const counter = ref(0);
 
-const statusText = computed(() => {
-  switch (connectionState.value) {
-    case 'disconnected': return 'Disconnected from orchestrator';
-    case 'connecting': return 'Connecting to orchestrator...';
-    case 'connected': return 'Connected, awaiting registration';
-    case 'registered': return 'Registered and ready';
-    default: return 'Unknown status';
+const environmentText = computed(() => {
+  switch (environmentType.value) {
+    case 'browser': return 'Running in browser with DOM';
+    case 'worker': return 'Running in worker context';
+    default: return 'Detecting environment...';
   }
 });
 
@@ -48,12 +45,14 @@ function incrementCounter() {
   counter.value++;
 }
 
-// Simulate connection state changes (in real usage, this would come from the browser agent)
-if (typeof window !== 'undefined') {
-  setTimeout(() => { connectionState.value = 'connecting'; }, 500);
-  setTimeout(() => { connectionState.value = 'connected'; }, 1500);
-  setTimeout(() => { connectionState.value = 'registered'; }, 2500);
-}
+// Detect the execution environment
+onMounted(() => {
+  if (typeof document !== 'undefined') {
+    environmentType.value = 'browser';
+  } else if (typeof self !== 'undefined') {
+    environmentType.value = 'worker';
+  }
+});
 </script>
 
 <style scoped>
@@ -87,7 +86,7 @@ h1 {
   margin-bottom: 2rem;
 }
 
-.pack-info {
+.info-box {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border-radius: 12px;
   padding: 1.5rem;
@@ -95,7 +94,7 @@ h1 {
   color: white;
 }
 
-.pack-label {
+.info-label {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -103,7 +102,7 @@ h1 {
   margin-bottom: 0.25rem;
 }
 
-.pack-name {
+.info-value {
   font-size: 1.5rem;
   font-weight: 600;
   font-family: 'Monaco', 'Menlo', monospace;
@@ -136,21 +135,17 @@ h1 {
   flex-shrink: 0;
 }
 
-.status-indicator.disconnected {
-  background-color: #ef4444;
-}
-
-.status-indicator.connecting {
+.status-indicator.unknown {
   background-color: #f59e0b;
   animation: pulse 1s infinite;
 }
 
-.status-indicator.connected {
-  background-color: #3b82f6;
+.status-indicator.browser {
+  background-color: #22c55e;
 }
 
-.status-indicator.registered {
-  background-color: #22c55e;
+.status-indicator.worker {
+  background-color: #3b82f6;
 }
 
 .status-text {

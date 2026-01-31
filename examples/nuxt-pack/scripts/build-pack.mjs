@@ -1,10 +1,11 @@
 /**
  * Build script that takes the Nuxt static output and wraps it into a
- * CommonJS pack entry point compatible with Stark Orchestrator.
+ * self-contained JavaScript module.
  * 
  * This creates a bundle that:
- * 1. Exports a default async function (the pack entry point)
- * 2. When executed, serves the Vue app or returns its HTML
+ * 1. Exports a default async function as the entry point
+ * 2. When executed in a DOM context, renders the app directly
+ * 3. When executed in a worker context, returns the HTML content
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, copyFileSync } from 'fs';
@@ -16,7 +17,7 @@ const projectRoot = join(__dirname, '..');
 const outputDir = join(projectRoot, '.output', 'public');
 const packOutputDir = join(projectRoot, 'dist');
 
-console.log('📦 Building pack entry point...\n');
+console.log('📦 Building entry point...\n');
 
 // Ensure output directory exists
 if (!existsSync(packOutputDir)) {
@@ -79,65 +80,51 @@ if (existsSync(nuxtDir)) {
   }
 }
 
-// Create the pack entry point wrapper
-const packEntryPoint = `// Nuxt Pack - Auto-generated entry point for Stark Orchestrator
-// This pack serves a pre-built Nuxt/Vue application
-// Uses CommonJS format for compatibility with the pack executor
+// Create the entry point wrapper
+const packEntryPoint = `// Nuxt App Bundle - Auto-generated entry point
+// Self-contained Nuxt/Vue application module
 
 const HTML_CONTENT = ${JSON.stringify(indexHtml)};
 
-module.exports.default = async function(context) {
-  // Pack metadata
-  const packInfo = {
-    name: 'nuxt-pack-example',
-    version: '0.0.1',
-    type: 'nuxt-app',
-    description: 'A Nuxt app built as a Stark Orchestrator pack'
-  };
-  
+module.exports.default = async function(context = {}) {
   // If running in a browser context with DOM access
   if (typeof document !== 'undefined') {
-    // Inject the Vue app into the page
+    // Render the app into the page
     document.open();
     document.write(HTML_CONTENT);
     document.close();
     
-    return {
-      status: 'rendered',
-      pack: packInfo
-    };
+    return { status: 'rendered' };
   }
   
-  // If running in a worker or Node.js context, return the HTML
+  // If running in a worker or headless context, return the HTML
   return {
     html: HTML_CONTENT,
-    contentType: 'text/html',
-    pack: packInfo
+    contentType: 'text/html'
   };
 };
 
-// Export pack metadata for the orchestrator
-module.exports.packMeta = {
+// Export metadata about this bundle
+module.exports.meta = {
   name: 'nuxt-pack-example',
   version: '0.0.1',
-  entryType: 'html-app',
   framework: 'nuxt',
-  runtimeRequirements: ['dom'] // Indicates this pack needs DOM access
+  requiresDOM: true
 };
 `;
 
-// Write the pack entry point
+// Write the entry point
 const packOutputPath = join(packOutputDir, 'pack.js');
 writeFileSync(packOutputPath, packEntryPoint);
-console.log(`\n✅ Pack entry point written to: dist/pack.js`);
+console.log(`\n✅ Entry point written to: dist/pack.js`);
 
-// Also create a test HTML page that loads the pack
+// Also create a test HTML page that loads the bundle
 const testHtml = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pack Test Page</title>
+  <title>Bundle Test Page</title>
   <style>
     body {
       margin: 0;
@@ -171,7 +158,7 @@ const testHtml = `<!DOCTYPE html>
     .test-controls button:hover {
       background: #764ba2;
     }
-    #pack-output {
+    #output {
       margin-top: 0.5rem;
       padding: 0.5rem;
       background: rgba(255,255,255,0.1);
@@ -184,48 +171,37 @@ const testHtml = `<!DOCTYPE html>
   </style>
 </head>
 <body>
-  <div id="pack-container">
-    <!-- Pack will render here -->
+  <div id="app-container">
+    <!-- App will render here -->
   </div>
   
   <div class="test-controls">
-    <h3>📦 Pack Test Controls</h3>
-    <button onclick="loadPack()">Load Pack</button>
-    <button onclick="reloadPack()">Reload</button>
-    <div id="pack-output">Ready to load pack...</div>
+    <h3>🧪 Test Controls</h3>
+    <button onclick="loadApp()">Load App</button>
+    <button onclick="location.reload()">Reload</button>
+    <div id="output">Ready to load...</div>
   </div>
 
   <script type="module">
-    // Import the pack
-    import * as pack from './pack.js';
+    import * as bundle from './pack.js';
     
-    window.loadPack = async function() {
-      const output = document.getElementById('pack-output');
-      output.textContent = 'Loading pack...';
+    window.loadApp = async function() {
+      const output = document.getElementById('output');
+      output.textContent = 'Loading...';
       
       try {
-        // Call the pack's default function
-        const result = await pack.default({
-          // Simulated context from orchestrator
-          podName: 'test-pod',
-          nodeName: 'test-node'
-        });
-        
-        output.textContent = 'Pack loaded! Result: ' + JSON.stringify(result, null, 2);
-        console.log('Pack result:', result);
+        const result = await bundle.default();
+        output.textContent = 'Loaded! Result: ' + JSON.stringify(result, null, 2);
+        console.log('Result:', result);
       } catch (error) {
         output.textContent = 'Error: ' + error.message;
-        console.error('Pack error:', error);
+        console.error('Error:', error);
       }
     };
     
-    window.reloadPack = function() {
-      window.location.reload();
-    };
-    
-    // Show pack metadata
-    if (pack.packMeta) {
-      console.log('Pack metadata:', pack.packMeta);
+    // Show metadata
+    if (bundle.meta) {
+      console.log('Bundle metadata:', bundle.meta);
     }
   </script>
 </body>
@@ -247,8 +223,8 @@ copyFileSync(indexHtmlPath, join(assetsDir, 'original-index.html'));
 console.log(`✅ Original HTML copied to: dist/assets/original-index.html`);
 
 console.log('\n🎉 Build complete!\n');
-console.log('To test the pack:');
+console.log('To test the bundle:');
 console.log('  1. cd dist');
 console.log('  2. npx serve .');
 console.log('  3. Open http://localhost:3000/test.html');
-console.log('\nPack entry point: dist/pack.js');
+console.log('\nEntry point: dist/pack.js');

@@ -1,7 +1,7 @@
 {
   "name": "nuxt-pack-example",
   "version": "0.0.1",
-  "description": "Example Nuxt app that builds to a pack entry point",
+  "description": "Example Nuxt app that builds to a self-contained bundle",
   "private": true,
   "type": "module",
   "scripts": {

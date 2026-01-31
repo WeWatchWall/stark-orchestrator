@@ -1,19 +1,19 @@
-# Nuxt Pack Example
+# Nuxt Bundle Example
 
-This example demonstrates how to build a Nuxt/Vue application as a Stark Orchestrator pack.
+This example demonstrates how to build a Nuxt/Vue application into a self-contained JavaScript bundle.
 
 ## Overview
 
-The pack entry point format follows the same pattern as `bundle_async.js`:
+The bundle exports a default async function as the entry point:
 
 ```javascript
 module.exports.default = async function(context) {
-  // Pack logic here
-  return { message: 'Hello World' };
+  // Render or return HTML
+  return { status: 'rendered' };
 };
 ```
 
-This example takes a full Nuxt application and builds it into a single `pack.js` file that can be deployed to the orchestrator.
+This example takes a full Nuxt application and builds it into a single `pack.js` file that can be loaded and executed in different contexts.
 
 ## Project Structure
 
@@ -21,14 +21,14 @@ This example takes a full Nuxt application and builds it into a single `pack.js`
 nuxt-pack/
 ├── app.vue              # Root Vue component
 ├── pages/
-│   └── index.vue        # Main page with pack info display
+│   └── index.vue        # Main page with interactive demo
 ├── scripts/
-│   └── build-pack.mjs   # Post-build script to create pack entry point
+│   └── build-pack.mjs   # Post-build script to create bundle entry point
 ├── nuxt.config.ts       # Nuxt configuration
 ├── package.json         # Dependencies and scripts
 └── dist/                # Output directory (after build)
-    ├── pack.js          # The pack entry point
-    ├── test.html        # Test page to verify the pack
+    ├── pack.js          # The bundle entry point
+    ├── test.html        # Test page to verify the bundle
     └── assets/          # Original build assets
 ```
 
@@ -47,22 +47,22 @@ pnpm build
 
 This will:
 1. Run `nuxt generate` to build the static Vue app
-2. Run the build-pack script to:
+2. Run the build script to:
    - Inline all JavaScript and CSS into the HTML
-   - Wrap everything in a CommonJS pack entry point
+   - Wrap everything in a CommonJS module entry point
    - Generate a test page
 
 ## Output
 
 After building, the `dist/` folder will contain:
 
-- **`pack.js`** - The pack entry point that exports:
+- **`pack.js`** - The bundle entry point that exports:
   ```javascript
   module.exports.default = async function(context) { ... }
-  module.exports.packMeta = { name, version, ... }
+  module.exports.meta = { name, version, ... }
   ```
 
-- **`test.html`** - A test page that imports and runs the pack
+- **`test.html`** - A test page that imports and runs the bundle
 
 ## Testing
 
@@ -78,40 +78,39 @@ npx serve .
 
 1. **Nuxt Build**: `nuxt generate` creates a static SPA with chunked JS/CSS in `_nuxt/`
 
-2. **Pack Build**: The `build-pack.mjs` script:
+2. **Bundle Build**: The `build-pack.mjs` script:
    - Reads the generated `index.html`
    - Inlines all JavaScript and CSS
    - Wraps everything in a CommonJS module with `module.exports.default`
 
-3. **Pack Execution**: When the pack runs:
-   - In a browser context: It writes the HTML to the document
-   - In a worker/Node context: It returns the HTML for serving
+3. **Execution**: When the bundle runs:
+   - In a DOM context: It writes the HTML to the document
+   - In a worker context: It returns the HTML content
 
-## Pack Metadata
+## Metadata
 
-The pack exports metadata for the orchestrator:
+The bundle exports optional metadata:
 
 ```javascript
-module.exports.packMeta = {
+module.exports.meta = {
   name: 'nuxt-pack-example',
   version: '0.0.1',
-  entryType: 'html-app',
   framework: 'nuxt',
-  runtimeRequirements: ['dom']
+  requiresDOM: true
 };
 ```
 
 ## Customizing
 
-To create your own Nuxt pack:
+To create your own bundle:
 
 1. Copy this example
 2. Modify the Vue components in `pages/` and `app.vue`
-3. Update `packMeta` in `scripts/build-pack.mjs`
+3. Update `meta` in `scripts/build-pack.mjs`
 4. Run `pnpm build`
 
 ## Notes
 
-- The pack uses CommonJS format (`module.exports`) for compatibility with the executor's `new Function()` wrapper
+- The bundle uses CommonJS format (`module.exports`) for broad compatibility
 - All assets are inlined to create a single self-contained file
-- The pack requires DOM access to render the Vue app
+- The bundle requires DOM access to render the Vue app interactively
