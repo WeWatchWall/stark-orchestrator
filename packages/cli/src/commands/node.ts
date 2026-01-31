@@ -21,7 +21,15 @@ import {
   relativeTime,
   formatBytes,
 } from '../output.js';
-import { NodeAgent, type NodeAgentConfig } from '@stark-o/node-runtime';
+import { 
+  NodeAgent, 
+  type NodeAgentConfig, 
+  saveNodeCredentials,
+  loadNodeCredentials,
+  areNodeCredentialsValid,
+  type NodeCredentials,
+  getRegisteredNode,
+} from '@stark-o/node-runtime';
 import type { RuntimeType, NodeStatus, TaintEffect } from '@stark-o/shared';
 
 /**
@@ -732,6 +740,18 @@ async function agentStartHandler(options: {
     }
   }
 
+  // If still no auth token, check for stored node credentials first
+  if (!authToken) {
+    // Check if we have valid stored node credentials from a previous run
+    if (areNodeCredentialsValid()) {
+      const storedCreds = loadNodeCredentials();
+      if (storedCreds) {
+        info(`Using stored node credentials (${storedCreds.email})`);
+        authToken = storedCreds.accessToken;
+      }
+    }
+  }
+
   // If still no auth token, try auto-registration if public registration is enabled
   if (!authToken) {
     info('No authentication provided. Checking if public registration is available...');
@@ -798,9 +818,16 @@ async function agentStartHandler(options: {
 
       authToken = registerResult.data.accessToken;
 
-      // Note: We intentionally don't save these credentials to avoid overwriting
-      // the user's existing CLI session. The auto-registered account is ephemeral
-      // and only used for this node agent session.
+      // Save node credentials for reuse across restarts (separate from CLI user credentials)
+      const nodeCredentials: NodeCredentials = {
+        accessToken: registerResult.data.accessToken,
+        refreshToken: registerResult.data.refreshToken,
+        expiresAt: registerResult.data.expiresAt,
+        userId: registerResult.data.user.id,
+        email: registerResult.data.user.email,
+        createdAt: new Date().toISOString(),
+      };
+      saveNodeCredentials(nodeCredentials);
       success(`Auto-registered and authenticated as ${autoEmail}`);
     } catch (err) {
       error('Auto-registration failed', err instanceof Error ? { message: err.message } : undefined);
@@ -869,7 +896,18 @@ async function agentStartHandler(options: {
     heartbeatInterval: parseInt(options.heartbeat, 10) * 1000,
   };
 
-  info(`Starting node agent: ${options.name}`);
+  // Check for existing registered node
+  const existingNode = getRegisteredNode(options.url, options.name);
+  if (existingNode) {
+    info(`Resuming existing node: ${options.name}`);
+    console.log(chalk.gray(`  Node ID: ${existingNode.nodeId}`));
+    console.log(chalk.gray(`  Registered: ${new Date(existingNode.registeredAt).toLocaleString()}`));
+    if (existingNode.lastStarted) {
+      console.log(chalk.gray(`  Last started: ${new Date(existingNode.lastStarted).toLocaleString()}`));
+    }
+  } else {
+    info(`Starting new node agent: ${options.name}`);
+  }
   console.log(chalk.gray(`  Orchestrator: ${options.url}`));
   console.log(chalk.gray(`  CPU: ${options.cpu}m, Memory: ${options.memory}MB, Pods: ${options.pods}`));
   if (Object.keys(labels).length > 0) {
@@ -895,10 +933,16 @@ async function agentStartHandler(options: {
       case 'authenticated':
         success('Authenticated successfully');
         break;
-      case 'registered':
-        success(`Node registered with ID: ${agent.getNodeId()}`);
+      case 'registered': {
+        const nodeId = agent.getNodeId();
+        if (existingNode && existingNode.nodeId === nodeId) {
+          success(`Node resumed with ID: ${nodeId}`);
+        } else {
+          success(`Node registered with ID: ${nodeId}`);
+        }
         console.log(chalk.green('\n✓ Node agent is running. Press Ctrl+C to stop.\n'));
         break;
+      }
       case 'heartbeat':
         // Silent heartbeats in normal operation
         break;

@@ -11,6 +11,27 @@ export {
   type ConnectionState,
 } from './agent/browser-agent.js';
 
+// Browser State Store (persistent storage for credentials and registered nodes)
+export {
+  BrowserStateStore,
+  createBrowserStateStore,
+  loadBrowserCredentials,
+  saveBrowserCredentials,
+  clearBrowserCredentials,
+  areBrowserCredentialsValid,
+  getBrowserAccessToken,
+  loadRegisteredBrowserNodes,
+  saveRegisteredBrowserNodes,
+  getRegisteredBrowserNode,
+  saveRegisteredBrowserNode,
+  removeRegisteredBrowserNode,
+  getRegisteredBrowserNodesForOrchestrator,
+  updateBrowserNodeLastStarted,
+  type BrowserNodeCredentials,
+  type RegisteredBrowserNode,
+  type RegisteredBrowserNodesMap,
+} from './agent/browser-state-store.js';
+
 // Pod Handler (handles pod deployment and lifecycle)
 export {
   PodHandler,

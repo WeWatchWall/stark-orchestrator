@@ -27,6 +27,12 @@ import {
 } from '@stark-o/shared';
 import { PodHandler, createPodHandler } from './pod-handler.js';
 import { PackExecutor } from '../executor/pack-executor.js';
+import {
+  NodeStateStore,
+  createNodeStateStore,
+  type RegisteredNode,
+  type NodeCredentials,
+} from './node-state-store.js';
 
 /**
  * Node agent configuration
@@ -34,8 +40,8 @@ import { PackExecutor } from '../executor/pack-executor.js';
 export interface NodeAgentConfig {
   /** Orchestrator WebSocket URL (e.g., ws://localhost:3000/ws) */
   orchestratorUrl: string;
-  /** Authentication token */
-  authToken: string;
+  /** Authentication token (optional if using stored credentials or auto-registration) */
+  authToken?: string;
   /** Node name (must be unique) */
   nodeName: string;
   /** Runtime type (always 'node' for this agent) */
@@ -60,6 +66,10 @@ export interface NodeAgentConfig {
   bundleDir?: string;
   /** Logger instance */
   logger?: Logger;
+  /** Enable persistent storage of node registration (default: true) */
+  persistState?: boolean;
+  /** Automatically resume an existing node with the same name (default: true) */
+  resumeExisting?: boolean;
 }
 
 /**
@@ -118,9 +128,15 @@ const DEFAULT_NODE_ALLOCATABLE: AllocatableResources = {
  * - Periodic heartbeats
  * - Resource reporting
  * - Pod deployment and lifecycle
+ * - Persistent storage of node state for resumption
  */
 export class NodeAgent {
-  private readonly config: Required<Omit<NodeAgentConfig, 'logger' | 'bundleDir'>> & { logger: Logger; bundleDir: string };
+  private readonly config: Required<Omit<NodeAgentConfig, 'logger' | 'bundleDir' | 'authToken'>> & { 
+    logger: Logger; 
+    bundleDir: string;
+  };
+  private authToken: string;
+  private readonly stateStore: NodeStateStore;
   private ws: WebSocket | null = null;
   private nodeId: string | null = null;
   private connectionId: string | null = null;
@@ -147,7 +163,6 @@ export class NodeAgent {
   constructor(config: NodeAgentConfig) {
     this.config = {
       orchestratorUrl: config.orchestratorUrl,
-      authToken: config.authToken,
       nodeName: config.nodeName,
       runtimeType: config.runtimeType ?? 'node',
       capabilities: config.capabilities ?? { version: process.version },
@@ -163,13 +178,33 @@ export class NodeAgent {
         component: 'node-agent',
         service: 'stark-node-runtime',
       }),
+      persistState: config.persistState ?? true,
+      resumeExisting: config.resumeExisting ?? true,
     };
+
+    this.authToken = config.authToken ?? '';
+    
+    // Initialize state store for persistent storage
+    this.stateStore = createNodeStateStore(config.orchestratorUrl);
+
+    // Try to load existing node registration if resumeExisting is enabled
+    if (this.config.resumeExisting) {
+      const existingNode = this.stateStore.getNode(this.config.nodeName);
+      if (existingNode) {
+        this.nodeId = existingNode.nodeId;
+        this.config.logger.info('Found existing node registration', {
+          nodeName: this.config.nodeName,
+          nodeId: this.nodeId,
+          registeredAt: existingNode.registeredAt,
+        });
+      }
+    }
 
     // Initialize pack executor
     this.executor = new PackExecutor({
       bundleDir: this.config.bundleDir,
       orchestratorUrl: this.config.orchestratorUrl.replace(/^ws/, 'http').replace('/ws', ''),
-      authToken: this.config.authToken,
+      authToken: this.authToken,
       logger: this.config.logger,
     });
 
@@ -551,15 +586,36 @@ export class NodeAgent {
     this.config.logger.info('Authenticating with orchestrator');
 
     try {
+      // If no auth token provided, try to use stored credentials
+      if (!this.authToken) {
+        const storedToken = this.stateStore.getAccessToken();
+        if (storedToken) {
+          this.authToken = storedToken;
+          this.config.logger.info('Using stored node credentials');
+          
+          // Update executor with the token
+          this.executor = new PackExecutor({
+            bundleDir: this.config.bundleDir,
+            orchestratorUrl: this.config.orchestratorUrl.replace(/^ws/, 'http').replace('/ws', ''),
+            authToken: this.authToken,
+            logger: this.config.logger,
+          });
+        }
+      }
+
+      if (!this.authToken) {
+        throw new Error('No authentication token available. Provide authToken in config or ensure valid stored credentials.');
+      }
+
       await this.sendRequest<{ userId: string }>('auth:authenticate', {
-        token: this.config.authToken,
+        token: this.authToken,
       });
 
       this.state = 'authenticated';
       this.emit('authenticated');
       this.config.logger.info('Authenticated successfully');
 
-      // If we have an existing nodeId, reconnect instead of registering
+      // If we have an existing nodeId (either from reconnect or from stored state), reconnect instead of registering
       if (this.nodeId) {
         await this.reconnect();
       } else {
@@ -593,6 +649,20 @@ export class NodeAgent {
       const response = await this.sendRequest<{ node: Node }>('node:register', registerInput);
       this.nodeId = response.node.id;
 
+      // Persist the node registration for future resumption
+      if (this.config.persistState) {
+        const registeredNode: RegisteredNode = {
+          nodeId: this.nodeId,
+          name: this.config.nodeName,
+          orchestratorUrl: this.config.orchestratorUrl,
+          registeredAt: new Date().toISOString(),
+          registeredBy: response.node.registeredBy!,
+          lastStarted: new Date().toISOString(),
+        };
+        this.stateStore.saveNode(registeredNode);
+        this.config.logger.info('Persisted node registration', { nodeName: this.config.nodeName, nodeId: this.nodeId });
+      }
+
       this.state = 'registered';
       this.emit('registered', response.node);
       this.config.logger.info('Node registered', {
@@ -603,6 +673,61 @@ export class NodeAgent {
       // Start heartbeat
       this.startHeartbeat();
     } catch (error) {
+      // Check if this is a CONFLICT error (node already exists)
+      const errorObj = error as { code?: string; message?: string };
+      if (errorObj.code === 'CONFLICT') {
+        this.config.logger.info('Node already exists, attempting to look up and reconnect', {
+          nodeName: this.config.nodeName,
+        });
+
+        // Try to look up the existing node by name via HTTP API
+        try {
+          const httpUrl = this.config.orchestratorUrl
+            .replace(/^wss:\/\//, 'https://')
+            .replace(/^ws:\/\//, 'http://')
+            .replace(/\/ws\/?$/, '');
+
+          const lookupResponse = await fetch(`${httpUrl}/api/nodes/name/${encodeURIComponent(this.config.nodeName)}`, {
+            headers: {
+              'Authorization': `Bearer ${this.authToken}`,
+            },
+          });
+
+          const lookupResult = await lookupResponse.json() as {
+            success: boolean;
+            data?: { node: { id: string; registeredBy: string } };
+            error?: { code: string; message: string };
+          };
+
+          if (lookupResult.success && lookupResult.data?.node) {
+            this.nodeId = lookupResult.data.node.id;
+            this.config.logger.info('Found existing node, attempting reconnect', {
+              nodeId: this.nodeId,
+              nodeName: this.config.nodeName,
+            });
+
+            // Save the node registration locally for future restarts
+            if (this.config.persistState) {
+              const registeredNode: RegisteredNode = {
+                nodeId: this.nodeId,
+                name: this.config.nodeName,
+                orchestratorUrl: this.config.orchestratorUrl,
+                registeredAt: new Date().toISOString(),
+                registeredBy: lookupResult.data.node.registeredBy,
+                lastStarted: new Date().toISOString(),
+              };
+              this.stateStore.saveNode(registeredNode);
+            }
+
+            // Now attempt to reconnect with the existing node
+            await this.reconnect();
+            return;
+          }
+        } catch (lookupError) {
+          this.config.logger.error('Failed to look up existing node', { error: lookupError });
+        }
+      }
+
       this.config.logger.error('Registration failed', { error });
       this.emit('error', error);
       throw error;
@@ -611,7 +736,7 @@ export class NodeAgent {
 
   /**
    * Reconnect an existing node to the orchestrator
-   * Used when reconnecting after a connection drop
+   * Used when reconnecting after a connection drop or when resuming a previously registered node
    */
   private async reconnect(): Promise<void> {
     this.state = 'registering';
@@ -621,6 +746,11 @@ export class NodeAgent {
       const response = await this.sendRequest<{ node: Node }>('node:reconnect', {
         nodeId: this.nodeId,
       });
+
+      // Update the lastStarted timestamp in persisted state
+      if (this.config.persistState) {
+        this.stateStore.updateLastStarted(this.config.nodeName);
+      }
 
       this.state = 'registered';
       this.emit('registered', response.node);
@@ -635,6 +765,12 @@ export class NodeAgent {
       this.config.logger.error('Reconnection failed, falling back to registration', { error });
       // If reconnection fails (e.g., node was deleted), fall back to fresh registration
       this.nodeId = null;
+      
+      // Remove the stale node registration from storage
+      if (this.config.persistState) {
+        this.stateStore.removeNode(this.config.nodeName);
+      }
+      
       await this.register();
     }
   }
@@ -801,6 +937,61 @@ export class NodeAgent {
       pending.reject(new Error(reason));
     }
     this.pendingRequests.clear();
+  }
+
+  /**
+   * Get the state store for direct access to persisted state
+   */
+  getStateStore(): NodeStateStore {
+    return this.stateStore;
+  }
+
+  /**
+   * Save credentials for future node agent sessions
+   * This stores credentials separately from CLI user credentials
+   */
+  saveCredentials(credentials: NodeCredentials): void {
+    this.stateStore.saveCredentials(credentials);
+    this.authToken = credentials.accessToken;
+    
+    // Update the executor with the new auth token
+    this.executor = new PackExecutor({
+      bundleDir: this.config.bundleDir,
+      orchestratorUrl: this.config.orchestratorUrl.replace(/^ws/, 'http').replace('/ws', ''),
+      authToken: this.authToken,
+      logger: this.config.logger,
+    });
+
+    this.config.logger.info('Saved node credentials', { userId: credentials.userId, email: credentials.email });
+  }
+
+  /**
+   * Check if valid stored credentials exist
+   */
+  hasStoredCredentials(): boolean {
+    return this.stateStore.hasValidCredentials();
+  }
+
+  /**
+   * Get the current auth token
+   */
+  getAuthToken(): string {
+    return this.authToken;
+  }
+
+  /**
+   * Set the auth token (updates executor as well)
+   */
+  setAuthToken(token: string): void {
+    this.authToken = token;
+    
+    // Update the executor with the new auth token
+    this.executor = new PackExecutor({
+      bundleDir: this.config.bundleDir,
+      orchestratorUrl: this.config.orchestratorUrl.replace(/^ws/, 'http').replace('/ws', ''),
+      authToken: this.authToken,
+      logger: this.config.logger,
+    });
   }
 }
 

@@ -24,6 +24,12 @@ import {
 } from '@stark-o/shared';
 import { PodHandler, createPodHandler } from './pod-handler.js';
 import { PackExecutor } from '../executor/pack-executor.js';
+import {
+  BrowserStateStore,
+  createBrowserStateStore,
+  type RegisteredBrowserNode,
+  type BrowserNodeCredentials,
+} from './browser-state-store.js';
 
 /**
  * Browser agent configuration
@@ -31,7 +37,7 @@ import { PackExecutor } from '../executor/pack-executor.js';
 export interface BrowserAgentConfig {
   /** Orchestrator WebSocket URL (e.g., ws://localhost:3000/ws) */
   orchestratorUrl: string;
-  /** Authentication token (optional if autoRegister is true) */
+  /** Authentication token (optional if autoRegister is true or using stored credentials) */
   authToken?: string;
   /** Node name (must be unique) */
   nodeName: string;
@@ -59,6 +65,10 @@ export interface BrowserAgentConfig {
   bundlePath?: string;
   /** Enable debug logging to console (default: false) */
   debug?: boolean;
+  /** Enable persistent storage of node registration (default: true) */
+  persistState?: boolean;
+  /** Automatically resume an existing node with the same name (default: true) */
+  resumeExisting?: boolean;
 }
 
 /**
@@ -177,6 +187,7 @@ function createBrowserLogger(component: string, debug: boolean): BrowserLogger {
  * - Periodic heartbeats
  * - Resource reporting
  * - Pod deployment and lifecycle
+ * - Persistent storage of node state for resumption
  */
 export class BrowserAgent {
   private readonly config: Required<Omit<BrowserAgentConfig, 'debug' | 'bundlePath' | 'authToken' | 'autoRegister'>> & { 
@@ -186,6 +197,7 @@ export class BrowserAgent {
   };
   private authToken: string;
   private readonly logger: BrowserLogger;
+  private readonly stateStore: BrowserStateStore;
   private ws: WebSocket | null = null;
   private nodeId: string | null = null;
   private connectionId: string | null = null;
@@ -227,10 +239,28 @@ export class BrowserAgent {
       bundlePath: config.bundlePath ?? '/packs',
       debug,
       autoRegister: config.autoRegister ?? true,
+      persistState: config.persistState ?? true,
+      resumeExisting: config.resumeExisting ?? true,
     };
 
     this.authToken = config.authToken ?? '';
     this.logger = createBrowserLogger('browser-agent', debug);
+    
+    // Initialize state store for persistent storage
+    this.stateStore = createBrowserStateStore(config.orchestratorUrl);
+
+    // Try to load existing node registration if resumeExisting is enabled
+    if (this.config.resumeExisting) {
+      const existingNode = this.stateStore.getNode(this.config.nodeName);
+      if (existingNode) {
+        this.nodeId = existingNode.nodeId;
+        this.logger.info('Found existing node registration', {
+          nodeName: this.config.nodeName,
+          nodeId: this.nodeId,
+          registeredAt: existingNode.registeredAt,
+        });
+      }
+    }
 
     // Initialize pack executor (authToken will be updated after auto-registration if needed)
     this.executor = new PackExecutor({
@@ -700,6 +730,17 @@ export class BrowserAgent {
   }
 
   /**
+   * Auto-registration result
+   */
+  private autoRegResult: {
+    accessToken: string;
+    refreshToken?: string;
+    expiresAt: string;
+    userId: string;
+    email: string;
+  } | null = null;
+
+  /**
    * Auto-register a new user with node role
    * Returns the access token on success
    */
@@ -738,6 +779,15 @@ export class BrowserAgent {
         throw new Error(result.error?.message ?? 'Auto-registration failed');
       }
 
+      // Store the full result for credential saving
+      this.autoRegResult = {
+        accessToken: result.data.accessToken,
+        refreshToken: result.data.refreshToken,
+        expiresAt: result.data.expiresAt,
+        userId: result.data.user.id,
+        email: result.data.user.email,
+      };
+
       this.logger.info('Auto-registered successfully', { email: autoEmail, userId: result.data.user.id });
       return result.data.accessToken;
     } catch (error) {
@@ -754,11 +804,34 @@ export class BrowserAgent {
       return;
     }
 
-    if (!this.config.autoRegister) {
-      throw new Error('No auth token provided and autoRegister is disabled');
+    // Try to use stored credentials first
+    const storedToken = this.stateStore.getAccessToken();
+    if (storedToken) {
+      this.authToken = storedToken;
+      this.logger.info('Using stored credentials');
+
+      // Update the executor with the stored auth token
+      this.executor = new PackExecutor({
+        bundlePath: this.config.bundlePath,
+        orchestratorUrl: this.getHttpBaseUrl(),
+        authToken: this.authToken,
+      });
+
+      // Re-initialize the pod handler with the new executor
+      this.podHandler = createPodHandler({
+        executor: this.executor,
+        onStatusChange: (podId, status, message) => {
+          this.handlePodStatusChange(podId, status, message);
+        },
+      });
+      return;
     }
 
-    this.logger.info('No auth token provided. Checking if public registration is available...');
+    if (!this.config.autoRegister) {
+      throw new Error('No auth token provided, no stored credentials, and autoRegister is disabled');
+    }
+
+    this.logger.info('No auth token or stored credentials. Checking if public registration is available...');
 
     const status = await this.checkRegistrationStatus();
 
@@ -767,6 +840,20 @@ export class BrowserAgent {
     }
 
     this.authToken = await this.autoRegisterUser();
+
+    // Save the credentials for future sessions
+    if (this.config.persistState && this.autoRegResult) {
+      const credentials: BrowserNodeCredentials = {
+        accessToken: this.autoRegResult.accessToken,
+        refreshToken: this.autoRegResult.refreshToken,
+        expiresAt: this.autoRegResult.expiresAt,
+        userId: this.autoRegResult.userId,
+        email: this.autoRegResult.email,
+        createdAt: new Date().toISOString(),
+      };
+      this.stateStore.saveCredentials(credentials);
+      this.logger.info('Saved credentials for future sessions', { email: this.autoRegResult.email });
+    }
 
     // Update the executor with the new auth token
     this.executor = new PackExecutor({
@@ -803,7 +890,7 @@ export class BrowserAgent {
       this.emit('authenticated');
       this.logger.info('Authenticated successfully');
 
-      // If we have an existing nodeId, reconnect instead of registering
+      // If we have an existing nodeId (either from reconnect or from stored state), reconnect instead of registering
       if (this.nodeId) {
         await this.reconnect();
       } else {
@@ -837,6 +924,20 @@ export class BrowserAgent {
       const response = await this.sendRequest<{ node: Node }>('node:register', registerInput);
       this.nodeId = response.node.id;
 
+      // Persist the node registration for future resumption
+      if (this.config.persistState) {
+        const registeredNode: RegisteredBrowserNode = {
+          nodeId: this.nodeId,
+          name: this.config.nodeName,
+          orchestratorUrl: this.config.orchestratorUrl,
+          registeredAt: new Date().toISOString(),
+          registeredBy: response.node.registeredBy!,
+          lastStarted: new Date().toISOString(),
+        };
+        this.stateStore.saveNode(registeredNode);
+        this.logger.info('Persisted node registration', { nodeName: this.config.nodeName, nodeId: this.nodeId });
+      }
+
       this.state = 'registered';
       this.emit('registered', response.node);
       this.logger.info('Node registered', {
@@ -847,6 +948,58 @@ export class BrowserAgent {
       // Start heartbeat
       this.startHeartbeat();
     } catch (error) {
+      // Check if this is a CONFLICT error (node already exists)
+      const errorObj = error as { code?: string; message?: string };
+      if (errorObj.code === 'CONFLICT') {
+        this.logger.info('Node already exists, attempting to look up and reconnect', {
+          nodeName: this.config.nodeName,
+        });
+
+        // Try to look up the existing node by name via HTTP API
+        try {
+          const httpUrl = this.getHttpBaseUrl();
+
+          const lookupResponse = await fetch(`${httpUrl}/api/nodes/name/${encodeURIComponent(this.config.nodeName)}`, {
+            headers: {
+              'Authorization': `Bearer ${this.authToken}`,
+            },
+          });
+
+          const lookupResult = await lookupResponse.json() as {
+            success: boolean;
+            data?: { node: { id: string; registeredBy: string } };
+            error?: { code: string; message: string };
+          };
+
+          if (lookupResult.success && lookupResult.data?.node) {
+            this.nodeId = lookupResult.data.node.id;
+            this.logger.info('Found existing node, attempting reconnect', {
+              nodeId: this.nodeId,
+              nodeName: this.config.nodeName,
+            });
+
+            // Save the node registration locally for future restarts
+            if (this.config.persistState) {
+              const registeredNode: RegisteredBrowserNode = {
+                nodeId: this.nodeId,
+                name: this.config.nodeName,
+                orchestratorUrl: this.config.orchestratorUrl,
+                registeredAt: new Date().toISOString(),
+                registeredBy: lookupResult.data.node.registeredBy,
+                lastStarted: new Date().toISOString(),
+              };
+              this.stateStore.saveNode(registeredNode);
+            }
+
+            // Now attempt to reconnect with the existing node
+            await this.reconnect();
+            return;
+          }
+        } catch (lookupError) {
+          this.logger.error('Failed to look up existing node', { error: String(lookupError) });
+        }
+      }
+
       this.logger.error('Registration failed', { error: String(error) });
       this.emit('error', error);
       throw error;
@@ -855,7 +1008,7 @@ export class BrowserAgent {
 
   /**
    * Reconnect an existing node to the orchestrator
-   * Used when reconnecting after a connection drop
+   * Used when reconnecting after a connection drop or when resuming a previously registered node
    */
   private async reconnect(): Promise<void> {
     this.state = 'registering';
@@ -865,6 +1018,11 @@ export class BrowserAgent {
       const response = await this.sendRequest<{ node: Node }>('node:reconnect', {
         nodeId: this.nodeId,
       });
+
+      // Update the lastStarted timestamp in persisted state
+      if (this.config.persistState) {
+        this.stateStore.updateLastStarted(this.config.nodeName);
+      }
 
       this.state = 'registered';
       this.emit('registered', response.node);
@@ -879,6 +1037,12 @@ export class BrowserAgent {
       this.logger.error('Reconnection failed, falling back to registration', { error: String(error) });
       // If reconnection fails (e.g., node was deleted), fall back to fresh registration
       this.nodeId = null;
+      
+      // Remove the stale node registration from storage
+      if (this.config.persistState) {
+        this.stateStore.removeNode(this.config.nodeName);
+      }
+      
       await this.register();
     }
   }
@@ -1037,6 +1201,58 @@ export class BrowserAgent {
    */
   getExecutor(): PackExecutor {
     return this.executor;
+  }
+
+  /**
+   * Get the state store for direct access to persisted state
+   */
+  getStateStore(): BrowserStateStore {
+    return this.stateStore;
+  }
+
+  /**
+   * Save credentials for future browser agent sessions
+   */
+  saveCredentials(credentials: BrowserNodeCredentials): void {
+    this.stateStore.saveCredentials(credentials);
+    this.authToken = credentials.accessToken;
+    
+    // Update the executor with the new auth token
+    this.executor = new PackExecutor({
+      bundlePath: this.config.bundlePath,
+      orchestratorUrl: this.getHttpBaseUrl(),
+      authToken: this.authToken,
+    });
+
+    this.logger.info('Saved credentials', { userId: credentials.userId, email: credentials.email });
+  }
+
+  /**
+   * Check if valid stored credentials exist
+   */
+  hasStoredCredentials(): boolean {
+    return this.stateStore.hasValidCredentials();
+  }
+
+  /**
+   * Get the current auth token
+   */
+  getAuthToken(): string {
+    return this.authToken;
+  }
+
+  /**
+   * Set the auth token (updates executor as well)
+   */
+  setAuthToken(token: string): void {
+    this.authToken = token;
+    
+    // Update the executor with the new auth token
+    this.executor = new PackExecutor({
+      bundlePath: this.config.bundlePath,
+      orchestratorUrl: this.getHttpBaseUrl(),
+      authToken: this.authToken,
+    });
   }
 }
 

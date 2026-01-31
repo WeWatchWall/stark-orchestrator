@@ -20,6 +20,26 @@ export {
   type ConnectionState,
 } from './agent/node-agent.js';
 
+export {
+  NodeStateStore,
+  createNodeStateStore,
+  loadNodeCredentials,
+  saveNodeCredentials,
+  clearNodeCredentials,
+  areNodeCredentialsValid,
+  getNodeAccessToken,
+  loadRegisteredNodes,
+  saveRegisteredNodes,
+  getRegisteredNode,
+  saveRegisteredNode,
+  removeRegisteredNode,
+  getRegisteredNodesForOrchestrator,
+  updateNodeLastStarted,
+  type NodeCredentials,
+  type RegisteredNode,
+  type RegisteredNodesMap,
+} from './agent/node-state-store.js';
+
 // ============================================
 // Pack Executor Exports
 // ============================================

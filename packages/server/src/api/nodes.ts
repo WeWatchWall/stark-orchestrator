@@ -458,8 +458,9 @@ export async function updateNode(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    // Check ownership (only the registerer can update)
-    if (existingResult.data.registeredBy && existingResult.data.registeredBy !== userId) {
+    // Check ownership (admins can update any node, others only their own)
+    const isNodeManager = hasNodeManagementRole(req);
+    if (!isNodeManager && existingResult.data.registeredBy && existingResult.data.registeredBy !== userId) {
       sendError(res, 'FORBIDDEN', 'You do not have permission to update this node', 403);
       return;
     }
