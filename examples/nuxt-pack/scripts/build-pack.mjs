@@ -6,10 +6,11 @@
  * 1. Exports a default async function as the entry point
  * 2. When executed in a DOM context, renders the app directly
  * 3. When executed in a worker context, returns the HTML content
+ * 4. Inlines all assets (images, fonts) as base64 data URIs
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, copyFileSync } from 'fs';
-import { join, dirname } from 'path';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, copyFileSync, statSync } from 'fs';
+import { join, dirname, extname, basename } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -18,6 +19,162 @@ const outputDir = join(projectRoot, '.output', 'public');
 const packOutputDir = join(projectRoot, 'dist');
 
 console.log('📦 Building entry point...\n');
+
+// MIME type mapping for common asset types
+const MIME_TYPES = {
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+  '.otf': 'font/otf',
+  '.eot': 'application/vnd.ms-fontobject',
+};
+
+/**
+ * Get MIME type for a file based on its extension
+ */
+function getMimeType(filePath) {
+  const ext = extname(filePath).toLowerCase();
+  return MIME_TYPES[ext] || 'application/octet-stream';
+}
+
+/**
+ * Convert a file to a base64 data URI
+ */
+function fileToDataUri(filePath) {
+  const content = readFileSync(filePath);
+  const mimeType = getMimeType(filePath);
+  return `data:${mimeType};base64,${content.toString('base64')}`;
+}
+
+/**
+ * Recursively find all files in a directory
+ */
+function findAllFiles(dir, files = []) {
+  if (!existsSync(dir)) return files;
+  
+  const entries = readdirSync(dir);
+  for (const entry of entries) {
+    const fullPath = join(dir, entry);
+    const stat = statSync(fullPath);
+    if (stat.isDirectory()) {
+      findAllFiles(fullPath, files);
+    } else {
+      files.push(fullPath);
+    }
+  }
+  return files;
+}
+
+/**
+ * Build a map of asset paths to their data URIs
+ */
+function buildAssetMap(nuxtDir) {
+  const assetMap = new Map();
+  const allFiles = findAllFiles(nuxtDir);
+  
+  for (const filePath of allFiles) {
+    const ext = extname(filePath).toLowerCase();
+    // Skip JS and CSS files (handled separately)
+    if (ext === '.js' || ext === '.css') continue;
+    
+    // Check if it's a known asset type
+    if (MIME_TYPES[ext]) {
+      const relativePath = filePath.replace(nuxtDir, '').replace(/\\/g, '/');
+      const dataUri = fileToDataUri(filePath);
+      assetMap.set(relativePath, dataUri);
+      
+      // Also map with _nuxt prefix for URL references
+      assetMap.set(`/_nuxt${relativePath}`, dataUri);
+      assetMap.set(`_nuxt${relativePath}`, dataUri);
+    }
+  }
+  
+  return assetMap;
+}
+
+/**
+ * Replace asset URLs in CSS content with data URIs
+ */
+function inlineAssetsInCss(css, assetMap) {
+  // Match url() references
+  return css.replace(/url\(["']?([^"')]+)["']?\)/g, (match, url) => {
+    // Skip data URIs and external URLs
+    if (url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://')) {
+      return match;
+    }
+    
+    // Try to find the asset in our map
+    for (const [path, dataUri] of assetMap) {
+      if (url.includes(basename(path)) || url.endsWith(path) || path.endsWith(url.replace(/^\.?\/?/, ''))) {
+        console.log(`  ✓ Inlined CSS asset: ${basename(path)}`);
+        return `url(${dataUri})`;
+      }
+    }
+    
+    console.log(`  ⚠ Could not find asset for: ${url}`);
+    return match;
+  });
+}
+
+/**
+ * Replace asset URLs in HTML content with data URIs
+ */
+function inlineAssetsInHtml(html, assetMap) {
+  // Match src and href attributes pointing to _nuxt assets
+  return html
+    .replace(/(src|href)=["']([^"']*_nuxt[^"']*)["']/g, (match, attr, url) => {
+      for (const [path, dataUri] of assetMap) {
+        if (url.includes(basename(path)) || url.endsWith(path)) {
+          console.log(`  ✓ Inlined HTML asset: ${basename(path)}`);
+          return `${attr}="${dataUri}"`;
+        }
+      }
+      return match;
+    });
+}
+
+/**
+ * Replace asset URLs in JS content with data URIs
+ */
+function inlineAssetsInJs(js, assetMap) {
+  // Match string literals containing asset paths
+  let result = js;
+  
+  for (const [path, dataUri] of assetMap) {
+    const filename = basename(path);
+    // Look for the asset filename in the JS (usually as part of a path string)
+    const patterns = [
+      new RegExp(`"[^"]*${escapeRegExp(filename)}[^"]*"`, 'g'),
+      new RegExp(`'[^']*${escapeRegExp(filename)}[^']*'`, 'g'),
+    ];
+    
+    for (const pattern of patterns) {
+      const matches = result.match(pattern);
+      if (matches) {
+        for (const match of matches) {
+          // Only replace if it looks like a path reference
+          if (match.includes('_nuxt') || match.includes('/assets/') || match.includes('./')) {
+            console.log(`  ✓ Inlined JS asset: ${filename}`);
+            result = result.replace(match, `"${dataUri}"`);
+          }
+        }
+      }
+    }
+  }
+  
+  return result;
+}
+
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 // Ensure output directory exists
 if (!existsSync(packOutputDir)) {
@@ -36,16 +193,21 @@ let indexHtml = readFileSync(indexHtmlPath, 'utf-8');
 // Find and inline all JavaScript files
 const nuxtDir = join(outputDir, '_nuxt');
 if (existsSync(nuxtDir)) {
+  // Build asset map for inlining images, fonts, etc.
+  console.log('\n🔍 Scanning for assets to inline...');
+  const assetMap = buildAssetMap(nuxtDir);
+  console.log(`Found ${assetMap.size / 3} unique assets to inline`); // Divided by 3 due to multiple path variants
+  
   const jsFiles = readdirSync(nuxtDir).filter(f => f.endsWith('.js'));
   
-  console.log(`Found ${jsFiles.length} JavaScript files to inline:`);
+  console.log(`\n📄 Found ${jsFiles.length} JavaScript files to inline:`);
   jsFiles.forEach(f => console.log(`  - ${f}`));
   
   // Read all JS content and inline it
   let allJs = '';
   for (const jsFile of jsFiles) {
     const jsPath = join(nuxtDir, jsFile);
-    const jsContent = readFileSync(jsPath, 'utf-8');
+    let jsContent = readFileSync(jsPath, 'utf-8');
     allJs += jsContent + '\n';
   }
   
@@ -54,11 +216,23 @@ if (existsSync(nuxtDir)) {
   let allCss = '';
   for (const cssFile of cssFiles) {
     const cssPath = join(nuxtDir, cssFile);
-    const cssContent = readFileSync(cssPath, 'utf-8');
+    let cssContent = readFileSync(cssPath, 'utf-8');
     allCss += cssContent + '\n';
   }
   
-  console.log(`Found ${cssFiles.length} CSS files to inline`);
+  console.log(`📄 Found ${cssFiles.length} CSS files to inline`);
+  
+  // Inline assets in CSS
+  if (allCss && assetMap.size > 0) {
+    console.log('\n🎨 Inlining assets in CSS...');
+    allCss = inlineAssetsInCss(allCss, assetMap);
+  }
+  
+  // Inline assets in JS (for dynamic imports of images, etc.)
+  if (allJs && assetMap.size > 0) {
+    console.log('\n📦 Inlining assets in JavaScript...');
+    allJs = inlineAssetsInJs(allJs, assetMap);
+  }
   
   // Create a self-contained HTML with inlined resources
   // Remove external script/link references and inject inline versions
@@ -68,6 +242,12 @@ if (existsSync(nuxtDir)) {
     .replace(/<link[^>]*href="[^"]*_nuxt[^"]*\.css"[^>]*>/g, '')
     // Remove modulepreload links
     .replace(/<link[^>]*rel="modulepreload"[^>]*>/g, '');
+  
+  // Inline assets in HTML (for img src, etc.)
+  if (assetMap.size > 0) {
+    console.log('\n🌐 Inlining assets in HTML...');
+    indexHtml = inlineAssetsInHtml(indexHtml, assetMap);
+  }
   
   // Inject inline CSS in head
   if (allCss) {
@@ -80,9 +260,15 @@ if (existsSync(nuxtDir)) {
   }
 }
 
+// Calculate bundle size
+const bundleSize = Buffer.byteLength(indexHtml, 'utf-8');
+const bundleSizeKb = (bundleSize / 1024).toFixed(2);
+
 // Create the entry point wrapper
 const packEntryPoint = `// Nuxt App Bundle - Auto-generated entry point
 // Self-contained Nuxt/Vue application module
+// Bundle size: ${bundleSizeKb} KB (uncompressed)
+// Generated: ${new Date().toISOString()}
 
 const HTML_CONTENT = ${JSON.stringify(indexHtml)};
 
@@ -109,7 +295,12 @@ module.exports.meta = {
   name: 'nuxt-pack-example',
   version: '0.0.1',
   framework: 'nuxt',
-  requiresDOM: true
+  requiresDOM: true,
+  bundleSize: ${bundleSize},
+  bundleSizeKb: '${bundleSizeKb} KB',
+  assetsInlined: true,
+  dynamicImportsDisabled: true,
+  generatedAt: '${new Date().toISOString()}'
 };
 `;
 
@@ -117,6 +308,7 @@ module.exports.meta = {
 const packOutputPath = join(packOutputDir, 'pack.js');
 writeFileSync(packOutputPath, packEntryPoint);
 console.log(`\n✅ Entry point written to: dist/pack.js`);
+console.log(`   Bundle size: ${bundleSizeKb} KB (uncompressed)`);
 
 // Also create a test HTML page that loads the bundle
 const testHtml = `<!DOCTYPE html>

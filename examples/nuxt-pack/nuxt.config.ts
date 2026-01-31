@@ -30,7 +30,30 @@ export default defineNuxtConfig({
     build: {
       // Ensure we get a clean build
       minify: true,
-      sourcemap: false
-    }
-  }
+      sourcemap: false,
+      
+      // Inline all assets smaller than 100KB as base64 data URIs
+      // This helps create a truly self-contained bundle
+      assetsInlineLimit: 100 * 1024, // 100KB
+      
+      rollupOptions: {
+        output: {
+          // Inline all dynamic imports into a single chunk
+          // This prevents code-splitting which would break our bundle
+          inlineDynamicImports: true,
+          
+          // Put all code in a single chunk
+          manualChunks: undefined,
+        },
+      },
+    },
+  },
+
+  // Inline all CSS to avoid external file references
+  css: [],
+  
+  experimental: {
+    // Inline SSR styles (useful if SSR is ever enabled)
+    inlineSSRStyles: true,
+  },
 })
