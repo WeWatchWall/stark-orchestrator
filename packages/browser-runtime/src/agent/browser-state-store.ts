@@ -135,6 +135,47 @@ export function areBrowserCredentialsValid(): boolean {
 }
 
 /**
+ * Token refresh threshold - refresh when 15 minutes or less remaining
+ */
+export const TOKEN_REFRESH_THRESHOLD_MS = 15 * 60 * 1000;
+
+/**
+ * Check if browser credentials should be refreshed (within threshold of expiration)
+ */
+export function shouldRefreshBrowserCredentials(): boolean {
+  const creds = loadBrowserCredentials();
+  if (!creds || !creds.refreshToken) return false;
+
+  const expiresAt = new Date(creds.expiresAt);
+  const now = new Date();
+  const timeRemaining = expiresAt.getTime() - now.getTime();
+  
+  // Should refresh if within threshold of expiration
+  return timeRemaining > 0 && timeRemaining <= TOKEN_REFRESH_THRESHOLD_MS;
+}
+
+/**
+ * Get the time remaining until token expiration in milliseconds
+ */
+export function getBrowserTokenTimeRemaining(): number {
+  const creds = loadBrowserCredentials();
+  if (!creds) return 0;
+
+  const expiresAt = new Date(creds.expiresAt);
+  const now = new Date();
+  return Math.max(0, expiresAt.getTime() - now.getTime());
+}
+
+/**
+ * Get the refresh token if available
+ */
+export function getBrowserRefreshToken(): string | null {
+  const creds = loadBrowserCredentials();
+  if (!creds || !creds.refreshToken) return null;
+  return creds.refreshToken;
+}
+
+/**
  * Get the access token if valid
  */
 export function getBrowserAccessToken(): string | null {
@@ -302,6 +343,27 @@ export class BrowserStateStore {
    */
   hasValidCredentials(): boolean {
     return areBrowserCredentialsValid();
+  }
+
+  /**
+   * Check if credentials should be refreshed
+   */
+  shouldRefreshCredentials(): boolean {
+    return shouldRefreshBrowserCredentials();
+  }
+
+  /**
+   * Get time remaining until token expiration in milliseconds
+   */
+  getTokenTimeRemaining(): number {
+    return getBrowserTokenTimeRemaining();
+  }
+
+  /**
+   * Get refresh token if available
+   */
+  getRefreshToken(): string | null {
+    return getBrowserRefreshToken();
   }
 
   /**

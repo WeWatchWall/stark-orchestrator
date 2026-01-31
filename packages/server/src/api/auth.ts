@@ -5,6 +5,7 @@
  * - POST /auth/register - Register a new user
  * - POST /auth/login - Login an existing user
  * - POST /auth/logout - Logout the current user
+ * - POST /auth/refresh - Refresh access token using refresh token
  *
  * @module @stark-o/server/api/auth
  */
@@ -554,6 +555,72 @@ export async function logout(req: Request, res: Response): Promise<void> {
 }
 
 /**
+ * POST /auth/refresh - Refresh an access token using a refresh token
+ */
+export async function refresh(req: Request, res: Response): Promise<void> {
+  const correlationId = generateCorrelationId();
+  const requestLogger = logger.withCorrelationId(correlationId);
+
+  try {
+    requestLogger.debug('Token refresh request received');
+
+    // Get refresh token from body
+    const { refreshToken } = req.body;
+
+    if (!refreshToken || typeof refreshToken !== 'string') {
+      sendError(res, 'VALIDATION_ERROR', 'Refresh token is required', 400);
+      return;
+    }
+
+    // Refresh the session
+    const authQueries = getAuthQueries();
+    const result = await authQueries.refreshSession(refreshToken);
+
+    if (result.error) {
+      if (result.error.code === 'REFRESH_FAILED' || result.error.code === 'TOKEN_EXPIRED') {
+        requestLogger.warn('Token refresh failed - invalid or expired refresh token');
+        sendError(res, 'UNAUTHORIZED', 'Invalid or expired refresh token', 401);
+        return;
+      }
+
+      requestLogger.error('Token refresh failed', new Error(result.error.message));
+      sendError(res, 'INTERNAL_ERROR', 'Token refresh failed', 500);
+      return;
+    }
+
+    if (!result.data) {
+      requestLogger.error('Token refresh returned no data');
+      sendError(res, 'INTERNAL_ERROR', 'Token refresh failed unexpectedly', 500);
+      return;
+    }
+
+    const session = result.data;
+    const response: AuthSessionResponse = {
+      user: {
+        id: session.user.id,
+        email: session.user.email,
+        displayName: session.user.displayName,
+        roles: session.user.roles,
+        createdAt: session.user.createdAt.toISOString(),
+        updatedAt: session.user.updatedAt.toISOString(),
+      },
+      accessToken: session.accessToken,
+      refreshToken: session.refreshToken,
+      expiresAt: session.expiresAt.toISOString(),
+    };
+
+    requestLogger.info('Token refreshed successfully', {
+      userId: session.user.id,
+    });
+
+    sendSuccess(res, response, 200);
+  } catch (error) {
+    requestLogger.error('Error during token refresh', error instanceof Error ? error : undefined);
+    sendError(res, 'INTERNAL_ERROR', 'An unexpected error occurred', 500);
+  }
+}
+
+/**
  * GET /auth/setup/status - Check if setup is needed (no users exist) and registration status
  */
 export async function setupStatus(_req: Request, res: Response): Promise<void> {
@@ -878,6 +945,7 @@ export function createAuthRouter(): Router {
   router.post('/register', register);
   router.post('/login', login);
   router.post('/logout', logout);
+  router.post('/refresh', refresh);
   router.get('/setup/status', setupStatus);
   router.post('/setup', setup);
   router.get('/users', listUsers);

@@ -204,8 +204,10 @@ export class BrowserAgent {
   private state: ConnectionState = 'disconnected';
   private heartbeatTimer: number | null = null;
   private reconnectTimer: number | null = null;
+  private tokenRefreshTimer: number | null = null;
   private reconnectAttempts = 0;
   private isShuttingDown = false;
+  private isRefreshingToken = false;
   private pendingRequests = new Map<string, {
     resolve: (value: unknown) => void;
     reject: (reason: unknown) => void;
@@ -348,6 +350,9 @@ export class BrowserAgent {
     // Initialize the pack executor before connecting
     await this.executor.initialize();
 
+    // Start token refresh timer to keep credentials fresh
+    this.startTokenRefresh();
+
     await this.connect();
   }
 
@@ -357,6 +362,7 @@ export class BrowserAgent {
   async stop(): Promise<void> {
     this.isShuttingDown = true;
     this.stopHeartbeat();
+    this.stopTokenRefresh();
     this.cancelReconnect();
     this.clearPendingRequests('Agent stopped');
 
@@ -1068,6 +1074,149 @@ export class BrowserAgent {
     if (this.heartbeatTimer !== null) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
+    }
+  }
+
+  /**
+   * Token refresh check interval - check every minute
+   */
+  private static readonly TOKEN_REFRESH_CHECK_INTERVAL_MS = 60 * 1000;
+
+  /**
+   * Start the token refresh timer
+   * Periodically checks if the token needs to be refreshed
+   */
+  private startTokenRefresh(): void {
+    this.stopTokenRefresh();
+
+    // Check immediately if we need to refresh
+    void this.checkAndRefreshToken();
+
+    // Then check periodically
+    this.tokenRefreshTimer = window.setInterval(() => {
+      void this.checkAndRefreshToken();
+    }, BrowserAgent.TOKEN_REFRESH_CHECK_INTERVAL_MS);
+
+    this.logger.debug('Token refresh timer started');
+  }
+
+  /**
+   * Stop the token refresh timer
+   */
+  private stopTokenRefresh(): void {
+    if (this.tokenRefreshTimer !== null) {
+      clearInterval(this.tokenRefreshTimer);
+      this.tokenRefreshTimer = null;
+    }
+  }
+
+  /**
+   * Check if token needs refresh and refresh if necessary
+   */
+  private async checkAndRefreshToken(): Promise<void> {
+    if (this.isShuttingDown || this.isRefreshingToken) {
+      return;
+    }
+
+    // Check if we should refresh based on time remaining
+    if (!this.stateStore.shouldRefreshCredentials()) {
+      return;
+    }
+
+    const refreshToken = this.stateStore.getRefreshToken();
+    if (!refreshToken) {
+      this.logger.warn('Token needs refresh but no refresh token available');
+      return;
+    }
+
+    await this.refreshToken(refreshToken);
+  }
+
+  /**
+   * Refresh the access token using the refresh token
+   */
+  private async refreshToken(refreshToken: string): Promise<boolean> {
+    if (this.isRefreshingToken) {
+      return false;
+    }
+
+    this.isRefreshingToken = true;
+    this.logger.info('Refreshing access token...');
+
+    try {
+      const httpUrl = this.getHttpBaseUrl();
+
+      const response = await fetch(`${httpUrl}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+
+      const result = await response.json() as {
+        success: boolean;
+        data?: {
+          accessToken: string;
+          refreshToken?: string;
+          expiresAt: string;
+          user: { id: string; email: string };
+        };
+        error?: { code: string; message: string };
+      };
+
+      if (!result.success || !result.data) {
+        this.logger.error('Token refresh failed', { 
+          error: result.error?.message ?? 'Unknown error' 
+        });
+        return false;
+      }
+
+      // Update credentials with new tokens
+      const existingCreds = this.stateStore.getCredentials();
+      const newCredentials: BrowserNodeCredentials = {
+        accessToken: result.data.accessToken,
+        refreshToken: result.data.refreshToken ?? refreshToken,
+        expiresAt: result.data.expiresAt,
+        userId: result.data.user.id,
+        email: result.data.user.email,
+        createdAt: existingCreds?.createdAt ?? new Date().toISOString(),
+      };
+
+      // Save credentials
+      if (this.config.persistState) {
+        this.stateStore.saveCredentials(newCredentials);
+      }
+
+      // Update auth token
+      this.authToken = newCredentials.accessToken;
+
+      // Update the executor with the new auth token
+      this.executor = new PackExecutor({
+        bundlePath: this.config.bundlePath,
+        orchestratorUrl: this.getHttpBaseUrl(),
+        authToken: this.authToken,
+      });
+
+      // Re-initialize the pod handler with the new executor
+      this.podHandler = createPodHandler({
+        executor: this.executor,
+        onStatusChange: (podId, status, message) => {
+          this.handlePodStatusChange(podId, status, message);
+        },
+      });
+
+      this.logger.info('Access token refreshed successfully', {
+        userId: newCredentials.userId,
+        expiresAt: newCredentials.expiresAt,
+      });
+
+      return true;
+    } catch (error) {
+      this.logger.error('Token refresh failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    } finally {
+      this.isRefreshingToken = false;
     }
   }
 

@@ -127,6 +127,47 @@ export function areNodeCredentialsValid(): boolean {
 }
 
 /**
+ * Token refresh threshold - refresh when 15 minutes or less remaining
+ */
+export const TOKEN_REFRESH_THRESHOLD_MS = 15 * 60 * 1000;
+
+/**
+ * Check if node credentials should be refreshed (within threshold of expiration)
+ */
+export function shouldRefreshNodeCredentials(): boolean {
+  const creds = loadNodeCredentials();
+  if (!creds || !creds.refreshToken) return false;
+
+  const expiresAt = new Date(creds.expiresAt);
+  const now = new Date();
+  const timeRemaining = expiresAt.getTime() - now.getTime();
+  
+  // Should refresh if within threshold of expiration
+  return timeRemaining > 0 && timeRemaining <= TOKEN_REFRESH_THRESHOLD_MS;
+}
+
+/**
+ * Get the time remaining until token expiration in milliseconds
+ */
+export function getTokenTimeRemaining(): number {
+  const creds = loadNodeCredentials();
+  if (!creds) return 0;
+
+  const expiresAt = new Date(creds.expiresAt);
+  const now = new Date();
+  return Math.max(0, expiresAt.getTime() - now.getTime());
+}
+
+/**
+ * Get the refresh token if available
+ */
+export function getNodeRefreshToken(): string | null {
+  const creds = loadNodeCredentials();
+  if (!creds || !creds.refreshToken) return null;
+  return creds.refreshToken;
+}
+
+/**
  * Get the node access token if valid
  */
 export function getNodeAccessToken(): string | null {
@@ -281,6 +322,27 @@ export class NodeStateStore {
    */
   hasValidCredentials(): boolean {
     return areNodeCredentialsValid();
+  }
+
+  /**
+   * Check if credentials should be refreshed
+   */
+  shouldRefreshCredentials(): boolean {
+    return shouldRefreshNodeCredentials();
+  }
+
+  /**
+   * Get time remaining until token expiration in milliseconds
+   */
+  getTokenTimeRemaining(): number {
+    return getTokenTimeRemaining();
+  }
+
+  /**
+   * Get refresh token if available
+   */
+  getRefreshToken(): string | null {
+    return getNodeRefreshToken();
   }
 
   /**
