@@ -52,7 +52,7 @@ pnpm db:migrate
 pnpm dev:server
 ```
 
-The server will start at `http://localhost:80`.
+The server will start at `https://localhost:443`.
 
 ### Production Deployment
 
@@ -79,8 +79,8 @@ node dist/index.js
 ### Verify Installation
 
 ```bash
-# Health check
-curl http://localhost:3000/health
+# Health check (use -k for self-signed certificates in development)
+curl -k https://localhost/health
 ```
 
 Expected response:
@@ -387,19 +387,19 @@ node packages/cli/dist/index.js server-config set --enable-registration
 ```bash
 # Start a node agent with basic configuration
 node packages/cli/dist/index.js node agent start \
-  --url ws://localhost:3000/ws \
+  --url wss://localhost/ws \
   --name my-node-1
 
 # Start with username/password authentication
 node packages/cli/dist/index.js node agent start \
-  --url ws://localhost:3000/ws \
+  --url wss://localhost/ws \
   --name production-node-1 \
   --email user@example.com \
   --password yourpassword
 
 # Start with labels and resource limits
 node packages/cli/dist/index.js node agent start \
-  --url ws://localhost:3000/ws \
+  --url wss://localhost/ws \
   --name my-node-1 \
   --token <auth-token> \
   --label env=production \
@@ -413,7 +413,7 @@ node packages/cli/dist/index.js node agent start \
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--url, -u` | Orchestrator WebSocket URL | `ws://localhost:3000/ws` |
+| `--url, -u` | Orchestrator WebSocket URL | `wss://localhost/ws` |
 | `--name, -n` | Unique node name | hostname |
 | `--token, -t` | Authentication token | - |
 | `--email, -e` | Login email (alternative to token) | - |
@@ -450,7 +450,7 @@ After=network.target
 [Service]
 Type=simple
 User=stark
-Environment=STARK_ORCHESTRATOR_URL=ws://orchestrator.example.com/ws
+Environment=STARK_ORCHESTRATOR_URL=wss://orchestrator.example.com/ws
 Environment=STARK_NODE_NAME=prod-node-1
 Environment=STARK_AUTH_TOKEN=your-token
 ExecStart=/usr/local/bin/stark node agent start
@@ -537,7 +537,7 @@ stark-orchestrator/
 Connect to `/ws` for real-time updates:
 
 ```javascript
-const ws = new WebSocket('ws://localhost:3000/ws');
+const ws = new WebSocket('wss://localhost/ws');
 
 // Node registration
 ws.send(JSON.stringify({
@@ -558,10 +558,12 @@ ws.send(JSON.stringify({
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORT` | `80` | HTTP server port |
+| `PORT` | `443` | HTTPS server port |
 | `HOST` | `0.0.0.0` | Server bind address |
 | `NODE_ENV` | `development` | Environment mode |
-| `CORS_ORIGINS` | `http://localhost:*` | Allowed CORS origins |
+| `CORS_ORIGINS` | `https://localhost:*` | Allowed CORS origins |
+| `SSL_CERT` | - | Path to SSL certificate (auto-generated if not set) |
+| `SSL_KEY` | - | Path to SSL private key (auto-generated if not set) |
 | `SUPABASE_URL` | - | Supabase project URL |
 | `SUPABASE_ANON_KEY` | - | Supabase anonymous key |
 | `LOG_LEVEL` | `info` | Logging level (debug, info, warn, error) |

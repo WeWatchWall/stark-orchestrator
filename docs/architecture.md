@@ -544,7 +544,7 @@ Local machine:
 │   ├── Auth
 │   └── Storage
 └── Server (Node.js)
-    └── http://localhost:3000
+    └── https://localhost:443
 ```
 
 ### Production

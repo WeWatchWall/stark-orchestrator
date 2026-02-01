@@ -13,7 +13,7 @@ import type { Taint } from '@stark-o/shared';
  * Node agent configuration
  */
 export interface NodeAgentConfig {
-    /** Orchestrator WebSocket URL (e.g., ws://localhost:3000/ws) */
+    /** Orchestrator WebSocket URL (e.g., wss://localhost:443/ws) */
     orchestratorUrl: string;
     /** Authentication token */
     authToken: string;

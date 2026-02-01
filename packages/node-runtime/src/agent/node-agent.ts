@@ -38,7 +38,7 @@ import {
  * Node agent configuration
  */
 export interface NodeAgentConfig {
-  /** Orchestrator WebSocket URL (e.g., ws://localhost:3000/ws) */
+  /** Orchestrator WebSocket URL (e.g., wss://localhost:443/ws) */
   orchestratorUrl: string;
   /** Authentication token (optional if using stored credentials or auto-registration) */
   authToken?: string;
@@ -70,6 +70,8 @@ export interface NodeAgentConfig {
   persistState?: boolean;
   /** Automatically resume an existing node with the same name (default: true) */
   resumeExisting?: boolean;
+  /** Whether to validate SSL/TLS certificates (default: true, set to false for self-signed certs) */
+  validateSsl?: boolean;
 }
 
 /**
@@ -134,6 +136,7 @@ export class NodeAgent {
   private readonly config: Required<Omit<NodeAgentConfig, 'logger' | 'bundleDir' | 'authToken'>> & { 
     logger: Logger; 
     bundleDir: string;
+    validateSsl: boolean;
   };
   private authToken: string;
   private readonly stateStore: NodeStateStore;
@@ -182,6 +185,7 @@ export class NodeAgent {
       }),
       persistState: config.persistState ?? true,
       resumeExisting: config.resumeExisting ?? true,
+      validateSsl: config.validateSsl ?? true,
     };
 
     this.authToken = config.authToken ?? '';
@@ -339,11 +343,19 @@ export class NodeAgent {
     this.emit('connecting');
     this.config.logger.info('Connecting to orchestrator', {
       url: this.config.orchestratorUrl,
+      validateSsl: this.config.validateSsl,
     });
 
     return new Promise((resolve, reject) => {
       try {
-        this.ws = new WebSocket(this.config.orchestratorUrl);
+        // Configure WebSocket options for TLS
+        const wsOptions: WebSocket.ClientOptions = {};
+        if (!this.config.validateSsl) {
+          wsOptions.rejectUnauthorized = false;
+          this.config.logger.warn('TLS certificate validation disabled');
+        }
+
+        this.ws = new WebSocket(this.config.orchestratorUrl, wsOptions);
 
         this.ws.on('open', () => {
           this.state = 'connected';

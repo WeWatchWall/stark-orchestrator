@@ -35,7 +35,7 @@ import {
  * Browser agent configuration
  */
 export interface BrowserAgentConfig {
-  /** Orchestrator WebSocket URL (e.g., ws://localhost:3000/ws) */
+  /** Orchestrator WebSocket URL (e.g., wss://localhost:443/ws) */
   orchestratorUrl: string;
   /** Authentication token (optional if autoRegister is true or using stored credentials) */
   authToken?: string;
@@ -398,6 +398,25 @@ export class BrowserAgent {
   private async connect(): Promise<void> {
     if (this.isShuttingDown) return;
 
+    // Clean up any existing WebSocket before creating a new one
+    if (this.ws) {
+      this.logger.debug('Cleaning up existing WebSocket before reconnect');
+      try {
+        // Remove event handlers to prevent triggering handleClose again
+        this.ws.onopen = null;
+        this.ws.onmessage = null;
+        this.ws.onclose = null;
+        this.ws.onerror = null;
+        // Close if not already closed
+        if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
+          this.ws.close();
+        }
+      } catch {
+        // Ignore errors during cleanup
+      }
+      this.ws = null;
+    }
+
     this.state = 'connecting';
     this.emit('connecting');
     this.logger.info('Connecting to orchestrator', {
@@ -405,10 +424,25 @@ export class BrowserAgent {
     });
 
     return new Promise((resolve, reject) => {
+      let settled = false;
+
       try {
-        this.ws = new WebSocket(this.config.orchestratorUrl);
+        // Add a cache-busting query parameter to prevent connection reuse issues
+        const wsUrl = new URL(this.config.orchestratorUrl);
+        wsUrl.searchParams.set('_t', Date.now().toString());
+        const urlWithCacheBuster = wsUrl.toString();
+        
+        this.logger.info('Creating new WebSocket', { url: urlWithCacheBuster });
+        this.ws = new WebSocket(urlWithCacheBuster);
+        this.logger.debug('WebSocket created, waiting for open', { 
+          readyState: this.ws.readyState,
+          url: this.ws.url 
+        });
 
         this.ws.onopen = () => {
+          this.logger.debug('WebSocket onopen fired');
+          if (settled) return;
+          settled = true;
           this.state = 'connected';
           this.reconnectAttempts = 0;
           this.emit('connected');
@@ -421,14 +455,28 @@ export class BrowserAgent {
         };
 
         this.ws.onclose = (event) => {
+          this.logger.debug('WebSocket onclose fired', { 
+            code: event.code, 
+            reason: event.reason,
+            wasClean: event.wasClean,
+            settled 
+          });
+          if (!settled) {
+            settled = true;
+            reject(new Error(`WebSocket closed during connection: ${event.code}`));
+          }
           this.handleClose(event.code, event.reason);
         };
 
-        this.ws.onerror = () => {
-          const error = new Error('WebSocket error');
-          this.logger.error('WebSocket error', { error: 'Connection error' });
-          this.emit('error', error);
-          reject(error);
+        this.ws.onerror = (event) => {
+          // Note: onerror is always followed by onclose, so we let onclose handle the rejection
+          // to avoid double-rejection and ensure handleClose is called for reconnection
+          this.logger.error('WebSocket onerror fired', { 
+            error: 'Connection error',
+            type: event.type,
+            readyState: this.ws?.readyState
+          });
+          this.emit('error', new Error('WebSocket error'));
         };
 
       } catch (error) {
@@ -626,6 +674,12 @@ export class BrowserAgent {
   private scheduleReconnect(): void {
     if (this.isShuttingDown) return;
 
+    // Prevent double-scheduling if a reconnect is already pending
+    if (this.reconnectTimer !== null) {
+      this.logger.debug('Reconnect already scheduled, skipping');
+      return;
+    }
+
     if (
       this.config.maxReconnectAttempts !== -1 &&
       this.reconnectAttempts >= this.config.maxReconnectAttempts
@@ -648,6 +702,7 @@ export class BrowserAgent {
 
     this.reconnectTimer = window.setTimeout(async () => {
       this.reconnectTimer = null;
+      this.logger.info('Reconnect timer fired, attempting to connect');
       try {
         // Ensure executor is still initialized after reconnect
         if (!this.executor.isInitialized()) {
@@ -655,9 +710,16 @@ export class BrowserAgent {
           await this.executor.initialize();
         }
         await this.connect();
+        this.logger.info('Reconnect succeeded');
       } catch (error) {
         this.logger.error('Reconnect failed', { error: String(error) });
-        this.scheduleReconnect();
+        // If connect() threw (WebSocket closed during connection), handleClose was already
+        // called but may not have scheduled a reconnect because we were mid-reconnect.
+        // Schedule the next reconnect attempt explicitly.
+        if (!this.isShuttingDown && this.reconnectTimer === null) {
+          this.logger.info('Scheduling next reconnect attempt');
+          this.scheduleReconnect();
+        }
       }
     }, delay);
   }
