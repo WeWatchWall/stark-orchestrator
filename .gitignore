@@ -47,3 +47,7 @@ supabase/.temp/
 # Lock files (optional - uncomment if needed)
 # package-lock.json
 # yarn.lock
+# Nuxt build artifacts
+.nuxt/
+.output/
+**/dist/
