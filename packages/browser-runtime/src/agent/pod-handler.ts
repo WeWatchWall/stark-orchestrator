@@ -1,0 +1,346 @@
+/**
+ * Pod Handler (Browser Runtime)
+ * @module @stark-o/browser-runtime/agent/pod-handler
+ *
+ * Handles pod deployment and lifecycle events received from the orchestrator.
+ * Browser-compatible implementation using Web Workers for pack execution.
+ */
+
+import { createServiceLogger, type Logger, type RuntimeTag } from '@stark-o/shared';
+import type { ResourceRequirements, Labels, Annotations, Pack, Pod } from '@stark-o/shared';
+import type {
+  PodDeployPayload,
+  PodStopPayload,
+  LocalPodStatus,
+  PodOperationResult,
+  BasePodHandlerConfig,
+} from '@stark-o/shared';
+import { PackExecutor, type ExecutionHandle, type PackExecutionResult } from '../executor/pack-executor.js';
+
+/**
+ * Pod handler configuration
+ */
+export interface PodHandlerConfig extends BasePodHandlerConfig {
+  /** Executor to run packs */
+  executor: PackExecutor;
+  /** Logger instance */
+  logger?: Logger;
+}
+
+/**
+ * Local pod state
+ */
+interface LocalPodState {
+  podId: string;
+  status: LocalPodStatus;
+  pack: PodDeployPayload['pack'];
+  executionHandle?: ExecutionHandle;
+  startedAt?: Date;
+  stoppedAt?: Date;
+  error?: string;
+}
+
+/**
+ * Browser-compatible logger interface
+ */
+interface BrowserLogger {
+  debug: (message: string, meta?: Record<string, unknown>) => void;
+  info: (message: string, meta?: Record<string, unknown>) => void;
+  warn: (message: string, meta?: Record<string, unknown>) => void;
+  error: (message: string, error?: Error, meta?: Record<string, unknown>) => void;
+}
+
+/**
+ * Create a browser-compatible logger wrapper
+ */
+function createBrowserLoggerWrapper(logger: Logger): BrowserLogger {
+  return {
+    debug: (message: string, meta?: Record<string, unknown>) => {
+      logger.debug(message, meta);
+    },
+    info: (message: string, meta?: Record<string, unknown>) => {
+      logger.info(message, meta);
+    },
+    warn: (message: string, meta?: Record<string, unknown>) => {
+      logger.warn(message, meta);
+    },
+    error: (message: string, error?: Error, meta?: Record<string, unknown>) => {
+      logger.error(message, error, meta);
+    },
+  };
+}
+
+/**
+ * Pod Handler (Browser Runtime)
+ *
+ * Manages pod lifecycle in the browser:
+ * - Receives pod:deploy messages from orchestrator
+ * - Executes pack bundles using PackExecutor with Web Workers
+ * - Reports status changes back to orchestrator
+ * - Handles graceful shutdown of running pods
+ */
+export class PodHandler {
+  private readonly config: {
+    executor: PackExecutor;
+    logger: BrowserLogger;
+    onStatusChange?: BasePodHandlerConfig['onStatusChange'];
+  };
+  private readonly pods: Map<string, LocalPodState> = new Map();
+
+  constructor(config: PodHandlerConfig) {
+    this.config = {
+      executor: config.executor,
+      logger: createBrowserLoggerWrapper(
+        config.logger ?? createServiceLogger({
+          component: 'pod-handler',
+          service: 'stark-browser-runtime',
+        })
+      ),
+      onStatusChange: config.onStatusChange,
+    };
+  }
+
+  /**
+   * Handle a pod:deploy message
+   */
+  async handleDeploy(payload: PodDeployPayload): Promise<PodOperationResult> {
+    const { podId, pack } = payload;
+
+    this.config.logger.info('Received pod deploy request', {
+      podId,
+      packId: pack.id,
+      packName: pack.name,
+      packVersion: pack.version,
+    });
+
+    // Check if pod already exists locally
+    if (this.pods.has(podId)) {
+      const existing = this.pods.get(podId)!;
+      if (existing.status === 'running' || existing.status === 'starting') {
+        this.config.logger.warn('Pod already running', { podId });
+        return { success: false, error: 'Pod already running' };
+      }
+    }
+
+    // Create local pod state
+    const state: LocalPodState = {
+      podId,
+      status: 'pending',
+      pack,
+    };
+    this.pods.set(podId, state);
+
+    try {
+      // Update status to starting
+      this.updateStatus(podId, 'starting');
+
+      // Build Pack and Pod objects for executor
+      const packObj: Pack = {
+        id: pack.id,
+        name: pack.name,
+        version: pack.version,
+        runtimeTag: pack.runtimeTag,
+        bundlePath: pack.bundlePath,
+        bundleContent: pack.bundleContent,
+        metadata: pack.metadata ?? {},
+        ownerId: 'system',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      const podObj: Pod = {
+        id: podId,
+        packId: pack.id,
+        packVersion: pack.version,
+        status: 'starting',
+        nodeId: payload.nodeId,
+        namespace: payload.namespace ?? 'default',
+        labels: payload.labels ?? {},
+        annotations: payload.annotations ?? {},
+        priority: 0,
+        tolerations: [],
+        resourceRequests: payload.resourceRequests ?? { cpu: 100, memory: 128 },
+        resourceLimits: payload.resourceLimits ?? { cpu: 500, memory: 512 },
+        scheduling: {},
+        createdBy: 'system',
+        metadata: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      // Execute the pack
+      const executionHandle = this.config.executor.execute(packObj, podObj);
+      state.executionHandle = executionHandle;
+      state.startedAt = new Date();
+
+      // Update status to running
+      this.updateStatus(podId, 'running');
+
+      // Handle execution completion asynchronously
+      executionHandle.promise.then((result) => {
+        this.handleExecutionComplete(podId, result);
+      });
+
+      return { success: true };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.config.logger.error(
+        'Failed to deploy pod',
+        error instanceof Error ? error : undefined,
+        { podId, packId: pack.id }
+      );
+      this.updateStatus(podId, 'failed', errorMessage);
+      return { success: false, error: errorMessage };
+    }
+  }
+
+  /**
+   * Handle pod execution completion
+   */
+  private handleExecutionComplete(podId: string, result: PackExecutionResult): void {
+    const state = this.pods.get(podId);
+    if (!state) {
+      this.config.logger.warn('Pod not found after execution complete', { podId });
+      return;
+    }
+
+    state.stoppedAt = new Date();
+
+    if (result.success) {
+      this.config.logger.info('Pod execution completed successfully', {
+        podId,
+        durationMs: result.durationMs,
+      });
+      this.updateStatus(podId, 'stopped');
+    } else {
+      this.config.logger.warn('Pod execution failed', {
+        podId,
+        error: result.error,
+        exitCode: result.exitCode,
+      });
+      state.error = result.error;
+      this.updateStatus(podId, 'failed', result.error);
+    }
+  }
+
+  /**
+   * Handle a pod:stop message
+   */
+  async handleStop(payload: PodStopPayload): Promise<PodOperationResult> {
+    const { podId, reason } = payload;
+
+    this.config.logger.info('Received pod stop request', { podId, reason });
+
+    const state = this.pods.get(podId);
+    if (!state) {
+      return { success: false, error: 'Pod not found' };
+    }
+
+    if (state.status !== 'running') {
+      return { success: false, error: `Pod is not running (status: ${state.status})` };
+    }
+
+    try {
+      this.updateStatus(podId, 'stopping');
+
+      // Force terminate the execution by killing the worker
+      if (state.executionHandle) {
+        await state.executionHandle.forceTerminate();
+      }
+
+      state.stoppedAt = new Date();
+      this.updateStatus(podId, 'stopped');
+
+      return { success: true };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.config.logger.error(
+        'Failed to stop pod',
+        error instanceof Error ? error : undefined,
+        { podId }
+      );
+      this.updateStatus(podId, 'failed', errorMessage);
+      return { success: false, error: errorMessage };
+    }
+  }
+
+  /**
+   * Update pod status and notify callback
+   */
+  private updateStatus(podId: string, status: LocalPodStatus, message?: string): void {
+    const state = this.pods.get(podId);
+    if (state) {
+      state.status = status;
+      this.config.logger.debug('Pod status updated', { podId, status, message });
+    }
+
+    if (this.config.onStatusChange) {
+      this.config.onStatusChange(podId, status, message);
+    }
+  }
+
+  /**
+   * Get the status of a local pod
+   */
+  getStatus(podId: string): LocalPodStatus | null {
+    const state = this.pods.get(podId);
+    return state?.status ?? null;
+  }
+
+  /**
+   * Get all running pod IDs
+   */
+  getRunningPods(): string[] {
+    const running: string[] = [];
+    for (const [podId, state] of this.pods) {
+      if (state.status === 'running') {
+        running.push(podId);
+      }
+    }
+    return running;
+  }
+
+  /**
+   * Get count of pods by status
+   */
+  getPodCounts(): Record<LocalPodStatus, number> {
+    const counts: Record<LocalPodStatus, number> = {
+      pending: 0,
+      starting: 0,
+      running: 0,
+      stopping: 0,
+      stopped: 0,
+      failed: 0,
+    };
+
+    for (const state of this.pods.values()) {
+      counts[state.status]++;
+    }
+
+    return counts;
+  }
+
+  /**
+   * Stop all running pods (for graceful shutdown)
+   */
+  async stopAll(): Promise<void> {
+    const runningPods = this.getRunningPods();
+    this.config.logger.info('Stopping all running pods', { count: runningPods.length });
+
+    const stopPromises = runningPods.map(podId =>
+      this.handleStop({ podId, reason: 'Agent shutdown' })
+    );
+
+    await Promise.all(stopPromises);
+  }
+}
+
+/**
+ * Create a pod handler instance
+ */
+export function createPodHandler(config: PodHandlerConfig): PodHandler {
+  return new PodHandler(config);
+}
+
+// Re-export types for convenience
+export type { PodDeployPayload, PodStopPayload, LocalPodStatus, PodOperationResult };

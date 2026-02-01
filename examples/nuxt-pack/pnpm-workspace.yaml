@@ -1,0 +1,3 @@
+# This file makes this directory its own workspace root,
+# preventing pnpm from using the parent workspace
+packages: []

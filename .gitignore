@@ -1,12 +1,53 @@
-/dist/
+# Dependencies
 node_modules/
-packages-dist/
-packages-run/
-.env
-.env.production
-config.js
+.pnpm-store/
 
-packages/*
-!packages/stark-browser-config
-!packages/stark-core-config
-!packages/stark-edge-config
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Test coverage
+coverage/
+
+# IDE and editors
+.vscode/
+.idea/
+*.suo
+*.user
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Supabase local data
+supabase/.branches/
+supabase/.temp/
+
+# Lock files (optional - uncomment if needed)
+# package-lock.json
+# yarn.lock
+# Nuxt build artifacts
+.nuxt/
+.output/
+**/dist/

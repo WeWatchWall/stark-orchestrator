@@ -1,0 +1,58 @@
+{
+  "name": "@stark-o/node-runtime",
+  "version": "0.0.1",
+  "description": "Node.js runtime adapter for Stark Orchestrator",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./agent": {
+      "import": "./dist/agent/node-agent.js",
+      "types": "./dist/agent/node-agent.d.ts"
+    },
+    "./executor": {
+      "import": "./dist/executor/pack-executor.js",
+      "types": "./dist/executor/pack-executor.d.ts"
+    },
+    "./adapters/fs": {
+      "import": "./dist/adapters/fs-adapter.js",
+      "types": "./dist/adapters/fs-adapter.d.ts"
+    },
+    "./adapters/http": {
+      "import": "./dist/adapters/http-adapter.js",
+      "types": "./dist/adapters/http-adapter.d.ts"
+    },
+    "./adapters/worker": {
+      "import": "./dist/adapters/worker-adapter.js",
+      "types": "./dist/adapters/worker-adapter.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint src --ext .ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@stark-o/core": "workspace:*",
+    "@stark-o/shared": "workspace:*",
+    "@zenfs/core": "^2.4.4",
+    "axios": "^1.7.0",
+    "workerpool": "^9.2.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.5.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "license": "MIT"
+}

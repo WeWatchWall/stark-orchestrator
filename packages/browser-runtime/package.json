@@ -1,0 +1,38 @@
+{
+  "name": "@stark-o/browser-runtime",
+  "version": "0.0.1",
+  "description": "Browser runtime adapter for Stark Orchestrator",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "lint": "eslint src --ext .ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@stark-o/core": "workspace:*",
+    "@stark-o/shared": "workspace:*",
+    "@zenfs/core": "^2.3.11",
+    "@zenfs/dom": "^1.2.6",
+    "axios": "^1.7.0",
+    "workerpool": "^9.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.0",
+    "vite": "^5.4.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "license": "MIT"
+}

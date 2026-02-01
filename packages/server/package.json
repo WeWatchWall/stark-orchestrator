@@ -1,0 +1,48 @@
+{
+  "name": "@stark-o/server",
+  "version": "0.0.1",
+  "description": "Orchestrator server with REST API and WebSocket for Stark",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "lint": "eslint src --ext .ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@casl/ability": "^6.7.5",
+    "@stark-o/core": "workspace:*",
+    "@stark-o/shared": "workspace:*",
+    "@supabase/supabase-js": "^2.45.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "express-rate-limit": "^8.2.1",
+    "selfsigned": "^2.4.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/http-proxy": "^1.17.17",
+    "@types/node": "^20.14.0",
+    "@types/selfsigned": "^2.0.4",
+    "@types/ws": "^8.5.12",
+    "http-proxy": "^1.18.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "license": "MIT"
+}

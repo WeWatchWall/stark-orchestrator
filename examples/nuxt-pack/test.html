@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bundle Test Page</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .pack-wrapper {
+      position: relative;
+      width: calc(100% - 340px);
+      height: 500px;
+      min-height: 100px;
+      min-width: 100px;
+      max-width: calc(100% - 40px);
+      max-height: 90vh;
+      margin: 40px 20px 20px 20px;
+    }
+    .pack-container {
+      width: 100%;
+      height: 100%;
+      background: #1a1a2e;
+      border: 2px dashed rgba(255,255,255,0.2);
+      border-radius: 8px;
+      position: relative;
+      overflow: auto;
+    }
+    .pack-container iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+    }
+    /* Resize handles */
+    .resize-handle {
+      position: absolute;
+      background: rgba(102, 126, 234, 0.2);
+      z-index: 100;
+    }
+    .resize-handle:hover {
+      background: rgba(102, 126, 234, 0.5);
+    }
+    .resize-handle.active {
+      background: rgba(102, 126, 234, 0.7);
+    }
+    .resize-n { top: -6px; left: 12px; right: 12px; height: 10px; cursor: n-resize; border-radius: 4px; }
+    .resize-s { bottom: -6px; left: 12px; right: 12px; height: 10px; cursor: s-resize; border-radius: 4px; }
+    .resize-e { right: -6px; top: 12px; bottom: 12px; width: 10px; cursor: e-resize; border-radius: 4px; }
+    .resize-w { left: -6px; top: 12px; bottom: 12px; width: 10px; cursor: w-resize; border-radius: 4px; }
+    .resize-nw { top: -6px; left: -6px; width: 16px; height: 16px; cursor: nw-resize; border-radius: 4px; }
+    .resize-ne { top: -6px; right: -6px; width: 16px; height: 16px; cursor: ne-resize; border-radius: 4px; }
+    .resize-sw { bottom: -6px; left: -6px; width: 16px; height: 16px; cursor: sw-resize; border-radius: 4px; }
+    .resize-se { bottom: -6px; right: -6px; width: 16px; height: 16px; cursor: se-resize; border-radius: 4px; }
+    .pack-wrapper::before {
+      content: 'Pack Container: ' attr(data-container-id);
+      position: absolute;
+      top: -24px;
+      left: 12px;
+      background: #0f0f1a;
+      padding: 2px 8px;
+      font-size: 0.75rem;
+      color: #667eea;
+      z-index: 50;
+      white-space: nowrap;
+    }
+    .pack-wrapper.loaded .pack-container {
+      border-color: #4ade80;
+    }
+    .pack-wrapper.loaded::before {
+      color: #4ade80;
+    }
+    .test-panel {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      padding: 1.5rem;
+      border-radius: 12px;
+      z-index: 9999;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      border: 1px solid rgba(255,255,255,0.1);
+      min-width: 280px;
+    }
+    .test-panel h3 {
+      margin: 0 0 1rem 0;
+      font-size: 1rem;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .test-panel .buttons {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .test-panel button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 0.6rem 1.2rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .test-panel button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    .test-panel button:active {
+      transform: translateY(0);
+    }
+    .test-panel button.secondary {
+      background: rgba(255,255,255,0.1);
+    }
+    .test-panel button.secondary:hover {
+      background: rgba(255,255,255,0.2);
+      box-shadow: none;
+    }
+    #output {
+      background: rgba(0,0,0,0.3);
+      border-radius: 6px;
+      padding: 0.75rem;
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      font-size: 0.75rem;
+      max-height: 120px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #a0a0a0;
+    }
+    #output.success {
+      color: #4ade80;
+    }
+    #output.error {
+      color: #f87171;
+    }
+    .meta-info {
+      margin-top: 0.75rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      font-size: 0.7rem;
+      color: #888;
+    }
+    .meta-info div {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.25rem;
+    }
+    .meta-info span:last-child {
+      color: #a0a0a0;
+    }
+    .loading {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <!-- Container where the pack will be rendered -->
+  <div class="pack-wrapper" data-container-id="stark-pack-nuxt-pack-example">
+    <div class="resize-handle resize-n"></div>
+    <div class="resize-handle resize-s"></div>
+    <div class="resize-handle resize-e"></div>
+    <div class="resize-handle resize-w"></div>
+    <div class="resize-handle resize-nw"></div>
+    <div class="resize-handle resize-ne"></div>
+    <div class="resize-handle resize-sw"></div>
+    <div class="resize-handle resize-se"></div>
+    <div id="stark-pack-nuxt-pack-example" class="pack-container"></div>
+  </div>
+
+  <div class="test-panel">
+    <h3>🧪 Pack Bundle Tester</h3>
+    <div class="buttons">
+      <button id="loadBtn" onclick="loadBundle()">Load Bundle</button>
+      <button class="secondary" onclick="location.reload()">Reset</button>
+    </div>
+    <div id="output">Ready. Click "Load Bundle" to test.</div>
+    <div id="metaInfo" class="meta-info hidden"></div>
+  </div>
+
+  <script>
+    // Custom resize functionality
+    (function() {
+      const wrapper = document.querySelector('.pack-wrapper');
+      const handles = document.querySelectorAll('.resize-handle');
+      let isResizing = false;
+      let currentHandle = null;
+      let startX, startY, startWidth, startHeight, startMarginLeft, startMarginTop;
+      let overlay = null;
+
+      handles.forEach(handle => {
+        handle.addEventListener('mousedown', initResize);
+      });
+
+      function initResize(e) {
+        e.preventDefault();
+        isResizing = true;
+        currentHandle = e.target;
+        currentHandle.classList.add('active');
+        
+        startX = e.clientX;
+        startY = e.clientY;
+        startWidth = wrapper.offsetWidth;
+        startHeight = wrapper.offsetHeight;
+        
+        const style = getComputedStyle(wrapper);
+        startMarginLeft = parseInt(style.marginLeft) || 20;
+        startMarginTop = parseInt(style.marginTop) || 40;
+
+        // Create overlay to capture mouse events over iframe
+        overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:9998;cursor:' + getComputedStyle(currentHandle).cursor;
+        document.body.appendChild(overlay);
+
+        document.addEventListener('mousemove', resize);
+        document.addEventListener('mouseup', stopResize);
+        document.body.style.cursor = getComputedStyle(currentHandle).cursor;
+        document.body.style.userSelect = 'none';
+      }
+
+      function resize(e) {
+        if (!isResizing) return;
+
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        const classList = currentHandle.classList;
+        const minW = 100, minH = 100;
+        const maxW = window.innerWidth - 60;
+        const maxH = window.innerHeight * 0.9;
+
+        let newWidth = startWidth;
+        let newHeight = startHeight;
+        let newMarginLeft = startMarginLeft;
+        let newMarginTop = startMarginTop;
+
+        // East (right edge)
+        if (classList.contains('resize-e') || classList.contains('resize-ne') || classList.contains('resize-se')) {
+          newWidth = Math.min(maxW, Math.max(minW, startWidth + dx));
+        }
+        // West (left edge) - adjust margin and width
+        if (classList.contains('resize-w') || classList.contains('resize-nw') || classList.contains('resize-sw')) {
+          const potentialWidth = startWidth - dx;
+          if (potentialWidth >= minW && potentialWidth <= maxW) {
+            newWidth = potentialWidth;
+            newMarginLeft = Math.max(0, startMarginLeft + dx);
+          }
+        }
+        // South (bottom edge)
+        if (classList.contains('resize-s') || classList.contains('resize-se') || classList.contains('resize-sw')) {
+          newHeight = Math.min(maxH, Math.max(minH, startHeight + dy));
+        }
+        // North (top edge) - adjust margin and height
+        if (classList.contains('resize-n') || classList.contains('resize-ne') || classList.contains('resize-nw')) {
+          const potentialHeight = startHeight - dy;
+          if (potentialHeight >= minH && potentialHeight <= maxH) {
+            newHeight = potentialHeight;
+            newMarginTop = Math.max(0, startMarginTop + dy);
+          }
+        }
+
+        wrapper.style.width = newWidth + 'px';
+        wrapper.style.height = newHeight + 'px';
+        wrapper.style.marginLeft = newMarginLeft + 'px';
+        wrapper.style.marginTop = newMarginTop + 'px';
+      }
+
+      function stopResize() {
+        isResizing = false;
+        if (currentHandle) {
+          currentHandle.classList.remove('active');
+        }
+        currentHandle = null;
+        document.removeEventListener('mousemove', resize);
+        document.removeEventListener('mouseup', stopResize);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        
+        // Remove overlay
+        if (overlay) {
+          overlay.remove();
+          overlay = null;
+        }
+        
+        // Reset scroll position of container after resize
+        const container = wrapper.querySelector('.pack-container');
+        if (container) {
+          container.scrollTop = 0;
+          container.scrollLeft = 0;
+        }
+        // Reset iframe height to min and scroll, then let it recalculate
+        const iframe = wrapper.querySelector('iframe');
+        if (iframe) {
+          iframe.style.height = '100px';
+          if (iframe.contentWindow) {
+            try { iframe.contentWindow.scrollTo(0, 0); } catch(e) {}
+          }
+        }
+      }
+    })();
+  </script>
+
+  <script>
+    // CommonJS shim for browser
+    var module = { exports: {} };
+    var exports = module.exports;
+  </script>
+  <script src="./dist/bundle.js"></script>
+  <script>
+    let bundleModule = module.exports;
+
+    async function loadBundle() {
+      const output = document.getElementById('output');
+      const loadBtn = document.getElementById('loadBtn');
+      const metaInfo = document.getElementById('metaInfo');
+      
+      output.className = '';
+      output.innerHTML = '<span class="loading"></span> Loading bundle...';
+      loadBtn.disabled = true;
+
+      try {
+        // Display metadata if available
+        if (bundleModule.meta) {
+          const meta = bundleModule.meta;
+          metaInfo.innerHTML = `
+            <div><span>Name:</span><span>${meta.name || 'unknown'}</span></div>
+            <div><span>Version:</span><span>${meta.version || 'unknown'}</span></div>
+            <div><span>Size:</span><span>${meta.bundleSizeKb || 'unknown'}</span></div>
+            <div><span>Framework:</span><span>${meta.framework || 'unknown'}</span></div>
+            <div><span>Container:</span><span>${meta.defaultContainerId || 'auto'}</span></div>
+          `;
+          metaInfo.classList.remove('hidden');
+        }
+
+        output.textContent = 'Bundle loaded! Executing...';
+        
+        // Execute the bundle's default export
+        const entryFn = bundleModule.default;
+        if (typeof entryFn === 'function') {
+          // Pass context with optional containerId override
+          // If not specified, bundle uses its default container ID based on pack name
+          const result = await entryFn({
+            // containerId: 'custom-container-id', // Uncomment to use custom container
+            style: { minHeight: '100%' } // Custom iframe styles
+          });
+          
+          output.className = 'success';
+          output.textContent = 'Success! Result:\n' + JSON.stringify(result, null, 2);
+          
+          // Mark container as loaded
+          if (result.containerId) {
+            const container = document.getElementById(result.containerId);
+            if (container && container.parentElement) {
+              container.parentElement.classList.add('loaded');
+            }
+          }
+        } else {
+          output.className = 'error';
+          output.textContent = 'Error: Bundle does not export a default function';
+        }
+      } catch (err) {
+        output.className = 'error';
+        output.textContent = 'Error: ' + err.message;
+        console.error('Bundle error:', err);
+      } finally {
+        loadBtn.disabled = false;
+      }
+    }
+
+    // Check if bundle loaded correctly
+    if (!bundleModule.default) {
+      document.getElementById('output').textContent = 
+        'Bundle not found or invalid at ./dist/bundle.js\n\n' +
+        'Build it first:\n' +
+        'node packages/cli/dist/index.js pack bundle . --out ./dist/bundle.js';
+    } else if (bundleModule.meta) {
+      // Show the expected container ID
+      document.getElementById('output').textContent = 
+        'Ready. Click "Load Bundle" to render into container:\n' +
+        bundleModule.meta.defaultContainerId;
+    }
+  </script>
+</body>
+</html>
