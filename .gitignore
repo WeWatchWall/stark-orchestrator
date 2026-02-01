@@ -5,16 +5,6 @@ packages-run/
 .env
 .env.production
 config.js
-tsconfig.tsbuildinfo
-
-# Nuxt build artifacts
-.nuxt/
-.output/
-**/dist/
-
-# Supabase local state
-supabase/.branches/
-supabase/.temp/
 
 packages/*
 !packages/stark-browser-config
