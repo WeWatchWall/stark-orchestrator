@@ -650,7 +650,6 @@ export function createNodeCommand(): Command {
     .option('--memory <mb>', 'Allocatable memory in MB', '1024')
     .option('--pods <count>', 'Maximum concurrent pods', '10')
     .option('--heartbeat <seconds>', 'Heartbeat interval in seconds', '15')
-    .option('-k, --insecure', 'Skip TLS certificate verification (for self-signed certs)')
     .action(agentStartHandler);
 
   return node;
@@ -703,7 +702,6 @@ async function agentStartHandler(options: {
   memory: string;
   pods: string;
   heartbeat: string;
-  insecure?: boolean;
 }): Promise<void> {
   // Resolve authentication token
   let authToken = options.token;
@@ -764,19 +762,9 @@ async function agentStartHandler(options: {
         .replace(/^wss:\/\//, 'https://')
         .replace(/^ws:\/\//, 'http://')
         .replace(/\/ws\/?$/, '');
-      
-      // Create fetch options with optional TLS bypass
-      const fetchOptions: RequestInit = {};
-      if (options.insecure && httpUrl.startsWith('https://')) {
-        // For Node.js 18+, we need to use the https agent approach
-        // Node's native fetch doesn't directly support rejectUnauthorized,
-        // so we set the environment variable temporarily
-        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-        info('TLS certificate verification disabled (--insecure flag)');
-      }
 
       // Check setup status
-      const statusResponse = await fetch(`${httpUrl}/auth/setup/status`, fetchOptions);
+      const statusResponse = await fetch(`${httpUrl}/auth/setup/status`);
       const statusResult = await statusResponse.json() as {
         success: boolean;
         data?: { needsSetup: boolean; registrationEnabled: boolean };
@@ -906,7 +894,7 @@ async function agentStartHandler(options: {
     labels,
     taints,
     heartbeatInterval: parseInt(options.heartbeat, 10) * 1000,
-    validateSsl: !options.insecure,
+    validateSsl: process.env.NODE_TLS_REJECT_UNAUTHORIZED !== '0',
   };
 
   // Check for existing registered node

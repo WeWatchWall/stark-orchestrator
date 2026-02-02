@@ -33,6 +33,14 @@ export interface DeploymentControllerConfig {
   reconcileInterval?: number;
   /** Whether to start the controller automatically (default: true) */
   autoStart?: boolean;
+  /** Number of consecutive failures before triggering auto-rollback (default: 3) */
+  maxConsecutiveFailures?: number;
+  /** Initial backoff duration in milliseconds after failures (default: 60000 = 1 min) */
+  initialBackoffMs?: number;
+  /** Maximum backoff duration in milliseconds (default: 3600000 = 1 hour) */
+  maxBackoffMs?: number;
+  /** Time window in milliseconds to detect rapid pod failures (default: 60000 = 1 min) */
+  failureDetectionWindowMs?: number;
 }
 
 /**
@@ -41,6 +49,10 @@ export interface DeploymentControllerConfig {
 const DEFAULT_CONFIG: Required<DeploymentControllerConfig> = {
   reconcileInterval: 10000,
   autoStart: true,
+  maxConsecutiveFailures: 3,
+  initialBackoffMs: 60000, // 1 minute
+  maxBackoffMs: 3600000,   // 1 hour
+  failureDetectionWindowMs: 60000, // 1 minute
 };
 
 /**
@@ -143,10 +155,274 @@ export class DeploymentController {
 
     // logger.debug('Reconciling deployments', { count: deployments.length });
 
+    // First, check for pack version updates on followLatest deployments
+    await this.reconcileFollowLatestVersions(deployments.filter(d => d.followLatest));
+
     // Reconcile each deployment
     for (const deployment of deployments) {
       await this.reconcileDeployment(deployment);
     }
+  }
+
+  /**
+   * Check and update deployments that follow the latest pack version
+   * If a new pack version exists, update the deployment and trigger a rolling update
+   * Includes crash-loop protection to prevent infinite upgrade/fail cycles
+   */
+  private async reconcileFollowLatestVersions(deployments: Deployment[]): Promise<void> {
+    if (deployments.length === 0) {
+      return;
+    }
+
+    const packQueries = getPackQueries();
+    const deploymentQueries = getDeploymentQueriesAdmin();
+
+    // Group deployments by packId to minimize pack queries
+    const deploymentsByPackId = new Map<string, Deployment[]>();
+    for (const deployment of deployments) {
+      const existing = deploymentsByPackId.get(deployment.packId) ?? [];
+      existing.push(deployment);
+      deploymentsByPackId.set(deployment.packId, existing);
+    }
+
+    // Check each pack for new versions
+    for (const [packId, packDeployments] of deploymentsByPackId) {
+      // Get the pack to find its name
+      const packResult = await packQueries.getPackById(packId);
+      if (packResult.error || !packResult.data) {
+        logger.error('Failed to get pack for followLatest check', undefined, {
+          packId,
+          error: packResult.error,
+        });
+        continue;
+      }
+
+      // Get the latest version of this pack
+      const latestResult = await packQueries.getLatestPackVersion(packResult.data.name);
+      if (latestResult.error || !latestResult.data) {
+        logger.error('Failed to get latest pack version', undefined, {
+          packName: packResult.data.name,
+          error: latestResult.error,
+        });
+        continue;
+      }
+
+      const latestVersion = latestResult.data.version;
+
+      // Update deployments that are behind
+      for (const deployment of packDeployments) {
+        // Skip if we're in backoff period for this failed version
+        if (this.isInFailureBackoff(deployment, latestVersion)) {
+          logger.debug('Skipping upgrade due to failure backoff', {
+            deploymentName: deployment.name,
+            failedVersion: deployment.failedVersion,
+            backoffUntil: deployment.failureBackoffUntil,
+            latestVersion,
+          });
+          continue;
+        }
+
+        if (deployment.packVersion !== latestVersion) {
+          logger.info('Updating followLatest deployment to new pack version', {
+            deploymentName: deployment.name,
+            deploymentId: deployment.id,
+            oldVersion: deployment.packVersion,
+            newVersion: latestVersion,
+          });
+
+          // Record the current version as last successful before upgrading
+          // (if pods are running, current version is "successful")
+          const updateData: Record<string, unknown> = {
+            packVersion: latestVersion,
+          };
+          
+          // Only record last successful if we have running pods
+          if (deployment.readyReplicas > 0 && !deployment.lastSuccessfulVersion) {
+            updateData.lastSuccessfulVersion = deployment.packVersion;
+          }
+
+          // Update the deployment's pack version
+          await deploymentQueries.updateDeployment(deployment.id, updateData);
+
+          // Trigger rolling update of existing pods
+          await this.triggerRollingUpdate(deployment, latestVersion);
+        }
+      }
+    }
+  }
+
+  /**
+   * Trigger a rolling update of pods for a deployment
+   * Marks existing pods for replacement with new version
+   */
+  private async triggerRollingUpdate(deployment: Deployment, newVersion: string): Promise<void> {
+    const podQueries = getPodQueriesAdmin();
+
+    // Get current pods for this deployment
+    const podsResult = await podQueries.listPodsByDeployment(deployment.id);
+    if (podsResult.error || !podsResult.data) {
+      logger.error('Failed to get pods for rolling update', undefined, {
+        deploymentId: deployment.id,
+        error: podsResult.error,
+      });
+      return;
+    }
+
+    const currentPods = podsResult.data;
+    
+    // Filter to pods that need updating (running on old version)
+    const podsToUpdate = currentPods.filter(p => 
+      p.packVersion !== newVersion && 
+      !['stopped', 'failed', 'evicted', 'stopping'].includes(p.status)
+    );
+
+    if (podsToUpdate.length === 0) {
+      return;
+    }
+
+    logger.info('Triggering rolling update', {
+      deploymentName: deployment.name,
+      podsToUpdate: podsToUpdate.length,
+      newVersion,
+    });
+
+    // Mark old pods for termination (they will be replaced by reconcileDeployment)
+    for (const pod of podsToUpdate) {
+      await podQueries.updatePod(pod.id, { 
+        status: 'stopping',
+        statusMessage: `Rolling update to version ${newVersion}`,
+      });
+    }
+  }
+
+  /**
+   * Check if a deployment is in failure backoff for a specific version
+   */
+  private isInFailureBackoff(deployment: Deployment, targetVersion: string): boolean {
+    // If the target version is the one that failed, check backoff
+    if (deployment.failedVersion === targetVersion && deployment.failureBackoffUntil) {
+      return new Date() < deployment.failureBackoffUntil;
+    }
+    return false;
+  }
+
+  /**
+   * Calculate exponential backoff duration based on consecutive failures
+   */
+  private calculateBackoffMs(consecutiveFailures: number): number {
+    // Exponential backoff: initialBackoff * 2^(failures-1), capped at maxBackoff
+    const backoff = this.config.initialBackoffMs * Math.pow(2, Math.max(0, consecutiveFailures - 1));
+    return Math.min(backoff, this.config.maxBackoffMs);
+  }
+
+  /**
+   * Detect crash loop and handle auto-rollback if needed
+   * Returns true if deployment should skip further reconciliation
+   */
+  private async detectAndHandleCrashLoop(
+    deployment: Deployment,
+    allPods: Array<{ id: string; status: string; packVersion: string; updatedAt?: Date }>
+  ): Promise<boolean> {
+    const deploymentQueries = getDeploymentQueriesAdmin();
+
+    // Count recent failures (pods that failed within the detection window)
+    const now = Date.now();
+    const recentFailures = allPods.filter(p => {
+      if (p.status !== 'failed') return false;
+      if (!p.updatedAt) return true; // Assume recent if no timestamp
+      return (now - new Date(p.updatedAt).getTime()) < this.config.failureDetectionWindowMs;
+    });
+
+    // If we have running pods, reset failure tracking
+    const runningPods = allPods.filter(p => p.status === 'running');
+    if (runningPods.length > 0) {
+      // Check if running pods are on current version - if so, it's successful
+      const currentVersionRunning = runningPods.some(p => p.packVersion === deployment.packVersion);
+      if (currentVersionRunning && deployment.consecutiveFailures > 0) {
+        // Clear failure state - deployment is now healthy
+        logger.info('Deployment recovered, clearing failure state', {
+          deploymentName: deployment.name,
+          version: deployment.packVersion,
+          previousFailures: deployment.consecutiveFailures,
+        });
+        await deploymentQueries.updateDeployment(deployment.id, {
+          consecutiveFailures: 0,
+          failedVersion: null,
+          failureBackoffUntil: null,
+          lastSuccessfulVersion: deployment.packVersion,
+        });
+      }
+      return false;
+    }
+
+    // If no recent failures, nothing to do
+    if (recentFailures.length === 0) {
+      return false;
+    }
+
+    // We have failures and no running pods - potential crash loop
+    const newFailureCount = deployment.consecutiveFailures + recentFailures.length;
+
+    // Check if we've exceeded the threshold
+    if (newFailureCount >= this.config.maxConsecutiveFailures) {
+      logger.warn('Crash loop detected - too many consecutive failures', {
+        deploymentName: deployment.name,
+        deploymentId: deployment.id,
+        version: deployment.packVersion,
+        consecutiveFailures: newFailureCount,
+        threshold: this.config.maxConsecutiveFailures,
+      });
+
+      // Calculate backoff
+      const backoffMs = this.calculateBackoffMs(newFailureCount);
+      const backoffUntil = new Date(Date.now() + backoffMs);
+
+      // Check if we can auto-rollback
+      if (deployment.lastSuccessfulVersion && 
+          deployment.lastSuccessfulVersion !== deployment.packVersion) {
+        // Auto-rollback to last successful version
+        logger.info('Auto-rolling back to last successful version', {
+          deploymentName: deployment.name,
+          failedVersion: deployment.packVersion,
+          rollbackVersion: deployment.lastSuccessfulVersion,
+        });
+
+        await deploymentQueries.updateDeployment(deployment.id, {
+          packVersion: deployment.lastSuccessfulVersion,
+          consecutiveFailures: 0,
+          failedVersion: deployment.packVersion,
+          failureBackoffUntil: backoffUntil,
+          statusMessage: `Auto-rolled back from ${deployment.packVersion} to ${deployment.lastSuccessfulVersion} after ${newFailureCount} failures`,
+        });
+
+        // Trigger rolling update to the old version
+        await this.triggerRollingUpdate(deployment, deployment.lastSuccessfulVersion);
+        return true;
+      } else {
+        // No version to roll back to - just pause and wait
+        logger.warn('No previous version to rollback to, pausing deployment', {
+          deploymentName: deployment.name,
+          failedVersion: deployment.packVersion,
+        });
+
+        await deploymentQueries.updateDeployment(deployment.id, {
+          status: 'paused',
+          consecutiveFailures: newFailureCount,
+          failedVersion: deployment.packVersion,
+          failureBackoffUntil: backoffUntil,
+          statusMessage: `Paused after ${newFailureCount} failures. No previous version available for rollback.`,
+        });
+        return true;
+      }
+    } else {
+      // Update failure count but don't trigger rollback yet
+      await deploymentQueries.updateDeployment(deployment.id, {
+        consecutiveFailures: newFailureCount,
+        failedVersion: deployment.packVersion,
+      });
+    }
+
+    return false;
   }
 
   /**
@@ -157,15 +433,34 @@ export class DeploymentController {
 
     // Get current pods for this deployment
     const podsResult = await podQueries.listPodsByDeployment(deployment.id);
-    const currentPods = podsResult.data ?? [];
+    if (podsResult.error || !podsResult.data) {
+      logger.error('Failed to get pods for deployment', undefined, {
+        deploymentId: deployment.id,
+        error: podsResult.error,
+      });
+      return;
+    }
+
+    // Check for crash loop before proceeding with reconciliation
+    const allPods = podsResult.data.map(p => ({
+      id: p.id,
+      status: p.status,
+      packVersion: p.packVersion,
+      updatedAt: p.updatedAt,
+    }));
     
-    // Filter to active pods (not stopped, failed, or evicted)
-    const activePods = currentPods.filter(p => 
+    const shouldSkip = await this.detectAndHandleCrashLoop(deployment, allPods);
+    if (shouldSkip) {
+      return;
+    }
+
+    // Filter to active pods (not stopped/failed/evicted)
+    const activePods = podsResult.data.filter(p => 
       !['stopped', 'failed', 'evicted'].includes(p.status)
     );
 
     if (deployment.replicas === 0) {
-      // DaemonSet mode: deploy to all matching nodes
+      // DaemonSet mode: one pod per matching node
       await this.reconcileDaemonSet(deployment, activePods);
     } else {
       // Regular deployment: maintain exact replica count

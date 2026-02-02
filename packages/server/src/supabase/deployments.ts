@@ -28,6 +28,7 @@ interface DeploymentRow {
   name: string;
   pack_id: string;
   pack_version: string;
+  follow_latest: boolean;
   namespace: string;
   replicas: number;
   status: DeploymentStatus;
@@ -46,6 +47,10 @@ interface DeploymentRow {
   ready_replicas: number;
   available_replicas: number;
   updated_replicas: number;
+  last_successful_version: string | null;
+  failed_version: string | null;
+  consecutive_failures: number;
+  failure_backoff_until: string | null;
   metadata: Record<string, unknown>;
   created_by: string;
   created_at: string;
@@ -69,6 +74,7 @@ function rowToDeployment(row: DeploymentRow): Deployment {
     name: row.name,
     packId: row.pack_id,
     packVersion: row.pack_version,
+    followLatest: row.follow_latest ?? false,
     namespace: row.namespace,
     replicas: row.replicas,
     status: row.status,
@@ -87,6 +93,10 @@ function rowToDeployment(row: DeploymentRow): Deployment {
     readyReplicas: row.ready_replicas,
     availableReplicas: row.available_replicas,
     updatedReplicas: row.updated_replicas,
+    lastSuccessfulVersion: row.last_successful_version ?? undefined,
+    failedVersion: row.failed_version ?? undefined,
+    consecutiveFailures: row.consecutive_failures ?? 0,
+    failureBackoffUntil: row.failure_backoff_until ? new Date(row.failure_backoff_until) : undefined,
     metadata: row.metadata ?? {},
     createdBy: row.created_by,
     createdAt: new Date(row.created_at),
@@ -103,6 +113,7 @@ function rowToDeploymentListItem(row: DeploymentRow): DeploymentListItem {
     name: row.name,
     packId: row.pack_id,
     packVersion: row.pack_version,
+    followLatest: row.follow_latest ?? false,
     namespace: row.namespace,
     replicas: row.replicas,
     readyReplicas: row.ready_replicas,
@@ -134,6 +145,7 @@ export class DeploymentQueries {
         name: input.name,
         pack_id: packId,
         pack_version: packVersion,
+        follow_latest: input.followLatest ?? false,
         namespace: input.namespace ?? 'default',
         replicas: input.replicas ?? 1, // Default to 1 replica
         status: 'active',
@@ -264,6 +276,47 @@ export class DeploymentQueries {
   }
 
   /**
+   * List active deployments that follow latest pack version
+   * Used for auto-update reconciliation when new pack versions are registered
+   */
+  async listFollowLatestDeployments(): Promise<DeploymentResult<Deployment[]>> {
+    const { data, error } = await this.client
+      .from('deployments')
+      .select('*')
+      .eq('status', 'active')
+      .eq('follow_latest', true)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      return { data: null, error };
+    }
+
+    const deployments = (data as DeploymentRow[]).map(rowToDeployment);
+    return { data: deployments, error: null };
+  }
+
+  /**
+   * List active deployments by pack ID that follow latest
+   * Used to quickly find deployments affected by a specific pack version update
+   */
+  async listFollowLatestDeploymentsByPackId(packId: string): Promise<DeploymentResult<Deployment[]>> {
+    const { data, error } = await this.client
+      .from('deployments')
+      .select('*')
+      .eq('status', 'active')
+      .eq('pack_id', packId)
+      .eq('follow_latest', true)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      return { data: null, error };
+    }
+
+    const deployments = (data as DeploymentRow[]).map(rowToDeployment);
+    return { data: deployments, error: null };
+  }
+
+  /**
    * Update deployment
    */
   async updateDeployment(
@@ -274,6 +327,9 @@ export class DeploymentQueries {
 
     if (input.packVersion !== undefined) {
       updates.pack_version = input.packVersion;
+    }
+    if (input.followLatest !== undefined) {
+      updates.follow_latest = input.followLatest;
     }
     if (input.replicas !== undefined) {
       updates.replicas = input.replicas;
@@ -313,6 +369,19 @@ export class DeploymentQueries {
     }
     if (input.metadata !== undefined) {
       updates.metadata = input.metadata;
+    }
+    // Crash-loop protection fields
+    if (input.lastSuccessfulVersion !== undefined) {
+      updates.last_successful_version = input.lastSuccessfulVersion;
+    }
+    if (input.failedVersion !== undefined) {
+      updates.failed_version = input.failedVersion;
+    }
+    if (input.consecutiveFailures !== undefined) {
+      updates.consecutive_failures = input.consecutiveFailures;
+    }
+    if (input.failureBackoffUntil !== undefined) {
+      updates.failure_backoff_until = input.failureBackoffUntil?.toISOString() ?? null;
     }
 
     updates.updated_at = new Date().toISOString();

@@ -48,6 +48,11 @@ export interface Deployment {
   packId: string;
   /** Pack version to deploy */
   packVersion: string;
+  /** 
+   * Whether to automatically update to the latest pack version.
+   * When true, pods are updated when new pack versions are registered.
+   */
+  followLatest: boolean;
   /** Namespace */
   namespace: string;
   /** 
@@ -88,6 +93,26 @@ export interface Deployment {
   availableReplicas: number;
   /** Number of updated replicas */
   updatedReplicas: number;
+  /** 
+   * Last pack version that ran successfully.
+   * Used for auto-rollback when new versions fail.
+   */
+  lastSuccessfulVersion?: string;
+  /**
+   * Pack version that failed during upgrade.
+   * Prevents retry loops by skipping this version.
+   */
+  failedVersion?: string;
+  /**
+   * Count of consecutive pod failures since last success.
+   * Used for crash-loop detection.
+   */
+  consecutiveFailures: number;
+  /**
+   * Timestamp until which upgrade retries should be skipped.
+   * Implements exponential backoff for failed upgrades.
+   */
+  failureBackoffUntil?: Date;
   /** Additional metadata */
   metadata: Record<string, unknown>;
   /** User who created the deployment */
@@ -110,6 +135,12 @@ export interface CreateDeploymentInput {
   packName?: string;
   /** Pack version (defaults to latest) */
   packVersion?: string;
+  /** 
+   * Whether to automatically update to the latest pack version.
+   * When true, pods are updated when new pack versions are registered.
+   * @default false
+   */
+  followLatest?: boolean;
   /** Target namespace */
   namespace?: string;
   /** 
@@ -147,6 +178,8 @@ export interface CreateDeploymentInput {
 export interface UpdateDeploymentInput {
   /** New pack version */
   packVersion?: string;
+  /** Enable or disable follow latest */
+  followLatest?: boolean;
   /** New replica count */
   replicas?: number;
   /** New status */
@@ -173,6 +206,14 @@ export interface UpdateDeploymentInput {
   scheduling?: PodSchedulingConfig;
   /** Metadata update */
   metadata?: Record<string, unknown>;
+  /** Last successful version (for auto-rollback tracking) */
+  lastSuccessfulVersion?: string | null;
+  /** Failed version (to prevent retry loops) */
+  failedVersion?: string | null;
+  /** Consecutive failure count (for crash-loop detection) */
+  consecutiveFailures?: number;
+  /** Backoff timestamp (for exponential backoff) */
+  failureBackoffUntil?: Date | null;
 }
 
 /**
@@ -183,6 +224,7 @@ export interface DeploymentListItem {
   name: string;
   packId: string;
   packVersion: string;
+  followLatest: boolean;
   namespace: string;
   replicas: number;
   readyReplicas: number;

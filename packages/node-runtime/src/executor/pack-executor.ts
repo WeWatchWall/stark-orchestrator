@@ -2,7 +2,7 @@
  * Pack Executor
  * @module @stark-o/node-runtime/executor/pack-executor
  *
- * Executes pack bundles in worker_threads for isolated, concurrent execution.
+ * Executes pack bundles in sub-processes for isolated, concurrent execution.
  * Provides lifecycle management, resource tracking, and error handling.
  */
 
@@ -50,6 +50,8 @@ export interface PackExecutorConfig {
   defaultTimeout?: number;
   /** Maximum concurrent executions (default: 10) */
   maxConcurrent?: number;
+  /** Maximum memory per worker process in MB (sets --max-old-space-size for sub-processes) */
+  maxMemoryMB?: number;
   /** Logger instance */
   logger?: Logger;
 }
@@ -71,7 +73,7 @@ interface ExecutionState {
 /**
  * Pack Executor
  *
- * Manages the execution of pack bundles in isolated worker threads.
+ * Manages the execution of pack bundles in isolated sub-processes.
  * Features:
  * - Concurrent execution with worker pool
  * - Execution lifecycle management (start, stop, cancel)
@@ -81,13 +83,14 @@ interface ExecutionState {
  */
 export class PackExecutor {
   private readonly config: Required<
-    Omit<PackExecutorConfig, 'workerConfig' | 'fsConfig' | 'httpConfig' | 'orchestratorUrl' | 'authToken' | 'logger'>
+    Omit<PackExecutorConfig, 'workerConfig' | 'fsConfig' | 'httpConfig' | 'orchestratorUrl' | 'authToken' | 'maxMemoryMB' | 'logger'>
   > & {
     workerConfig?: WorkerAdapterConfig;
     fsConfig?: FsAdapterConfig;
     httpConfig?: HttpAdapterConfig;
     orchestratorUrl?: string;
     authToken?: string;
+    maxMemoryMB?: number;
     logger: Logger;
   };
   private workerAdapter: WorkerAdapter;
@@ -118,6 +121,7 @@ export class PackExecutor {
       maxWorkers: this.config.maxConcurrent,
       maxQueueSize: this.config.maxConcurrent * 2,
       taskTimeout: this.config.defaultTimeout,
+      maxMemoryMB: config.maxMemoryMB,
       ...this.config.workerConfig,
       onError: (error): void => {
         this.config.logger.error('Worker pool error', error);

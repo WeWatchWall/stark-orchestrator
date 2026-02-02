@@ -333,6 +333,7 @@ export class DeploymentModel {
       name: this._deployment.name,
       packId: this._deployment.packId,
       packVersion: this._deployment.packVersion,
+      followLatest: this._deployment.followLatest,
       namespace: this._deployment.namespace,
       replicas: this._deployment.replicas,
       readyReplicas: this._deployment.readyReplicas,
@@ -362,6 +363,7 @@ export class DeploymentModel {
       name: input.name,
       packId,
       packVersion,
+      followLatest: input.followLatest ?? false,
       namespace: input.namespace ?? 'default',
       replicas: input.replicas ?? 1, // Default to 1 replica
       status: 'active',
@@ -386,6 +388,7 @@ export class DeploymentModel {
       readyReplicas: 0,
       availableReplicas: 0,
       updatedReplicas: 0,
+      consecutiveFailures: 0,
       metadata: input.metadata ?? {},
       createdBy,
       createdAt: new Date(),

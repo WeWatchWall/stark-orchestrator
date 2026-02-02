@@ -107,6 +107,72 @@ node packages/cli/dist/index.js auth setup
 
 This will prompt for an email, password, and optional display name. The first user is automatically granted the admin role.
 
+### CLI Configuration
+
+The CLI stores its configuration in `~/.stark/` (e.g., `C:\Users\<username>\.stark\` on Windows or `/home/<username>/.stark/` on Linux/macOS).
+
+#### Configuration File
+
+Create `~/.stark/config.json` to customize CLI behavior:
+
+```json
+{
+  "apiUrl": "https://127.0.0.1:443",
+  "supabaseUrl": "http://127.0.0.1:54321",
+  "supabaseAnonKey": "your-supabase-anon-key",
+  "defaultNamespace": "default",
+  "defaultOutputFormat": "table"
+}
+```
+
+#### Configuration Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `apiUrl` | Stark orchestrator API URL | `https://127.0.0.1:443` |
+| `supabaseUrl` | Supabase instance URL | `http://127.0.0.1:54321` |
+| `supabaseAnonKey` | Supabase anonymous key | Local dev key |
+| `defaultNamespace` | Default namespace for commands | `default` |
+| `defaultOutputFormat` | Output format: `json`, `table`, or `plain` | `table` |
+
+#### Credentials File
+
+After logging in, credentials are stored in `~/.stark/credentials.json`. This file is managed automatically by the CLI and contains:
+
+- Access token
+- Refresh token
+- Token expiration
+- User ID and email
+
+> **Note**: The `~/.stark/` directory is created with restricted permissions (mode `0700`) to protect sensitive credentials.
+
+#### Production Configuration Example
+
+For connecting to a production Supabase instance:
+
+```json
+{
+  "apiUrl": "https://your-orchestrator.example.com",
+  "supabaseUrl": "https://your-project.supabase.co",
+  "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "defaultNamespace": "production",
+  "defaultOutputFormat": "json"
+}
+```
+
+### Logging
+
+All services emit structured JSON logs.
+
+Common fields:
+
+- timestamp
+- level
+- service
+- nodeId
+- podId
+- message
+
 ### Authentication
 
 ```bash
@@ -329,6 +395,46 @@ When `replicas=0`, the deployment operates in **DaemonSet mode**:
 - Automatically creates one pod on every node matching the scheduling constraints
 - When new nodes join with matching labels, pods are automatically deployed
 - When nodes leave, their pods are removed
+
+#### Automatic Version Updates (Follow Latest)
+
+Deployments can automatically update to new pack versions when they are registered:
+
+```bash
+# Create a deployment that auto-updates to latest pack versions
+node packages/cli/dist/index.js deployment create my-deployment \
+  --pack my-pack \
+  --follow-latest
+```
+
+When `--follow-latest` is enabled:
+- The deployment controller checks for new pack versions during each reconciliation cycle
+- When a new version is detected, a rolling update is triggered automatically
+- Old pods are stopped and replaced with pods running the new version
+
+#### Crash-Loop Protection
+
+The deployment controller includes built-in crash-loop protection to prevent infinite upgrade/fail cycles:
+
+| Feature | Description |
+|---------|-------------|
+| **Failure Tracking** | Counts consecutive pod failures per deployment |
+| **Exponential Backoff** | Failed upgrades trigger increasing wait periods (1min → 2min → 4min → ... up to 1 hour) |
+| **Auto-Rollback** | After 3 consecutive failures, automatically rolls back to the last successful version |
+| **Version Blacklisting** | Failed versions are temporarily blocked from retry attempts |
+
+**How it works:**
+
+1. When a new pack version fails to start pods, the failure count increments
+2. After 3 consecutive failures:
+   - If a previous successful version exists → **auto-rollback** to that version
+   - If no previous version → **pause** the deployment with an error message
+3. The failed version is blocked until either:
+   - The backoff period expires (exponential, up to 1 hour)
+   - A newer pack version is registered
+4. When pods successfully start, the failure state is cleared
+
+This prevents a broken pack version from causing endless pod creation/failure cycles while preserving the ability to recover by publishing a fixed version.
 
 ### Node Management
 

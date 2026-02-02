@@ -211,6 +211,7 @@ export class NodeAgent {
       bundleDir: this.config.bundleDir,
       orchestratorUrl: this.config.orchestratorUrl.replace(/^ws/, 'http').replace('/ws', ''),
       authToken: this.authToken,
+      maxMemoryMB: this.config.allocatable.memory,
       logger: this.config.logger,
     });
 
@@ -616,6 +617,7 @@ export class NodeAgent {
             bundleDir: this.config.bundleDir,
             orchestratorUrl: this.config.orchestratorUrl.replace(/^ws/, 'http').replace('/ws', ''),
             authToken: this.authToken,
+            maxMemoryMB: this.config.allocatable.memory,
             logger: this.config.logger,
           });
         }
@@ -1103,6 +1105,7 @@ export class NodeAgent {
       bundleDir: this.config.bundleDir,
       orchestratorUrl: this.config.orchestratorUrl.replace(/^ws/, 'http').replace('/ws', ''),
       authToken: this.authToken,
+      maxMemoryMB: this.config.allocatable.memory,
       logger: this.config.logger,
     });
 
@@ -1134,6 +1137,7 @@ export class NodeAgent {
       bundleDir: this.config.bundleDir,
       orchestratorUrl: this.config.orchestratorUrl.replace(/^ws/, 'http').replace('/ws', ''),
       authToken: this.authToken,
+      maxMemoryMB: this.config.allocatable.memory,
       logger: this.config.logger,
     });
   }

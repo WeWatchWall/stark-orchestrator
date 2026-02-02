@@ -390,6 +390,7 @@ export class PodModel {
       priority: this._pod.priority,
       createdBy: this._pod.createdBy,
       createdAt: this._pod.createdAt,
+      updatedAt: this._pod.updatedAt,
       startedAt: this._pod.startedAt,
     };
   }
@@ -492,6 +493,7 @@ export function createReactivePodListItem(pod: Pod): ComputedRef<PodListItem> {
     priority: reactivePod.priority,
     createdBy: reactivePod.createdBy,
     createdAt: reactivePod.createdAt,
+    updatedAt: reactivePod.updatedAt,
     startedAt: reactivePod.startedAt,
   }));
 }

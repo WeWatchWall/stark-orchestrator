@@ -279,6 +279,25 @@ export function validateDeploymentMetadata(metadata: unknown): ValidationError |
 }
 
 /**
+ * Validate followLatest flag
+ */
+export function validateFollowLatest(followLatest: unknown): ValidationError | null {
+  if (followLatest === undefined || followLatest === null) {
+    return null; // Defaults to false
+  }
+
+  if (typeof followLatest !== 'boolean') {
+    return {
+      field: 'followLatest',
+      message: 'followLatest must be a boolean',
+      code: 'INVALID_TYPE',
+    };
+  }
+
+  return null;
+}
+
+/**
  * Validate create deployment input
  */
 export function validateCreateDeploymentInput(input: unknown): ValidationResult {
@@ -319,6 +338,10 @@ export function validateCreateDeploymentInput(input: unknown): ValidationResult 
   // Optional: namespace
   const namespaceError = validateDeploymentNamespace(data.namespace);
   if (namespaceError) errors.push(namespaceError);
+
+  // Optional: followLatest
+  const followLatestError = validateFollowLatest(data.followLatest);
+  if (followLatestError) errors.push(followLatestError);
 
   // Optional: labels
   if (data.labels !== undefined) {
@@ -401,6 +424,12 @@ export function validateUpdateDeploymentInput(input: unknown): ValidationResult 
   if (data.replicas !== undefined) {
     const replicasError = validateReplicas(data.replicas);
     if (replicasError) errors.push(replicasError);
+  }
+
+  // Optional: followLatest
+  if (data.followLatest !== undefined) {
+    const followLatestError = validateFollowLatest(data.followLatest);
+    if (followLatestError) errors.push(followLatestError);
   }
 
   // Optional: status

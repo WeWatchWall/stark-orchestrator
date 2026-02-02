@@ -198,6 +198,7 @@ export interface PodListItem {
   priority: number;
   createdBy: string;
   createdAt: Date;
+  updatedAt: Date;
   startedAt?: Date;
 }
 

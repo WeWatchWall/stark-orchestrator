@@ -1,5 +1,5 @@
 // Stark Orchestrator - Node.js Runtime
-// Worker Adapter using Workerpool for worker_threads management
+// Worker Adapter using Workerpool for sub-process management
 
 import workerpool from 'workerpool';
 import type { Pool, WorkerPoolOptions, Promise as WorkerPromise } from 'workerpool';
@@ -25,9 +25,16 @@ import {
 export interface NodeWorkerAdapterConfig extends WorkerAdapterConfig {
   /**
    * Worker type: 'auto', 'thread', or 'process'.
-   * @default 'thread'
+   * @default 'process'
    */
   workerType?: 'auto' | 'thread' | 'process';
+
+  /**
+   * Maximum memory limit per worker in megabytes.
+   * Only applies when workerType is 'process'.
+   * Sets --max-old-space-size for the sub-process.
+   */
+  maxMemoryMB?: number;
 
   /**
    * Additional options to pass to the underlying worker threads.
@@ -62,15 +69,15 @@ interface PendingTaskInfo<T = unknown> {
 }
 
 /**
- * Worker adapter wrapping Workerpool for worker_threads management.
- * Provides a unified interface for executing tasks in worker threads.
+ * Worker adapter wrapping Workerpool for sub-process management.
+ * Provides a unified interface for executing tasks in sub-processes.
  *
- * This implementation uses Workerpool which manages a pool of worker_threads
+ * This implementation uses Workerpool which manages a pool of sub-processes
  * for parallel task execution in Node.js environments.
  */
 export class WorkerAdapter implements IWorkerAdapter {
-  private readonly config: Required<Omit<NodeWorkerAdapterConfig, 'workerScript' | 'workerThreadOpts' | 'onError'>> &
-    Pick<NodeWorkerAdapterConfig, 'workerScript' | 'workerThreadOpts' | 'onError'>;
+  private readonly config: Required<Omit<NodeWorkerAdapterConfig, 'workerScript' | 'workerThreadOpts' | 'maxMemoryMB' | 'onError'>> &
+    Pick<NodeWorkerAdapterConfig, 'workerScript' | 'workerThreadOpts' | 'maxMemoryMB' | 'onError'>;
   private pool: Pool | null = null;
   private initialized: boolean = false;
   private readonly pendingTasks: Map<string, PendingTaskInfo> = new Map();
@@ -81,9 +88,10 @@ export class WorkerAdapter implements IWorkerAdapter {
       minWorkers: config.minWorkers ?? 0,
       maxWorkers: config.maxWorkers ?? cpus().length,
       maxQueueSize: config.maxQueueSize ?? Infinity,
-      workerType: config.workerType ?? 'thread',
+      workerType: config.workerType ?? 'process',
       taskTimeout: config.taskTimeout ?? 60000,
       workerTerminateTimeout: config.workerTerminateTimeout ?? 1000,
+      maxMemoryMB: config.maxMemoryMB,
       workerScript: config.workerScript,
       workerThreadOpts: config.workerThreadOpts,
       onError: config.onError,
@@ -106,6 +114,13 @@ export class WorkerAdapter implements IWorkerAdapter {
       workerType: this.config.workerType,
       workerTerminateTimeout: this.config.workerTerminateTimeout,
     };
+
+    // Add memory limit for sub-processes via forkOpts
+    if (this.config.maxMemoryMB && this.config.workerType === 'process') {
+      poolOptions.forkOpts = {
+        execArgv: [`--max-old-space-size=${this.config.maxMemoryMB}`],
+      };
+    }
 
     // Add worker thread options if provided
     if (this.config.workerThreadOpts) {
@@ -212,6 +227,12 @@ export class WorkerAdapter implements IWorkerAdapter {
           workerType: this.config.workerType,
           workerTerminateTimeout: this.config.workerTerminateTimeout,
         };
+        // Add memory limit for sub-processes via forkOpts
+        if (this.config.maxMemoryMB && this.config.workerType === 'process') {
+          poolOptions.forkOpts = {
+            execArgv: [`--max-old-space-size=${this.config.maxMemoryMB}`],
+          };
+        }
         if (this.config.workerThreadOpts) {
           poolOptions.workerThreadOpts = this.config.workerThreadOpts;
         }

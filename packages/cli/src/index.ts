@@ -61,6 +61,7 @@ function createProgram(): Command {
     .option('-o, --output <format>', 'Output format: json, table, plain', 'table')
     .option('--api-url <url>', 'API server URL')
     .option('--no-color', 'Disable colored output')
+    .option('-k, --insecure', 'Skip TLS certificate verification (for self-signed certs)')
     .hook('preAction', (thisCommand) => {
       // Set output format from global option
       const opts = thisCommand.opts();
@@ -71,6 +72,11 @@ function createProgram(): Command {
       // Handle --no-color
       if (opts.color === false) {
         process.env.FORCE_COLOR = '0';
+      }
+
+      // Handle --insecure flag for TLS certificate verification
+      if (opts.insecure) {
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
       }
     });
 

@@ -132,6 +132,7 @@ function rowToPodListItem(row: PodRow): PodListItem {
     priority: row.priority,
     createdBy: row.created_by,
     createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
     startedAt: row.started_at ? new Date(row.started_at) : undefined,
   };
 }

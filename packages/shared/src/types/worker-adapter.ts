@@ -3,7 +3,7 @@
  *
  * This interface defines a unified worker pool abstraction that can be
  * implemented by different runtimes:
- * - Node.js: Using worker_threads via Workerpool
+ * - Node.js: Using sub-processes via Workerpool (default) or worker_threads
  * - Browser: Using Web Workers via Workerpool
  *
  * @module @stark-o/shared/types/worker-adapter

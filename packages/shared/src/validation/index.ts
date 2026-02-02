@@ -100,6 +100,7 @@ export {
   validateDeploymentNamespace,
   validateDeploymentStatus,
   validateDeploymentMetadata,
+  validateFollowLatest,
   validateCreateDeploymentInput,
   validateUpdateDeploymentInput,
 } from './deployment-validation';
