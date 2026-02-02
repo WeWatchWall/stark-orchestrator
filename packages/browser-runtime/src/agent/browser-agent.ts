@@ -1022,9 +1022,16 @@ export class BrowserAgent {
       this.logger.error('Authentication failed', { error: String(error) });
       
       // Check if this is an AUTH_FAILED error - credentials are invalid/expired
+      const errorCode = typeof error === 'object' && error !== null && 'code' in error 
+        ? (error as { code: string }).code 
+        : '';
+      const errorMessage = error instanceof Error ? error.message : '';
       const isAuthFailed = 
-        (error instanceof Error && error.message.includes('AUTH_FAILED')) ||
-        (typeof error === 'object' && error !== null && 'code' in error && (error as { code: string }).code === 'AUTH_FAILED');
+        errorMessage.includes('AUTH_FAILED') ||
+        errorMessage.includes('USER_NOT_FOUND') ||
+        errorMessage.includes('sub claim') ||
+        errorCode === 'AUTH_FAILED' ||
+        errorCode === 'USER_NOT_FOUND';
       
       if (isAuthFailed && this.authRetryCount < 1) {
         this.authRetryCount++;

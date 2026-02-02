@@ -72,7 +72,12 @@ function mapAuthErrorCode(message: string): string {
   if (lowerMessage.includes('invalid login credentials') || lowerMessage.includes('invalid password')) {
     return 'INVALID_CREDENTIALS';
   }
-  if (lowerMessage.includes('user not found') || lowerMessage.includes('no user found')) {
+  if (
+    lowerMessage.includes('user not found') ||
+    lowerMessage.includes('no user found') ||
+    lowerMessage.includes('sub claim') ||
+    lowerMessage.includes('does not exist')
+  ) {
     return 'USER_NOT_FOUND';
   }
   if (lowerMessage.includes('token expired') || lowerMessage.includes('jwt expired')) {
