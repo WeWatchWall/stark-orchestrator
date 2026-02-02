@@ -869,9 +869,12 @@ export class PackExecutor {
 
   /**
    * Get worker pool statistics
+   * Returns null if executor is not initialized (defensive, avoids throwing)
    */
-  getPoolStats(): PoolStats {
-    this.ensureInitialized();
+  getPoolStats(): PoolStats | null {
+    if (!this.initialized) {
+      return null;
+    }
     return this.workerAdapter.getStats();
   }
 

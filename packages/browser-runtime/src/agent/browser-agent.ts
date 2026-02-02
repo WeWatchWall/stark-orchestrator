@@ -1253,6 +1253,12 @@ export class BrowserAgent {
       return;
     }
 
+    // Skip metrics if executor is not initialized to avoid race conditions
+    if (!this.executor.isInitialized()) {
+      this.logger.debug('Skipping metrics: executor not initialized');
+      return;
+    }
+
     try {
       const systemMetrics = this.collectSystemMetrics();
       const poolStats = this.executor.getPoolStats?.() ?? null;
@@ -1412,7 +1418,10 @@ export class BrowserAgent {
   } {
     const podCounts = this.podHandler.getPodCounts();
     const restartStats = this.podHandler.getRestartStats();
-    const poolStats = this.executor.getPoolStats?.() ?? null;
+    // Only get pool stats if executor is initialized to avoid errors
+    const poolStats = this.executor.isInitialized() 
+      ? (this.executor.getPoolStats?.() ?? null)
+      : null;
 
     return {
       uptime: Math.floor((Date.now() - this.startTime) / 1000),
