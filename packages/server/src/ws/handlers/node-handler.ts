@@ -385,10 +385,12 @@ export async function handleNodeDisconnect(ws: WsConnection): Promise<void> {
 
     // Mark all nodes as offline, fail their pods, and clear connection ID
     for (const node of nodesResult.data) {
-      // Fail all active pods on this node
+      // Fail all active pods on this node with 'node_lost' termination reason
+      // This reason does NOT count toward crash loop detection
       const failResult = await podQueries.failPodsOnNode(
         node.id,
         'Node went offline',
+        'node_lost',
       );
       
       if (failResult.data && failResult.data.failedCount > 0) {

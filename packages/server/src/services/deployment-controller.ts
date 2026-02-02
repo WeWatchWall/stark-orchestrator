@@ -9,8 +9,8 @@
  * 4. Cleaning up pods when deployments are deleted
  */
 
-import { createServiceLogger, matchesSelector, isRuntimeCompatible } from '@stark-o/shared';
-import type { Deployment, Labels, RuntimeTag, RuntimeType } from '@stark-o/shared';
+import { createServiceLogger, matchesSelector, isRuntimeCompatible, shouldCountTowardCrashLoop } from '@stark-o/shared';
+import type { Deployment, Labels, RuntimeTag, RuntimeType, PodTerminationReason } from '@stark-o/shared';
 import { toleratesBlockingTaints } from '@stark-o/shared';
 import { getDeploymentQueriesAdmin } from '../supabase/deployments.js';
 import { getPodQueriesAdmin } from '../supabase/pods.js';
@@ -321,27 +321,17 @@ export class DeploymentController {
    */
   private async detectAndHandleCrashLoop(
     deployment: Deployment,
-    allPods: Array<{ id: string; status: string; statusMessage?: string; packVersion: string; updatedAt?: Date }>
+    allPods: Array<{ id: string; status: string; terminationReason?: PodTerminationReason; packVersion: string; updatedAt?: Date }>
   ): Promise<boolean> {
     const deploymentQueries = getDeploymentQueriesAdmin();
 
-    // Infrastructure failure messages that should NOT count toward crash loop
-    // These are caused by node/infrastructure issues, not application bugs
-    const infrastructureFailureMessages = [
-      'Node went offline',
-      'Node unhealthy',
-      'Node evicted',
-      'Node maintenance',
-      'Node draining',
-    ];
-
     // Count recent failures (pods that failed within the detection window)
-    // Exclude infrastructure failures - only count actual application crashes
+    // Only count application failures - infrastructure failures don't indicate bugs
     const now = Date.now();
     const recentFailures = allPods.filter(p => {
       if (p.status !== 'failed') return false;
-      // Skip infrastructure failures - these shouldn't trigger crash loop
-      if (p.statusMessage && infrastructureFailureMessages.some(msg => p.statusMessage?.includes(msg))) {
+      // Use canonical termination reason to determine if this should count toward crash loop
+      if (!shouldCountTowardCrashLoop(p.terminationReason)) {
         return false;
       }
       if (!p.updatedAt) return true; // Assume recent if no timestamp
@@ -460,7 +450,7 @@ export class DeploymentController {
     const allPods = podsResult.data.map(p => ({
       id: p.id,
       status: p.status,
-      statusMessage: p.statusMessage,
+      terminationReason: p.terminationReason,
       packVersion: p.packVersion,
       updatedAt: p.updatedAt,
     }));

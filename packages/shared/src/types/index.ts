@@ -67,6 +67,7 @@ export {
 export type {
   Pod,
   PodStatus,
+  PodTerminationReason,
   ResourceRequirements,
   PodSchedulingConfig,
   CreatePodInput,
@@ -81,8 +82,13 @@ export {
   isPodRunning,
   isPodTerminated,
   isPodSchedulable,
+  shouldCountTowardCrashLoop,
   ALL_POD_STATUSES,
   ALL_POD_ACTIONS,
+  ALL_TERMINATION_REASONS,
+  INFRASTRUCTURE_TERMINATION_REASONS,
+  OPERATOR_TERMINATION_REASONS,
+  APPLICATION_TERMINATION_REASONS,
   DEFAULT_RESOURCE_REQUESTS,
   DEFAULT_RESOURCE_LIMITS,
 } from './pod.js';

@@ -9,6 +9,7 @@ import type { SupabaseClient, PostgrestError } from '@supabase/supabase-js';
 import type {
   Pod,
   PodStatus,
+  PodTerminationReason,
   PodListItem,
   PodHistoryEntry,
   PodAction,
@@ -33,6 +34,7 @@ interface PodRow {
   deployment_id: string | null;
   status: PodStatus;
   status_message: string | null;
+  termination_reason: PodTerminationReason | null;
   namespace: string;
   labels: Labels;
   annotations: Annotations;
@@ -93,6 +95,7 @@ function rowToPod(row: PodRow): Pod {
     nodeId: row.node_id,
     status: row.status,
     statusMessage: row.status_message ?? undefined,
+    terminationReason: row.termination_reason ?? undefined,
     namespace: row.namespace,
     labels: row.labels ?? {},
     annotations: row.annotations ?? {},
@@ -128,6 +131,7 @@ function rowToPodListItem(row: PodRow): PodListItem {
     nodeId: row.node_id,
     status: row.status,
     statusMessage: row.status_message ?? undefined,
+    terminationReason: row.termination_reason ?? undefined,
     namespace: row.namespace,
     labels: row.labels ?? {},
     priority: row.priority,
@@ -405,6 +409,7 @@ export class PodQueries {
     status: PodStatus,
     options?: {
       statusMessage?: string;
+      terminationReason?: PodTerminationReason;
       nodeId?: string;
     }
   ): Promise<PodResult<Pod>> {
@@ -414,6 +419,10 @@ export class PodQueries {
 
     if (options?.statusMessage !== undefined) {
       updates.status_message = options.statusMessage;
+    }
+
+    if (options?.terminationReason !== undefined) {
+      updates.termination_reason = options.terminationReason;
     }
 
     if (options?.nodeId !== undefined) {
@@ -466,34 +475,36 @@ export class PodQueries {
   /**
    * Marks a pod as stopped
    */
-  async stopPod(id: string, message?: string): Promise<PodResult<Pod>> {
-    return this.updatePodStatus(id, 'stopped', { statusMessage: message });
+  async stopPod(id: string, message?: string, terminationReason?: PodTerminationReason): Promise<PodResult<Pod>> {
+    return this.updatePodStatus(id, 'stopped', { statusMessage: message, terminationReason });
   }
 
   /**
    * Marks a pod as failed
    */
-  async failPod(id: string, message: string): Promise<PodResult<Pod>> {
-    return this.updatePodStatus(id, 'failed', { statusMessage: message });
+  async failPod(id: string, message: string, terminationReason: PodTerminationReason = 'error'): Promise<PodResult<Pod>> {
+    return this.updatePodStatus(id, 'failed', { statusMessage: message, terminationReason });
   }
 
   /**
    * Evicts a pod
    */
-  async evictPod(id: string, reason: string): Promise<PodResult<Pod>> {
-    return this.updatePodStatus(id, 'evicted', { statusMessage: reason });
+  async evictPod(id: string, reason: string, terminationReason: PodTerminationReason = 'evicted_resources'): Promise<PodResult<Pod>> {
+    return this.updatePodStatus(id, 'evicted', { statusMessage: reason, terminationReason });
   }
 
   /**
    * Fails all active pods on a node
    * Used when a node goes offline, becomes unhealthy, or is deleted
    * @param nodeId - The node ID
-   * @param reason - Reason for failing the pods (e.g., 'Node went offline')
+   * @param reason - Human-readable reason for failing the pods
+   * @param terminationReason - Canonical termination reason for crash loop classification
    * @returns Result with count of pods failed
    */
   async failPodsOnNode(
     nodeId: string,
     reason: string,
+    terminationReason: PodTerminationReason = 'node_lost',
   ): Promise<PodResult<{ failedCount: number; podIds: string[] }>> {
     // First, get all active pods on the node
     const activeStatuses: PodStatus[] = ['pending', 'scheduled', 'starting', 'running', 'stopping'];
@@ -514,12 +525,13 @@ export class PodQueries {
 
     const podIds = pods.map((p: { id: string }) => p.id);
 
-    // Update all pods to failed status
+    // Update all pods to failed status with canonical termination reason
     const { error: updateError } = await this.client
       .from('pods')
       .update({
         status: 'failed' as PodStatus,
         status_message: reason,
+        termination_reason: terminationReason,
         stopped_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
@@ -845,17 +857,17 @@ export const schedulePod = (id: string, nodeId: string) =>
 export const startPod = (id: string) =>
   getPodQueries().startPod(id);
 
-export const stopPod = (id: string, message?: string) =>
-  getPodQueries().stopPod(id, message);
+export const stopPod = (id: string, message?: string, terminationReason?: PodTerminationReason) =>
+  getPodQueries().stopPod(id, message, terminationReason);
 
-export const failPod = (id: string, message: string) =>
-  getPodQueries().failPod(id, message);
+export const failPod = (id: string, message: string, terminationReason?: PodTerminationReason) =>
+  getPodQueries().failPod(id, message, terminationReason);
 
-export const evictPod = (id: string, reason: string) =>
-  getPodQueries().evictPod(id, reason);
+export const evictPod = (id: string, reason: string, terminationReason?: PodTerminationReason) =>
+  getPodQueries().evictPod(id, reason, terminationReason);
 
-export const failPodsOnNode = (nodeId: string, reason: string) =>
-  getPodQueries().failPodsOnNode(nodeId, reason);
+export const failPodsOnNode = (nodeId: string, reason: string, terminationReason?: PodTerminationReason) =>
+  getPodQueries().failPodsOnNode(nodeId, reason, terminationReason);
 
 export const deletePod = (id: string) =>
   getPodQueries().deletePod(id);

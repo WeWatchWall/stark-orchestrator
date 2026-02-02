@@ -22,6 +22,93 @@ export type PodStatus =
   | 'unknown';   // Lost contact with node
 
 /**
+ * Canonical termination reason for pods
+ * Used for crash loop detection and observability
+ */
+export type PodTerminationReason =
+  // Infrastructure reasons (should NOT trigger crash loop)
+  | 'node_lost'           // Node disconnected or went offline
+  | 'node_unhealthy'      // Node failed health checks
+  | 'node_draining'       // Node is being drained for maintenance
+  | 'node_maintenance'    // Node entered maintenance mode
+  // Resource reasons
+  | 'oom_killed'          // Out of memory
+  | 'evicted_resources'   // Evicted due to resource pressure
+  | 'preempted'           // Preempted by higher priority pod
+  | 'quota_exceeded'      // Resource quota exceeded
+  // Application reasons (SHOULD trigger crash loop if repeated)
+  | 'error'               // Generic application error/crash
+  | 'init_error'          // Failed during initialization
+  | 'config_error'        // Configuration error
+  | 'pack_load_error'     // Failed to load pack/bundle
+  // Operator/user initiated (should NOT trigger crash loop)
+  | 'user_stopped'        // Manual stop by user/operator
+  | 'rolling_update'      // Replaced during rolling update
+  | 'scaled_down'         // Removed due to scale down
+  | 'deployment_deleted'  // Parent deployment was deleted
+  // Lifecycle reasons
+  | 'completed'           // Normal completion (for job-like pods)
+  | 'deadline_exceeded'   // Execution deadline exceeded
+  // Unknown
+  | 'unknown';            // Reason not determined
+
+/**
+ * Termination reasons that indicate infrastructure issues (not application bugs)
+ * These should NOT count toward crash loop detection
+ */
+export const INFRASTRUCTURE_TERMINATION_REASONS: readonly PodTerminationReason[] = [
+  'node_lost',
+  'node_unhealthy',
+  'node_draining',
+  'node_maintenance',
+  'evicted_resources',
+  'preempted',
+] as const;
+
+/**
+ * Termination reasons initiated by operators/users
+ * These should NOT count toward crash loop detection
+ */
+export const OPERATOR_TERMINATION_REASONS: readonly PodTerminationReason[] = [
+  'user_stopped',
+  'rolling_update',
+  'scaled_down',
+  'deployment_deleted',
+] as const;
+
+/**
+ * Termination reasons that indicate application errors
+ * These SHOULD count toward crash loop detection
+ */
+export const APPLICATION_TERMINATION_REASONS: readonly PodTerminationReason[] = [
+  'error',
+  'init_error',
+  'config_error',
+  'pack_load_error',
+  'oom_killed',
+  'deadline_exceeded',
+] as const;
+
+/**
+ * Check if a termination reason should count toward crash loop detection
+ */
+export function shouldCountTowardCrashLoop(reason: PodTerminationReason | undefined): boolean {
+  if (!reason) return true; // Assume application error if no reason provided
+  return APPLICATION_TERMINATION_REASONS.includes(reason as typeof APPLICATION_TERMINATION_REASONS[number]);
+}
+
+/**
+ * All available termination reasons
+ */
+export const ALL_TERMINATION_REASONS: readonly PodTerminationReason[] = [
+  'node_lost', 'node_unhealthy', 'node_draining', 'node_maintenance',
+  'oom_killed', 'evicted_resources', 'preempted', 'quota_exceeded',
+  'error', 'init_error', 'config_error', 'pack_load_error',
+  'user_stopped', 'rolling_update', 'scaled_down', 'deployment_deleted',
+  'completed', 'deadline_exceeded', 'unknown',
+] as const;
+
+/**
  * Resource requests/limits
  */
 export interface ResourceRequirements {
@@ -61,6 +148,8 @@ export interface Pod {
   status: PodStatus;
   /** Status message (for errors) */
   statusMessage?: string;
+  /** Canonical termination reason (for stopped/failed/evicted pods) */
+  terminationReason?: PodTerminationReason;
   /** Namespace */
   namespace: string;
   /** Labels for organization and selection */
@@ -129,6 +218,7 @@ export interface CreatePodInput {
 export interface UpdatePodInput {
   status?: PodStatus;
   statusMessage?: string;
+  terminationReason?: PodTerminationReason;
   nodeId?: string | null;
   labels?: Labels;
   annotations?: Annotations;
@@ -194,6 +284,7 @@ export interface PodListItem {
   nodeId: string | null;
   status: PodStatus;
   statusMessage?: string;
+  terminationReason?: PodTerminationReason;
   namespace: string;
   labels: Labels;
   priority: number;
