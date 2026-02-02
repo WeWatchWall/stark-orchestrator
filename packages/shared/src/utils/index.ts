@@ -392,3 +392,12 @@ export function sortBy<T>(arr: T[], keyFn: (item: T) => string | number): T[] {
     return 0;
   });
 }
+
+// Lifecycle utilities for pod execution
+export {
+  createLifecycleManager,
+  createSerializableLifecycleContext,
+  createWorkerLifecycleManager,
+  type LifecycleStateManager,
+  type SerializableLifecycleContext,
+} from './lifecycle.js';

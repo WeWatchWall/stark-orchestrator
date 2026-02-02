@@ -212,9 +212,15 @@ export class PodHandler {
     try {
       this.updateStatus(podId, 'stopping');
 
-      // Force terminate the execution by killing the worker
+      // Gracefully stop the execution - invokes shutdown handlers, then force terminates
       if (state.executionHandle) {
-        await state.executionHandle.forceTerminate();
+        // Use gracefulStop if available (allows pack code to clean up)
+        if (state.executionHandle.gracefulStop) {
+          await state.executionHandle.gracefulStop(reason);
+        } else {
+          // Fall back to force terminate
+          await state.executionHandle.forceTerminate();
+        }
       }
 
       state.stoppedAt = new Date();

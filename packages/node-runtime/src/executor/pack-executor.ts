@@ -25,6 +25,9 @@ import {
   type PackExecutionContext,
   type PackExecutionResult,
   type ExecutionHandle,
+  type PodLifecycleFacts,
+  type PodLifecyclePhase,
+  type ShutdownHandler,
 } from '@stark-o/shared';
 
 // Re-export for convenience
@@ -52,6 +55,11 @@ export interface PackExecutorConfig {
   maxConcurrent?: number;
   /** Maximum memory per worker process in MB (sets --max-old-space-size for sub-processes) */
   maxMemoryMB?: number;
+  /** 
+   * Graceful shutdown timeout in milliseconds (default: 5000 = 5 seconds)
+   * Time to wait for pack code to handle shutdown before force terminating
+   */
+  gracefulShutdownTimeout?: number;
   /** Logger instance */
   logger?: Logger;
 }
@@ -68,6 +76,12 @@ interface ExecutionState {
   startedAt: Date;
   completedAt?: Date;
   result?: PackExecutionResult;
+  /** Shutdown handlers registered by pack code */
+  shutdownHandlers: ShutdownHandler[];
+  /** Function to update lifecycle phase */
+  setLifecyclePhase: (phase: PodLifecyclePhase) => void;
+  /** Function to request shutdown */
+  requestShutdown: (reason?: string) => void;
 }
 
 /**
@@ -110,6 +124,7 @@ export class PackExecutor {
       httpConfig: config.httpConfig,
       defaultTimeout: config.defaultTimeout ?? 300000,
       maxConcurrent: config.maxConcurrent ?? 10,
+      gracefulShutdownTimeout: config.gracefulShutdownTimeout ?? 5000,
       logger: config.logger ?? createServiceLogger({
         component: 'pack-executor',
         service: 'stark-node-runtime',
@@ -228,7 +243,33 @@ export class PackExecutor {
     const timeout = options.timeout ?? pack.metadata?.timeout ?? this.config.defaultTimeout;
     const startedAt = new Date();
 
-    // Create execution context
+    // Create shutdown handlers registry for this execution
+    const shutdownHandlers: ShutdownHandler[] = [];
+    
+    // Create mutable lifecycle state for this execution
+    let lifecyclePhase: PodLifecyclePhase = 'initializing';
+    let isShuttingDown = false;
+    let shutdownReason: string | undefined;
+    let shutdownRequestedAt: Date | undefined;
+    
+    // Capture config for use in lifecycle object getters
+    const executorConfig = this.config;
+    
+    // Create lifecycle facts object with getters for live values
+    const lifecycle: PodLifecycleFacts = {
+      get phase() { return lifecyclePhase; },
+      get isShuttingDown() { return isShuttingDown; },
+      get shutdownReason() { return shutdownReason; },
+      get shutdownRequestedAt() { return shutdownRequestedAt; },
+      get gracefulShutdownRemainingMs() {
+        if (!isShuttingDown || !shutdownRequestedAt) return undefined;
+        const gracefulTimeout = executorConfig.gracefulShutdownTimeout ?? 5000;
+        const elapsed = Date.now() - shutdownRequestedAt.getTime();
+        return Math.max(0, gracefulTimeout - elapsed);
+      },
+    };
+
+    // Create execution context with lifecycle facts
     const context: PackExecutionContext = {
       executionId,
       podId: pod.id,
@@ -249,6 +290,10 @@ export class PackExecutor {
         ...pack.metadata,
         ...pod.metadata,
       },
+      lifecycle,
+      onShutdown: (handler: ShutdownHandler) => {
+        shutdownHandlers.push(handler);
+      },
     };
 
     this.config.logger.info('Starting pack execution', {
@@ -260,16 +305,31 @@ export class PackExecutor {
       timeout,
     });
 
-    // Create execution state
+    // Create execution state with lifecycle control functions
     const state: ExecutionState = {
       executionId,
       podId: pod.id,
       packId: pack.id,
       status: 'pending',
       startedAt,
+      shutdownHandlers,
+      setLifecyclePhase: (phase: PodLifecyclePhase) => {
+        lifecyclePhase = phase;
+      },
+      requestShutdown: (reason?: string) => {
+        if (!isShuttingDown) {
+          isShuttingDown = true;
+          shutdownReason = reason;
+          shutdownRequestedAt = new Date();
+          lifecyclePhase = 'stopping';
+        }
+      },
     };
     this.executions.set(executionId, state);
     this.podExecutions.set(pod.id, executionId);
+    
+    // Set lifecycle to running once setup is complete
+    lifecyclePhase = 'running';
 
     // Start async execution
     const promise = this.executeAsync(pack, context, options.args ?? [])
@@ -311,25 +371,77 @@ export class PackExecutor {
         return result;
       });
 
-    // Create cancel function
+    // Create cancel function (cooperative cancellation)
     const cancel = (): void => {
       if (state.status === 'running' && state.handle) {
         this.config.logger.info('Cancelling pack execution', {
           executionId,
           podId: pod.id,
         });
+        // Signal shutdown to pack code via lifecycle facts
+        state.requestShutdown('Execution cancelled');
         state.handle.cancel();
         state.status = 'cancelled';
       }
     };
 
-    // Create force terminate function
+    // Create graceful stop function - invokes shutdown handlers then force terminates
+    const gracefulStop = async (reason?: string): Promise<void> => {
+      if (state.status !== 'running') return;
+      
+      this.config.logger.info('Initiating graceful shutdown', {
+        executionId,
+        podId: pod.id,
+        reason,
+      });
+      
+      // Signal shutdown to pack code
+      state.requestShutdown(reason);
+      state.setLifecyclePhase('stopping');
+      
+      // Invoke shutdown handlers with timeout
+      const gracefulTimeout = this.config.gracefulShutdownTimeout ?? 5000;
+      try {
+        const handlerPromises = state.shutdownHandlers.map(async (handler) => {
+          try {
+            await handler(reason);
+          } catch (error) {
+            this.config.logger.warn('Shutdown handler error', { 
+              executionId, 
+              error: error instanceof Error ? error.message : String(error) 
+            });
+          }
+        });
+        
+        // Wait for handlers with timeout
+        await Promise.race([
+          Promise.all(handlerPromises),
+          new Promise<void>(resolve => setTimeout(resolve, gracefulTimeout)),
+        ]);
+      } catch (error) {
+        this.config.logger.warn('Error during graceful shutdown', {
+          executionId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      
+      // Force terminate after graceful period
+      if (state.handle) {
+        await state.handle.forceTerminate();
+      }
+      state.setLifecyclePhase('terminated');
+      state.status = 'cancelled';
+    };
+
+    // Create force terminate function (immediate termination)
     const forceTerminate = async (): Promise<void> => {
       if (state.handle) {
         this.config.logger.info('Force terminating pack execution', {
           executionId,
           podId: pod.id,
         });
+        state.requestShutdown('Force terminated');
+        state.setLifecyclePhase('terminated');
         await state.handle.forceTerminate();
         state.status = 'cancelled';
       }
@@ -341,6 +453,7 @@ export class PackExecutor {
       promise,
       cancel,
       forceTerminate,
+      gracefulStop,
       isCancelled: () => state.status === 'cancelled',
       startedAt,
     };

@@ -115,6 +115,38 @@ export interface PodOperationResult {
 }
 
 /**
+ * Pod lifecycle phase - represents the current phase in the pod's lifecycle.
+ * Exposed as a "fact" that running pack code can query.
+ */
+export type PodLifecyclePhase = 
+  | 'initializing'  // Pod is being set up
+  | 'running'       // Pod is actively executing
+  | 'stopping'      // Graceful shutdown requested, cleanup time granted
+  | 'terminated';   // Pod execution has ended
+
+/**
+ * Pod lifecycle facts - queryable state about the pod's lifecycle.
+ * These are "facts" that the running pack code can query to understand its execution context.
+ */
+export interface PodLifecycleFacts {
+  /** Current lifecycle phase */
+  readonly phase: PodLifecyclePhase;
+  /** Whether a shutdown has been requested (graceful stop signal received) */
+  readonly isShuttingDown: boolean;
+  /** Reason for shutdown (if stopping/terminated) */
+  readonly shutdownReason?: string;
+  /** Timestamp when shutdown was requested (if stopping) */
+  readonly shutdownRequestedAt?: Date;
+  /** Time remaining for graceful shutdown in ms (if stopping), undefined if not stopping */
+  readonly gracefulShutdownRemainingMs?: number;
+}
+
+/**
+ * Callback for shutdown notification - allows pack code to handle graceful shutdown
+ */
+export type ShutdownHandler = (reason?: string) => void | Promise<void>;
+
+/**
  * Pack execution context passed to the pack's entry point.
  * Shared between Node.js and Browser runtimes.
  */
@@ -137,6 +169,42 @@ export interface PackExecutionContext {
   timeout: number;
   /** Additional metadata */
   metadata: Record<string, unknown>;
+  
+  /**
+   * Pod lifecycle facts - queryable state about the pod's lifecycle.
+   * Use this to check if the pod is shutting down and respond gracefully.
+   * 
+   * @example
+   * ```typescript
+   * // Check if shutdown was requested
+   * if (context.lifecycle.isShuttingDown) {
+   *   await cleanup();
+   *   return;
+   * }
+   * 
+   * // Periodic check in long-running operations
+   * while (!context.lifecycle.isShuttingDown) {
+   *   await doWork();
+   * }
+   * ```
+   */
+  lifecycle: PodLifecycleFacts;
+  
+  /**
+   * Register a handler to be called when shutdown is requested.
+   * The handler will be invoked during graceful shutdown before force termination.
+   * 
+   * @param handler - Async function to call on shutdown
+   * @example
+   * ```typescript
+   * context.onShutdown(async (reason) => {
+   *   console.log(`Shutting down: ${reason}`);
+   *   await saveState();
+   *   await closeConnections();
+   * });
+   * ```
+   */
+  onShutdown: (handler: ShutdownHandler) => void;
 }
 
 /**
@@ -177,6 +245,11 @@ export interface ExecutionHandle {
   promise: Promise<PackExecutionResult>;
   /** Cancel the execution (cooperative - task may continue until it checks for cancellation) */
   cancel: () => void;
+  /** 
+   * Gracefully stop the execution - invokes shutdown handlers, waits for graceful timeout,
+   * then force terminates. Allows pack code to clean up before termination.
+   */
+  gracefulStop?: (reason?: string) => Promise<void>;
   /** Force terminate the worker executing this task (immediate termination) */
   forceTerminate: () => Promise<void>;
   /** Check if cancelled */
