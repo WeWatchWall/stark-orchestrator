@@ -6,7 +6,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import type { RuntimeTag, RegisterPackInput, UpdatePackInput } from '@stark-o/shared';
+import type { RuntimeTag, RegisterPackInput, UpdatePackInput, PackVisibility } from '@stark-o/shared';
 import { validateRegisterPackInput, validateUpdatePackInput, createServiceLogger, generateCorrelationId } from '@stark-o/shared';
 import { getPackQueries, getPackQueriesAdmin } from '../supabase/packs.js';
 import {
@@ -61,6 +61,7 @@ interface RegisterPackResponse {
     version: string;
     runtimeTag: RuntimeTag;
     ownerId: string;
+    visibility: PackVisibility;
     bundlePath: string;
     description?: string;
     metadata: Record<string, unknown>;
@@ -80,6 +81,7 @@ interface PackListResponse {
     version: string;
     runtimeTag: RuntimeTag;
     ownerId: string;
+    visibility: PackVisibility;
     bundlePath: string;
     description?: string;
     metadata: Record<string, unknown>;
@@ -101,6 +103,7 @@ interface PackByIdResponse {
     version: string;
     runtimeTag: RuntimeTag;
     ownerId: string;
+    visibility: PackVisibility;
     bundlePath: string;
     description?: string;
     metadata: Record<string, unknown>;
@@ -284,6 +287,7 @@ async function registerPack(req: Request, res: Response): Promise<void> {
         version: createResult.data.version,
         runtimeTag: createResult.data.runtimeTag,
         ownerId: createResult.data.ownerId,
+        visibility: createResult.data.visibility,
         bundlePath: createResult.data.bundlePath,
         description: createResult.data.description,
         metadata: createResult.data.metadata,
@@ -370,6 +374,7 @@ async function listPacks(req: Request, res: Response): Promise<void> {
       version: item.latestVersion,
       runtimeTag: item.runtimeTag,
       ownerId: item.ownerId,
+      visibility: 'private' as PackVisibility, // List items don't have visibility, default to private
       bundlePath: `packs/${item.name}/${item.latestVersion}/bundle.js`,
       description: item.description,
       metadata: {},
@@ -432,6 +437,7 @@ async function getPackById(req: Request, res: Response): Promise<void> {
         version: result.data.version,
         runtimeTag: result.data.runtimeTag,
         ownerId: result.data.ownerId,
+        visibility: result.data.visibility,
         bundlePath: result.data.bundlePath,
         description: result.data.description,
         metadata: result.data.metadata,

@@ -26,6 +26,13 @@ export interface PackMetadata {
 }
 
 /**
+ * Pack visibility for access control
+ * - private: Only owner and admins can access
+ * - public: Anyone can access
+ */
+export type PackVisibility = 'private' | 'public';
+
+/**
  * Pack entity - a registered software package
  */
 export interface Pack {
@@ -39,6 +46,8 @@ export interface Pack {
   runtimeTag: RuntimeTag;
   /** Owner user ID */
   ownerId: string;
+  /** Pack visibility (private or public) */
+  visibility: PackVisibility;
   /** Path to bundle in storage */
   bundlePath: string;
   /** JavaScript bundle content (stored directly in database) */
@@ -63,6 +72,8 @@ export interface RegisterPackInput {
   version: string;
   /** Target runtime */
   runtimeTag: RuntimeTag;
+  /** Pack visibility (default: private) */
+  visibility?: PackVisibility;
   /** Pack description */
   description?: string;
   /** JavaScript bundle content */
@@ -76,6 +87,7 @@ export interface RegisterPackInput {
  */
 export interface UpdatePackInput {
   description?: string;
+  visibility?: PackVisibility;
   metadata?: PackMetadata;
 }
 

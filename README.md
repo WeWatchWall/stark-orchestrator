@@ -200,21 +200,34 @@ node packages/cli/dist/index.js auth list-users
 
 #### User Roles
 
-- admin: Full access to everything (manage all)
-- node: Node agents - can create/update own node, update pods assigned to it, read packs/pods/namespaces
-- viewer: Read-only access to packs, pods, nodes, namespaces
+- **admin**: Full access to everything (manage all). Admin nodes are shared infrastructure that can run packs from any user.
+- **user**: Self-service users - can create/manage own packs, nodes, and deployments. Packs can only be deployed to own nodes (unless public).
+- **node**: Node agents - can register/update own node, update pods assigned to it, read accessible packs/pods/namespaces
+- **viewer**: Read-only access to packs, pods, nodes, namespaces
 
 ### Pack Management
+
+Packs support visibility control to manage who can deploy them:
+
+- **private** (default): Only the owner can deploy this pack (to their own nodes or admin nodes)
+- **public**: Anyone can deploy this pack to their nodes
 
 ```bash
 # Bundle a pack from source (auto-detects Nuxt projects)
 node packages/cli/dist/index.js pack bundle ./src/my-pack --out ./bundle.js
 
-# Register a pack with the orchestrator
+# Register a private pack (default)
 node packages/cli/dist/index.js pack register ./bundle.js \
   --name my-pack \
   --ver 1.0.0 \
   --runtime node
+
+# Register a public pack (anyone can use it)
+node packages/cli/dist/index.js pack register ./bundle.js \
+  --name my-public-pack \
+  --ver 1.0.0 \
+  --runtime node \
+  --visibility public
 
 # List all packs
 node packages/cli/dist/index.js pack list
@@ -313,6 +326,10 @@ Pods are scheduled to nodes based on these Kubernetes-like constraints:
   - Node has `--taint dedicated=gpu:NoSchedule` → Pod needs `--toleration dedicated=gpu:NoSchedule`
 - **Resource Requests**: Pods fit onto nodes with sufficient capacity
   - Node has `--cpu 2000 --memory 4096` → Pod requesting `--cpu 500 --memory 256` fits 4× per node
+- **Pack Ownership**: Packs can only be deployed to nodes where the node owner can access the pack
+  - **Private packs**: Only deploy to owner's nodes or admin nodes
+  - **Public packs**: Deploy to any node
+  - This enforces user isolation - users can only run their own packs on their own nodes
 
 ### Deployment Management
 
@@ -723,10 +740,11 @@ See [docs/architecture.md](docs/architecture.md) for detailed architecture docum
 
 ### Key Concepts
 
-- **Pack**: A bundled software package that can be deployed
-- **Node**: A runtime environment (Node.js or browser) that executes packs
+- **Pack**: A bundled software package that can be deployed (private or public visibility)
+- **Node**: A runtime environment (Node.js or browser) that executes packs (owned by the registering user)
 - **Pod**: A running instance of a pack on a specific node
 - **Namespace**: Isolated resource boundary with quotas
+- **Ownership**: Users can only deploy their packs to their nodes (unless packs are public or nodes are admin-owned)
 
 ### Technology Stack
 

@@ -134,6 +134,7 @@ async function registerHandler(
     ver: string;
     runtime: string;
     description?: string;
+    visibility?: string;
   }
 ): Promise<void> {
   requireAuth();
@@ -149,6 +150,13 @@ async function registerHandler(
   const validRuntimes = ['node', 'browser', 'universal'];
   if (!validRuntimes.includes(options.runtime)) {
     error(`Invalid runtime: ${options.runtime}. Must be one of: ${validRuntimes.join(', ')}`);
+    process.exit(1);
+  }
+
+  // Validate visibility
+  const validVisibilities = ['private', 'public'];
+  if (options.visibility && !validVisibilities.includes(options.visibility)) {
+    error(`Invalid visibility: ${options.visibility}. Must be one of: ${validVisibilities.join(', ')}`);
     process.exit(1);
   }
 
@@ -174,6 +182,7 @@ async function registerHandler(
       version: options.ver,
       runtimeTag: options.runtime,
       description: options.description,
+      visibility: options.visibility,
       bundleContent: bundleContent,
     };
     
@@ -458,6 +467,7 @@ export function createPackCommand(): Command {
     .requiredOption('-V, --ver <version>', 'Pack version (semver)')
     .requiredOption('-r, --runtime <runtime>', 'Runtime tag: node, browser, universal')
     .option('-d, --description <desc>', 'Pack description')
+    .option('--visibility <visibility>', 'Pack visibility: private (default) or public')
     .action(registerHandler);
 
   pack

@@ -26,6 +26,7 @@ export type {
   Pack,
   RuntimeTag,
   PackMetadata,
+  PackVisibility,
   RegisterPackInput,
   UpdatePackInput,
   PackVersionSummary,

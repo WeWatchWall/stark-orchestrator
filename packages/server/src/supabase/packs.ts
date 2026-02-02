@@ -26,6 +26,7 @@ interface PackRow {
   version: string;
   runtime_tag: RuntimeTag;
   owner_id: string;
+  visibility: 'private' | 'public';
   bundle_path: string;
   bundle_content: string | null;
   description: string | null;
@@ -52,6 +53,7 @@ function rowToPack(row: PackRow): Pack {
     version: row.version,
     runtimeTag: row.runtime_tag,
     ownerId: row.owner_id,
+    visibility: row.visibility,
     bundlePath: row.bundle_path,
     bundleContent: row.bundle_content ?? undefined,
     description: row.description ?? undefined,
@@ -110,6 +112,7 @@ export class PackQueries {
         version: input.version,
         runtime_tag: input.runtimeTag,
         owner_id: input.ownerId,
+        visibility: input.visibility ?? 'private',
         bundle_path: input.bundlePath,
         bundle_content: input.bundleContent ?? null,
         description: input.description ?? null,
@@ -270,6 +273,10 @@ export class PackQueries {
       updates.description = input.description;
     }
 
+    if (input.visibility !== undefined) {
+      updates.visibility = input.visibility;
+    }
+
     if (input.metadata !== undefined) {
       updates.metadata = input.metadata;
     }
@@ -378,6 +385,55 @@ export class PackQueries {
     }
 
     return { data: count ?? 0, error: null };
+  }
+
+  /**
+   * Check if a node owner can access a pack.
+   * A node owner can access a pack if:
+   * 1. The pack is public
+   * 2. The pack owner is the same as the node owner
+   * 3. The node owner is an admin (admin nodes are shared infrastructure)
+   * 
+   * @param pack The pack to check access for
+   * @param nodeOwnerId The user ID of the node owner
+   * @returns True if the node owner can access the pack
+   */
+  async canNodeAccessPack(
+    pack: { ownerId: string; visibility: 'private' | 'public' },
+    nodeOwnerId: string | undefined
+  ): Promise<PackResult<boolean>> {
+    // Public packs are accessible to all
+    if (pack.visibility === 'public') {
+      return { data: true, error: null };
+    }
+
+    // If no node owner (unowned nodes are open infrastructure)
+    if (!nodeOwnerId) {
+      return { data: true, error: null };
+    }
+
+    // Pack owner matches node owner
+    if (pack.ownerId === nodeOwnerId) {
+      return { data: true, error: null };
+    }
+
+    // Check if node owner is admin (admin nodes are shared infrastructure)
+    const { data, error } = await this.client
+      .from('users')
+      .select('roles')
+      .eq('id', nodeOwnerId)
+      .single();
+
+    if (error) {
+      return { data: null, error };
+    }
+
+    const roles = data?.roles as string[] | undefined;
+    if (roles && roles.includes('admin')) {
+      return { data: true, error: null };
+    }
+
+    return { data: false, error: null };
   }
 }
 

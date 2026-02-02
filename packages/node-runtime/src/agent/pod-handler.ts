@@ -110,6 +110,7 @@ export class PodHandler {
         name: pack.name,
         version: pack.version,
         runtimeTag: pack.runtimeTag,
+        visibility: 'private',
         bundlePath: pack.bundlePath,
         bundleContent: pack.bundleContent,
         metadata: pack.metadata ?? {},

@@ -94,6 +94,7 @@ function rowToNodeListItem(row: NodeRow & { pod_count?: number }): NodeListItem 
     allocated: row.allocated ?? DEFAULT_ALLOCATED,
     podCount: row.pod_count ?? 0,
     connectionId: row.connection_id ?? undefined,
+    registeredBy: row.registered_by ?? undefined,
   };
 }
 

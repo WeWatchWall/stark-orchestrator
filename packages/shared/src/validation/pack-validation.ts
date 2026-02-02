@@ -221,6 +221,38 @@ export function validatePackMetadata(metadata: unknown): ValidationError | null 
 }
 
 /**
+ * Valid visibility values
+ */
+const VALID_VISIBILITY_VALUES = ['private', 'public'];
+
+/**
+ * Validate pack visibility
+ */
+export function validatePackVisibility(visibility: unknown): ValidationError | null {
+  if (visibility === undefined || visibility === null) {
+    return null; // Optional field, defaults to 'private'
+  }
+
+  if (typeof visibility !== 'string') {
+    return {
+      field: 'visibility',
+      message: 'Pack visibility must be a string',
+      code: 'INVALID_TYPE',
+    };
+  }
+
+  if (!VALID_VISIBILITY_VALUES.includes(visibility)) {
+    return {
+      field: 'visibility',
+      message: `Pack visibility must be one of: ${VALID_VISIBILITY_VALUES.join(', ')}`,
+      code: 'INVALID_VALUE',
+    };
+  }
+
+  return null;
+}
+
+/**
  * Validate pack registration input
  */
 export function validateRegisterPackInput(input: unknown): ValidationResult {
@@ -256,6 +288,9 @@ export function validateRegisterPackInput(input: unknown): ValidationResult {
   const descriptionError = validatePackDescription(data.description);
   if (descriptionError) errors.push(descriptionError);
 
+  const visibilityError = validatePackVisibility(data.visibility);
+  if (visibilityError) errors.push(visibilityError);
+
   const metadataError = validatePackMetadata(data.metadata);
   if (metadataError) errors.push(metadataError);
 
@@ -290,6 +325,9 @@ export function validateUpdatePackInput(input: unknown): ValidationResult {
   // Validate optional fields
   const descriptionError = validatePackDescription(data.description);
   if (descriptionError) errors.push(descriptionError);
+
+  const visibilityError = validatePackVisibility(data.visibility);
+  if (visibilityError) errors.push(visibilityError);
 
   const metadataError = validatePackMetadata(data.metadata);
   if (metadataError) errors.push(metadataError);

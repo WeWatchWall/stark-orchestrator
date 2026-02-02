@@ -10,12 +10,12 @@
  */
 
 import { createServiceLogger, matchesSelector, isRuntimeCompatible, shouldCountTowardCrashLoop } from '@stark-o/shared';
-import type { Deployment, Labels, RuntimeTag, RuntimeType, PodTerminationReason } from '@stark-o/shared';
+import type { Deployment, Labels, RuntimeTag, RuntimeType, PodTerminationReason, NodeListItem } from '@stark-o/shared';
 import { toleratesBlockingTaints } from '@stark-o/shared';
 import { getDeploymentQueriesAdmin } from '../supabase/deployments.js';
 import { getPodQueriesAdmin } from '../supabase/pods.js';
 import { getNodeQueries } from '../supabase/nodes.js';
-import { getPackQueries } from '../supabase/packs.js';
+import { getPackQueriesAdmin } from '../supabase/packs.js';
 
 /**
  * Logger for deployment controller
@@ -174,7 +174,7 @@ export class DeploymentController {
       return;
     }
 
-    const packQueries = getPackQueries();
+    const packQueries = getPackQueriesAdmin();
     const deploymentQueries = getDeploymentQueriesAdmin();
 
     // Group deployments by packId to minimize pack queries
@@ -497,7 +497,7 @@ export class DeploymentController {
     currentPods: Array<{ id: string; nodeId: string | null; status: string }>
   ): Promise<void> {
     const nodeQueries = getNodeQueries();
-    const packQueries = getPackQueries();
+    const packQueries = getPackQueriesAdmin();
 
     // Get pack to check runtime compatibility
     const packResult = await packQueries.getPackById(deployment.packId);
@@ -509,7 +509,8 @@ export class DeploymentController {
       });
       return;
     }
-    const packRuntimeTag = packResult.data.runtimeTag;
+    const pack = packResult.data;
+    const packRuntimeTag = pack.runtimeTag;
 
     // Get all online nodes
     const nodesResult = await nodeQueries.listNodes({ status: 'online' });
@@ -521,9 +522,29 @@ export class DeploymentController {
       return;
     }
 
+    // Filter nodes by pack access (ownership check) first
+    const accessibleNodes: NodeListItem[] = [];
+    for (const node of nodesResult.data) {
+      const accessResult = await packQueries.canNodeAccessPack(
+        { ownerId: pack.ownerId, visibility: pack.visibility },
+        node.registeredBy
+      );
+      if (accessResult.error) {
+        logger.warn('Failed to check pack access for node in DaemonSet', { 
+          nodeId: node.id, 
+          packId: pack.id,
+          error: accessResult.error 
+        });
+        continue;
+      }
+      if (accessResult.data) {
+        accessibleNodes.push(node);
+      }
+    }
+
     // Filter nodes based on scheduling constraints AND runtime compatibility
     const eligibleNodes = this.filterEligibleNodes(
-      nodesResult.data,
+      accessibleNodes,
       deployment,
       packRuntimeTag
     );
@@ -641,7 +662,7 @@ export class DeploymentController {
     targetNodeId?: string
   ): Promise<void> {
     const podQueries = getPodQueriesAdmin();
-    const packQueries = getPackQueries();
+    const packQueries = getPackQueriesAdmin();
 
     // Get pack info
     const packResult = await packQueries.getPackById(deployment.packId);

@@ -7,9 +7,9 @@
  */
 
 import { createServiceLogger } from '@stark-o/shared';
-import type { RuntimeType, Pack } from '@stark-o/shared';
+import type { Pack, NodeListItem } from '@stark-o/shared';
 import { isRuntimeCompatible } from '@stark-o/shared';
-import { getPodQueriesAdmin, getPackQueries, getNodeQueries } from '../supabase/index.js';
+import { getPodQueriesAdmin, getPackQueriesAdmin, getNodeQueries } from '../supabase/index.js';
 import { schedulePodWithHistory } from '../supabase/pod-history-service.js';
 import type { ConnectionManager } from '../ws/connection-manager.js';
 
@@ -146,7 +146,7 @@ export class SchedulerService {
    */
   private async schedulePendingPods(): Promise<void> {
     const podQueries = getPodQueriesAdmin();
-    const packQueries = getPackQueries();
+    const packQueries = getPackQueriesAdmin();
     const nodeQueries = getNodeQueries();
 
     // Get pending pods ordered by priority
@@ -190,8 +190,8 @@ export class SchedulerService {
    */
   private async schedulePod(
     podListItem: { id: string; packId: string },
-    onlineNodes: Array<{ id: string; name: string; runtimeType: RuntimeType; connectionId?: string }>,
-    packQueries: ReturnType<typeof getPackQueries>,
+    onlineNodes: NodeListItem[],
+    packQueries: ReturnType<typeof getPackQueriesAdmin>,
     _nodeQueries: ReturnType<typeof getNodeQueries>,
   ): Promise<void> {
     const { id: podId, packId } = podListItem;
@@ -205,8 +205,38 @@ export class SchedulerService {
 
     const pack = packResult.data;
 
-    // Find compatible nodes
-    const compatibleNodes = onlineNodes.filter(node =>
+    // Filter nodes by pack access (ownership check)
+    const accessibleNodes: NodeListItem[] = [];
+    for (const node of onlineNodes) {
+      const accessResult = await packQueries.canNodeAccessPack(
+        { ownerId: pack.ownerId, visibility: pack.visibility },
+        node.registeredBy
+      );
+      if (accessResult.error) {
+        logger.warn('Failed to check pack access for node', { 
+          nodeId: node.id, 
+          packId,
+          error: accessResult.error 
+        });
+        continue;
+      }
+      if (accessResult.data) {
+        accessibleNodes.push(node);
+      }
+    }
+
+    if (accessibleNodes.length === 0) {
+      logger.debug('No accessible nodes for pod (pack ownership check failed)', {
+        podId,
+        packId,
+        packOwnerId: pack.ownerId,
+        packVisibility: pack.visibility,
+      });
+      return;
+    }
+
+    // Find compatible nodes (runtime check)
+    const compatibleNodes = accessibleNodes.filter(node =>
       isRuntimeCompatible(pack.runtimeTag, node.runtimeType)
     );
 

@@ -154,6 +154,8 @@ export interface NodeListItem {
   allocated: AllocatableResources;
   podCount: number;
   connectionId?: string;
+  /** User who registered the node */
+  registeredBy?: string;
 }
 
 /**
