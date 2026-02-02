@@ -8,6 +8,7 @@
 
 import WebSocket from 'ws';
 import { randomUUID } from 'crypto';
+import * as os from 'os';
 import {
   createServiceLogger,
   type Logger,
@@ -58,6 +59,8 @@ export interface NodeAgentConfig {
   taints?: Taint[];
   /** Heartbeat interval in milliseconds (default: 15000) */
   heartbeatInterval?: number;
+  /** Metrics reporting interval in milliseconds (default: 30000) */
+  metricsInterval?: number;
   /** Reconnect delay in milliseconds (default: 5000) */
   reconnectDelay?: number;
   /** Maximum reconnect attempts (default: 10, -1 for infinite) */
@@ -145,11 +148,15 @@ export class NodeAgent {
   private connectionId: string | null = null;
   private state: ConnectionState = 'disconnected';
   private heartbeatTimer: NodeJS.Timeout | null = null;
+  private metricsTimer: NodeJS.Timeout | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private tokenRefreshTimer: NodeJS.Timeout | null = null;
   private reconnectAttempts = 0;
   private isShuttingDown = false;
   private isRefreshingToken = false;
+  private startTime: number = Date.now();
+  private lastCpuUsage: { user: number; system: number } | null = null;
+  private lastCpuUsageTime: number = 0;
   private pendingRequests = new Map<string, {
     resolve: (value: unknown) => void;
     reject: (reason: unknown) => void;
@@ -176,6 +183,7 @@ export class NodeAgent {
       annotations: config.annotations ?? {},
       taints: config.taints ?? [],
       heartbeatInterval: config.heartbeatInterval ?? 15000,
+      metricsInterval: config.metricsInterval ?? 30000,
       reconnectDelay: config.reconnectDelay ?? 5000,
       maxReconnectAttempts: config.maxReconnectAttempts ?? 10,
       bundleDir: config.bundleDir ?? process.cwd(),
@@ -307,6 +315,7 @@ export class NodeAgent {
   async stop(): Promise<void> {
     this.isShuttingDown = true;
     this.stopHeartbeat();
+    this.stopMetricsCollection();
     this.stopTokenRefresh();
     this.cancelReconnect();
     this.clearPendingRequests('Agent stopped');
@@ -534,6 +543,7 @@ export class NodeAgent {
   private handleClose(code: number, reason: string): void {
     this.config.logger.info('WebSocket closed', { code, reason });
     this.stopHeartbeat();
+    this.stopMetricsCollection();
     this.clearPendingRequests('Connection closed');
 
     const wasRegistered = this.state === 'registered';
@@ -690,8 +700,9 @@ export class NodeAgent {
         nodeName: this.config.nodeName,
       });
 
-      // Start heartbeat
+      // Start heartbeat and metrics collection
       this.startHeartbeat();
+      this.startMetricsCollection();
     } catch (error) {
       // Check if this is a CONFLICT error (node already exists)
       const errorObj = error as { code?: string; message?: string };
@@ -779,8 +790,9 @@ export class NodeAgent {
         nodeName: this.config.nodeName,
       });
 
-      // Start heartbeat
+      // Start heartbeat and metrics collection
       this.startHeartbeat();
+      this.startMetricsCollection();
     } catch (error) {
       this.config.logger.error('Reconnection failed, falling back to registration', { error });
       // If reconnection fails (e.g., node was deleted), fall back to fresh registration
@@ -817,6 +829,152 @@ export class NodeAgent {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+  }
+
+  /**
+   * Start the metrics collection timer
+   */
+  private startMetricsCollection(): void {
+    this.stopMetricsCollection();
+
+    this.metricsTimer = setInterval(() => {
+      this.sendMetrics();
+    }, this.config.metricsInterval);
+
+    // Send initial metrics
+    this.sendMetrics();
+  }
+
+  /**
+   * Stop the metrics collection timer
+   */
+  private stopMetricsCollection(): void {
+    if (this.metricsTimer) {
+      clearInterval(this.metricsTimer);
+      this.metricsTimer = null;
+    }
+  }
+
+  /**
+   * Collect and send node metrics to the orchestrator
+   */
+  private async sendMetrics(): Promise<void> {
+    if (!this.nodeId || this.state !== 'registered') {
+      return;
+    }
+
+    try {
+      const systemMetrics = this.collectSystemMetrics();
+      const poolStats = this.executor.getPoolStats?.() ?? null;
+
+      const metricsPayload = {
+        nodeId: this.nodeId,
+        runtimeType: this.config.runtimeType,
+        uptimeSeconds: systemMetrics.uptimeSeconds,
+        cpuUsagePercent: systemMetrics.cpuUsagePercent,
+        memoryUsedBytes: systemMetrics.memoryUsedBytes,
+        memoryTotalBytes: systemMetrics.memoryTotalBytes,
+        memoryUsagePercent: systemMetrics.memoryUsagePercent,
+        runtimeVersion: process.version,
+        podsAllocated: this.allocatedResources.pods,
+        podsCapacity: this.config.allocatable.pods,
+        cpuAllocated: this.allocatedResources.cpu,
+        cpuCapacity: this.config.allocatable.cpu,
+        memoryAllocatedBytes: this.allocatedResources.memory * 1024 * 1024, // Convert MB to bytes
+        memoryCapacityBytes: (this.config.allocatable.memory ?? 0) * 1024 * 1024,
+        workerPool: poolStats ? {
+          totalWorkers: poolStats.totalWorkers,
+          busyWorkers: poolStats.busyWorkers,
+          idleWorkers: poolStats.idleWorkers,
+          pendingTasks: poolStats.pendingTasks,
+        } : undefined,
+        timestamp: new Date().toISOString(),
+      };
+
+      this.send({
+        type: 'metrics:node',
+        payload: metricsPayload,
+      });
+
+      this.config.logger.debug('Metrics sent', {
+        nodeId: this.nodeId,
+        uptimeSeconds: systemMetrics.uptimeSeconds,
+        cpuUsagePercent: systemMetrics.cpuUsagePercent,
+        memoryUsagePercent: systemMetrics.memoryUsagePercent,
+      });
+    } catch (error) {
+      this.config.logger.error('Failed to send metrics', {
+        error: error instanceof Error ? error.message : String(error),
+        nodeId: this.nodeId,
+      });
+    }
+  }
+
+  /**
+   * Collect system metrics (CPU, memory, uptime)
+   */
+  private collectSystemMetrics(): {
+    uptimeSeconds: number;
+    cpuUsagePercent: number;
+    memoryUsedBytes: number;
+    memoryTotalBytes: number;
+    memoryUsagePercent: number;
+  } {
+    // Calculate process uptime
+    const uptimeSeconds = Math.floor((Date.now() - this.startTime) / 1000);
+
+    // Get memory usage
+    const memoryUsage = process.memoryUsage();
+    const memoryUsedBytes = memoryUsage.heapUsed + memoryUsage.external;
+    const memoryTotalBytes = os.totalmem();
+    const memoryUsagePercent = (memoryUsedBytes / memoryTotalBytes) * 100;
+
+    // Calculate CPU usage using process.cpuUsage()
+    const cpuUsagePercent = this.calculateCpuUsage();
+
+    return {
+      uptimeSeconds,
+      cpuUsagePercent,
+      memoryUsedBytes,
+      memoryTotalBytes,
+      memoryUsagePercent: Math.round(memoryUsagePercent * 100) / 100,
+    };
+  }
+
+  /**
+   * Calculate CPU usage as a percentage
+   * Uses process.cpuUsage() to calculate the percentage of CPU time used
+   */
+  private calculateCpuUsage(): number {
+    const cpuUsage = process.cpuUsage();
+    const now = Date.now();
+
+    if (this.lastCpuUsage === null) {
+      // First call, just store the values
+      this.lastCpuUsage = { user: cpuUsage.user, system: cpuUsage.system };
+      this.lastCpuUsageTime = now;
+      return 0;
+    }
+
+    // Calculate time elapsed in microseconds
+    const elapsedMs = now - this.lastCpuUsageTime;
+    const elapsedMicros = elapsedMs * 1000;
+
+    // Calculate CPU time used since last check
+    const userDiff = cpuUsage.user - this.lastCpuUsage.user;
+    const systemDiff = cpuUsage.system - this.lastCpuUsage.system;
+    const totalCpuTime = userDiff + systemDiff;
+
+    // CPU percentage = (CPU time used / elapsed time) * 100
+    // Divide by number of CPUs to get per-process percentage
+    const numCpus = os.cpus().length;
+    const cpuPercent = (totalCpuTime / (elapsedMicros * numCpus)) * 100;
+
+    // Store current values for next calculation
+    this.lastCpuUsage = { user: cpuUsage.user, system: cpuUsage.system };
+    this.lastCpuUsageTime = now;
+
+    return Math.round(Math.min(cpuPercent, 100) * 100) / 100;
   }
 
   /**

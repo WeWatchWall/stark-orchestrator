@@ -57,6 +57,8 @@ export interface BrowserAgentConfig {
   taints?: Taint[];
   /** Heartbeat interval in milliseconds (default: 15000) */
   heartbeatInterval?: number;
+  /** Metrics reporting interval in milliseconds (default: 30000) */
+  metricsInterval?: number;
   /** Reconnect delay in milliseconds (default: 5000) */
   reconnectDelay?: number;
   /** Maximum reconnect attempts (default: 10, -1 for infinite) */
@@ -203,11 +205,13 @@ export class BrowserAgent {
   private connectionId: string | null = null;
   private state: ConnectionState = 'disconnected';
   private heartbeatTimer: number | null = null;
+  private metricsTimer: number | null = null;
   private reconnectTimer: number | null = null;
   private tokenRefreshTimer: number | null = null;
   private reconnectAttempts = 0;
   private isShuttingDown = false;
   private isRefreshingToken = false;
+  private startTime: number = Date.now();
   private pendingRequests = new Map<string, {
     resolve: (value: unknown) => void;
     reject: (reason: unknown) => void;
@@ -236,6 +240,7 @@ export class BrowserAgent {
       annotations: config.annotations ?? {},
       taints: config.taints ?? [],
       heartbeatInterval: config.heartbeatInterval ?? 15000,
+      metricsInterval: config.metricsInterval ?? 30000,
       reconnectDelay: config.reconnectDelay ?? 5000,
       maxReconnectAttempts: config.maxReconnectAttempts ?? 10,
       bundlePath: config.bundlePath ?? '/packs',
@@ -362,6 +367,7 @@ export class BrowserAgent {
   async stop(): Promise<void> {
     this.isShuttingDown = true;
     this.stopHeartbeat();
+    this.stopMetricsCollection();
     this.stopTokenRefresh();
     this.cancelReconnect();
     this.clearPendingRequests('Agent stopped');
@@ -652,6 +658,7 @@ export class BrowserAgent {
   private handleClose(code: number, reason: string): void {
     this.logger.info('WebSocket closed', { code, reason });
     this.stopHeartbeat();
+    this.stopMetricsCollection();
     this.clearPendingRequests('Connection closed');
 
     const wasRegistered = this.state === 'registered';
@@ -1013,8 +1020,9 @@ export class BrowserAgent {
         nodeName: this.config.nodeName,
       });
 
-      // Start heartbeat
+      // Start heartbeat and metrics collection
       this.startHeartbeat();
+      this.startMetricsCollection();
     } catch (error) {
       // Check if this is a CONFLICT error (node already exists)
       const errorObj = error as { code?: string; message?: string };
@@ -1099,8 +1107,9 @@ export class BrowserAgent {
         nodeName: this.config.nodeName,
       });
 
-      // Start heartbeat
+      // Start heartbeat and metrics collection
       this.startHeartbeat();
+      this.startMetricsCollection();
     } catch (error) {
       this.logger.error('Reconnection failed, falling back to registration', { error: String(error) });
       // If reconnection fails (e.g., node was deleted), fall back to fresh registration
@@ -1137,6 +1146,238 @@ export class BrowserAgent {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+  }
+
+  // ============================================================================
+  // Metrics Collection
+  // ============================================================================
+
+  /**
+   * Start the metrics collection timer
+   */
+  private startMetricsCollection(): void {
+    this.stopMetricsCollection();
+
+    this.metricsTimer = window.setInterval(() => {
+      this.sendMetrics();
+    }, this.config.metricsInterval);
+
+    // Send initial metrics
+    this.sendMetrics();
+
+    this.logger.debug('Metrics collection started', { intervalMs: this.config.metricsInterval });
+  }
+
+  /**
+   * Stop the metrics collection timer
+   */
+  private stopMetricsCollection(): void {
+    if (this.metricsTimer !== null) {
+      clearInterval(this.metricsTimer);
+      this.metricsTimer = null;
+    }
+  }
+
+  /**
+   * Collect and send node metrics to the orchestrator
+   */
+  private sendMetrics(): void {
+    if (!this.nodeId || this.state !== 'registered') {
+      return;
+    }
+
+    try {
+      const systemMetrics = this.collectSystemMetrics();
+      const poolStats = this.executor.getPoolStats?.() ?? null;
+      const podCounts = this.podHandler.getPodCounts();
+      const restartStats = this.podHandler.getRestartStats();
+
+      const metricsPayload = {
+        nodeId: this.nodeId,
+        runtimeType: this.config.runtimeType,
+        // System metrics
+        uptimeSeconds: systemMetrics.uptimeSeconds,
+        cpuUsagePercent: systemMetrics.cpuUsagePercent,
+        memoryUsedBytes: systemMetrics.memoryUsedBytes,
+        memoryTotalBytes: systemMetrics.memoryTotalBytes,
+        memoryUsagePercent: systemMetrics.memoryUsagePercent,
+        runtimeVersion: systemMetrics.runtimeVersion,
+        // Resource allocation
+        podsAllocated: this.allocatedResources.pods,
+        podsCapacity: this.config.allocatable.pods,
+        cpuAllocated: this.allocatedResources.cpu,
+        cpuCapacity: this.config.allocatable.cpu,
+        memoryAllocatedBytes: this.allocatedResources.memory * 1024 * 1024, // Convert MB to bytes
+        memoryCapacityBytes: (this.config.allocatable.memory ?? 0) * 1024 * 1024,
+        // Pod status counts
+        podsRunning: podCounts.running,
+        podsPending: podCounts.pending,
+        podsStopped: podCounts.stopped,
+        podsFailed: podCounts.failed,
+        // Restart statistics
+        totalPodRestarts: restartStats.totalRestarts,
+        podsWithRestarts: restartStats.podsWithRestarts,
+        // Worker pool stats (if available)
+        workerPool: poolStats ? {
+          totalWorkers: poolStats.totalWorkers,
+          busyWorkers: poolStats.busyWorkers,
+          idleWorkers: poolStats.idleWorkers,
+          pendingTasks: poolStats.pendingTasks,
+        } : undefined,
+        timestamp: new Date().toISOString(),
+      };
+
+      this.send({
+        type: 'metrics:node',
+        payload: metricsPayload,
+      });
+
+      this.logger.debug('Metrics sent', {
+        nodeId: this.nodeId,
+        uptimeSeconds: systemMetrics.uptimeSeconds,
+        memoryUsagePercent: systemMetrics.memoryUsagePercent,
+        podsRunning: podCounts.running,
+        totalRestarts: restartStats.totalRestarts,
+      });
+    } catch (error) {
+      this.logger.error('Failed to send metrics', { error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  /**
+   * Collect system metrics (uptime, memory, runtime version)
+   * Browser-compatible implementation with limited access to system info
+   */
+  private collectSystemMetrics(): {
+    uptimeSeconds: number;
+    cpuUsagePercent: number | undefined;
+    memoryUsedBytes: number | undefined;
+    memoryTotalBytes: number | undefined;
+    memoryUsagePercent: number | undefined;
+    runtimeVersion: string;
+  } {
+    // Calculate agent uptime
+    const uptimeSeconds = Math.floor((Date.now() - this.startTime) / 1000);
+
+    // Browser version info from user agent
+    const runtimeVersion = this.getBrowserVersion();
+
+    // Try to get memory info if available (Chrome/Edge only)
+    let memoryUsedBytes: number | undefined;
+    let memoryTotalBytes: number | undefined;
+    let memoryUsagePercent: number | undefined;
+
+    // Use Performance.memory API if available (Chrome/Edge)
+    const performance = globalThis.performance as Performance & {
+      memory?: {
+        usedJSHeapSize: number;
+        totalJSHeapSize: number;
+        jsHeapSizeLimit: number;
+      };
+    };
+
+    if (performance?.memory) {
+      memoryUsedBytes = performance.memory.usedJSHeapSize;
+      memoryTotalBytes = performance.memory.jsHeapSizeLimit;
+      memoryUsagePercent = Math.round((memoryUsedBytes / memoryTotalBytes) * 10000) / 100;
+    } else if (typeof navigator !== 'undefined' && 'deviceMemory' in navigator) {
+      // Fallback to deviceMemory API (gives approximate device RAM in GB)
+      const deviceMemoryGB = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+      if (deviceMemoryGB) {
+        memoryTotalBytes = deviceMemoryGB * 1024 * 1024 * 1024;
+      }
+    }
+
+    // CPU usage is not reliably available in browsers
+    // We could estimate based on frame rate or task timing, but it's not accurate
+    const cpuUsagePercent = undefined;
+
+    return {
+      uptimeSeconds,
+      cpuUsagePercent,
+      memoryUsedBytes,
+      memoryTotalBytes,
+      memoryUsagePercent,
+      runtimeVersion,
+    };
+  }
+
+  /**
+   * Get browser version string
+   */
+  private getBrowserVersion(): string {
+    if (typeof navigator === 'undefined') {
+      return 'unknown';
+    }
+
+    const ua = navigator.userAgent;
+    
+    // Try to extract browser name and version
+    const browserPatterns = [
+      { name: 'Chrome', pattern: /Chrome\/(\d+\.\d+)/ },
+      { name: 'Firefox', pattern: /Firefox\/(\d+\.\d+)/ },
+      { name: 'Safari', pattern: /Version\/(\d+\.\d+).*Safari/ },
+      { name: 'Edge', pattern: /Edg\/(\d+\.\d+)/ },
+    ];
+
+    for (const { name, pattern } of browserPatterns) {
+      const match = ua.match(pattern);
+      if (match) {
+        return `${name}/${match[1]}`;
+      }
+    }
+
+    return 'Browser/unknown';
+  }
+
+  /**
+   * Get current metrics snapshot (for external access)
+   */
+  getMetricsSnapshot(): {
+    uptime: number;
+    pods: { running: number; pending: number; stopped: number; failed: number };
+    restarts: { total: number; byPod: Map<string, number> };
+    resources: {
+      allocated: { cpu: number; memory: number; pods: number };
+      capacity: { cpu: number; memory: number; pods: number };
+    };
+    workerPool: { total: number; busy: number; idle: number; pending: number } | null;
+  } {
+    const podCounts = this.podHandler.getPodCounts();
+    const restartStats = this.podHandler.getRestartStats();
+    const poolStats = this.executor.getPoolStats?.() ?? null;
+
+    return {
+      uptime: Math.floor((Date.now() - this.startTime) / 1000),
+      pods: {
+        running: podCounts.running,
+        pending: podCounts.pending,
+        stopped: podCounts.stopped,
+        failed: podCounts.failed,
+      },
+      restarts: {
+        total: restartStats.totalRestarts,
+        byPod: restartStats.restartsByPod,
+      },
+      resources: {
+        allocated: {
+          cpu: this.allocatedResources.cpu,
+          memory: this.allocatedResources.memory,
+          pods: this.allocatedResources.pods,
+        },
+        capacity: {
+          cpu: this.config.allocatable.cpu,
+          memory: this.config.allocatable.memory ?? 0,
+          pods: this.config.allocatable.pods,
+        },
+      },
+      workerPool: poolStats ? {
+        total: poolStats.totalWorkers,
+        busy: poolStats.busyWorkers,
+        idle: poolStats.idleWorkers,
+        pending: poolStats.pendingTasks,
+      } : null,
+    };
   }
 
   /**

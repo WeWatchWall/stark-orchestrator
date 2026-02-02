@@ -179,3 +179,10 @@ export {
   getDeploymentQueries,
   getDeploymentQueriesAdmin,
 } from './deployments.js';
+// Metrics queries
+export {
+  type MetricsResult,
+  MetricsQueries,
+  getMetricsQueries,
+  resetMetricsQueries,
+} from './metrics.js';

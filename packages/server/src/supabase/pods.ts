@@ -127,6 +127,7 @@ function rowToPodListItem(row: PodRow): PodListItem {
     packVersion: row.pack_version,
     nodeId: row.node_id,
     status: row.status,
+    statusMessage: row.status_message ?? undefined,
     namespace: row.namespace,
     labels: row.labels ?? {},
     priority: row.priority,

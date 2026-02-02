@@ -38,6 +38,16 @@ interface LocalPodState {
   startedAt?: Date;
   stoppedAt?: Date;
   error?: string;
+  /** Number of times this pod has been restarted */
+  restartCount: number;
+  /** Total execution count for this pod */
+  executionCount: number;
+  /** Successful execution count */
+  successfulExecutions: number;
+  /** Failed execution count */
+  failedExecutions: number;
+  /** Total execution time in milliseconds */
+  totalExecutionTimeMs: number;
 }
 
 /**
@@ -122,11 +132,17 @@ export class PodHandler {
       }
     }
 
-    // Create local pod state
+    // Create local pod state (or reuse existing for restart tracking)
+    const existingState = this.pods.get(podId);
     const state: LocalPodState = {
       podId,
       status: 'pending',
       pack,
+      restartCount: existingState?.restartCount ?? 0,
+      executionCount: existingState?.executionCount ?? 0,
+      successfulExecutions: existingState?.successfulExecutions ?? 0,
+      failedExecutions: existingState?.failedExecutions ?? 0,
+      totalExecutionTimeMs: existingState?.totalExecutionTimeMs ?? 0,
     };
     this.pods.set(podId, state);
 
@@ -206,13 +222,20 @@ export class PodHandler {
 
     state.stoppedAt = new Date();
 
+    // Record execution metrics
+    const durationMs = result.durationMs ?? 0;
+    state.executionCount++;
+    state.totalExecutionTimeMs += durationMs;
+
     if (result.success) {
+      state.successfulExecutions++;
       this.config.logger.info('Pod execution completed successfully', {
         podId,
         durationMs: result.durationMs,
       });
       this.updateStatus(podId, 'stopped');
     } else {
+      state.failedExecutions++;
       this.config.logger.warn('Pod execution failed', {
         podId,
         error: result.error,
@@ -324,6 +347,94 @@ export class PodHandler {
     }
 
     return counts;
+  }
+
+  /**
+   * Get restart statistics for all pods
+   */
+  getRestartStats(): { totalRestarts: number; podsWithRestarts: number; restartsByPod: Map<string, number> } {
+    let totalRestarts = 0;
+    let podsWithRestarts = 0;
+    const restartsByPod = new Map<string, number>();
+
+    for (const [podId, state] of this.pods) {
+      restartsByPod.set(podId, state.restartCount);
+      totalRestarts += state.restartCount;
+      if (state.restartCount > 0) {
+        podsWithRestarts++;
+      }
+    }
+
+    return { totalRestarts, podsWithRestarts, restartsByPod };
+  }
+
+  /**
+   * Get execution metrics for all pods
+   */
+  getPodMetrics(): Array<{
+    podId: string;
+    status: LocalPodStatus;
+    restartCount: number;
+    executionCount: number;
+    successfulExecutions: number;
+    failedExecutions: number;
+    totalExecutionTimeMs: number;
+    avgExecutionTimeMs: number | null;
+  }> {
+    const metrics: Array<{
+      podId: string;
+      status: LocalPodStatus;
+      restartCount: number;
+      executionCount: number;
+      successfulExecutions: number;
+      failedExecutions: number;
+      totalExecutionTimeMs: number;
+      avgExecutionTimeMs: number | null;
+    }> = [];
+
+    for (const [podId, state] of this.pods) {
+      metrics.push({
+        podId,
+        status: state.status,
+        restartCount: state.restartCount,
+        executionCount: state.executionCount,
+        successfulExecutions: state.successfulExecutions,
+        failedExecutions: state.failedExecutions,
+        totalExecutionTimeMs: state.totalExecutionTimeMs,
+        avgExecutionTimeMs: state.executionCount > 0
+          ? Math.round(state.totalExecutionTimeMs / state.executionCount)
+          : null,
+      });
+    }
+
+    return metrics;
+  }
+
+  /**
+   * Increment restart count for a pod (called when pod is restarted)
+   */
+  incrementRestartCount(podId: string): void {
+    const state = this.pods.get(podId);
+    if (state) {
+      state.restartCount++;
+      this.config.logger.debug('Pod restart count incremented', { podId, restartCount: state.restartCount });
+    }
+  }
+
+  /**
+   * Record an execution result for a pod
+   */
+  recordExecution(podId: string, success: boolean, durationMs: number): void {
+    const state = this.pods.get(podId);
+    if (state) {
+      state.executionCount++;
+      state.totalExecutionTimeMs += durationMs;
+      if (success) {
+        state.successfulExecutions++;
+      } else {
+        state.failedExecutions++;
+      }
+    }
   }
 
   /**

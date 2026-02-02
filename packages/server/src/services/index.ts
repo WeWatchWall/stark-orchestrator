@@ -25,3 +25,9 @@ export {
   resetDeploymentController,
   type DeploymentControllerConfig,
 } from './deployment-controller.js';
+export {
+  MetricsService,
+  getMetricsService,
+  resetMetricsService,
+  type MetricsServiceConfig,
+} from './metrics-service.js';

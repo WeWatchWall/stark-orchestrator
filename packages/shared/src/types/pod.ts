@@ -193,6 +193,7 @@ export interface PodListItem {
   packVersion: string;
   nodeId: string | null;
   status: PodStatus;
+  statusMessage?: string;
   namespace: string;
   labels: Labels;
   priority: number;

@@ -282,3 +282,29 @@ export type {
 export {
   mapLocalStatusToPodStatus,
 } from './runtime.js';
+
+// Metrics types
+export type {
+  NodeSystemMetrics,
+  WorkerPoolStats,
+  ResourceAllocationMetrics,
+  NodeMetrics,
+  NodeMetricsRecord,
+  CreateNodeMetricsInput,
+  PodExecutionStats,
+  PodMetrics,
+  PodMetricsRecord,
+  CreatePodMetricsInput,
+  SchedulingFailureReasons,
+  SchedulingMetrics,
+  SchedulingMetricsRecord,
+  NodeStatusCounts,
+  PodStatusCounts,
+  ClusterResourceUtilization,
+  RestartStats,
+  ClusterMetrics,
+  ClusterMetricsRecord,
+  MetricsDashboard,
+  MetricsTimeRange,
+  MetricsQueryOptions,
+} from './metrics.js';

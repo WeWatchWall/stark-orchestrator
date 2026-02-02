@@ -321,14 +321,29 @@ export class DeploymentController {
    */
   private async detectAndHandleCrashLoop(
     deployment: Deployment,
-    allPods: Array<{ id: string; status: string; packVersion: string; updatedAt?: Date }>
+    allPods: Array<{ id: string; status: string; statusMessage?: string; packVersion: string; updatedAt?: Date }>
   ): Promise<boolean> {
     const deploymentQueries = getDeploymentQueriesAdmin();
 
+    // Infrastructure failure messages that should NOT count toward crash loop
+    // These are caused by node/infrastructure issues, not application bugs
+    const infrastructureFailureMessages = [
+      'Node went offline',
+      'Node unhealthy',
+      'Node evicted',
+      'Node maintenance',
+      'Node draining',
+    ];
+
     // Count recent failures (pods that failed within the detection window)
+    // Exclude infrastructure failures - only count actual application crashes
     const now = Date.now();
     const recentFailures = allPods.filter(p => {
       if (p.status !== 'failed') return false;
+      // Skip infrastructure failures - these shouldn't trigger crash loop
+      if (p.statusMessage && infrastructureFailureMessages.some(msg => p.statusMessage?.includes(msg))) {
+        return false;
+      }
       if (!p.updatedAt) return true; // Assume recent if no timestamp
       return (now - new Date(p.updatedAt).getTime()) < this.config.failureDetectionWindowMs;
     });
@@ -445,6 +460,7 @@ export class DeploymentController {
     const allPods = podsResult.data.map(p => ({
       id: p.id,
       status: p.status,
+      statusMessage: p.statusMessage,
       packVersion: p.packVersion,
       updatedAt: p.updatedAt,
     }));
