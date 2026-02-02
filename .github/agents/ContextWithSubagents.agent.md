@@ -1,6 +1,6 @@
 ---
 description: 'Use subagents to gather context.'
-tools: []
+tools: ['vscode', 'execute', 'read', 'edit', 'search', 'web', 'agent', 'todo']
 ---
 This is just like the simple Agent but you use subagents to gather context to
 avoid exceeding token limits or throwing
