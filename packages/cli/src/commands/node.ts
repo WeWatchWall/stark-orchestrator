@@ -920,6 +920,9 @@ async function agentStartHandler(options: {
   console.log();
 
   // Create and start the agent
+  // Track if we need to restart due to invalid credentials
+  let shouldRestartOnStop = false;
+  
   const agent = new NodeAgent(agentConfig);
 
   // Set up event handlers
@@ -953,6 +956,10 @@ async function agentStartHandler(options: {
       case 'reconnecting':
         info('Attempting to reconnect...');
         break;
+      case 'credentials_invalid':
+        info('Stored credentials are invalid. Will re-register with fresh credentials...');
+        shouldRestartOnStop = true;
+        break;
       case 'error':
         error('Agent error', data instanceof Error ? { message: data.message } : undefined);
         break;
@@ -973,11 +980,32 @@ async function agentStartHandler(options: {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
-  // Start the agent
+  // Start the agent with retry on auth failure
   try {
     await agent.start();
   } catch (err) {
-    error('Failed to start agent', err instanceof Error ? { message: err.message } : undefined);
+    // Check if this is an AUTH_FAILED error (could be Error or raw payload object)
+    const isAuthFailed = shouldRestartOnStop ||
+      (err instanceof Error && err.message.includes('AUTH_FAILED')) ||
+      (typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'AUTH_FAILED');
+    
+    // If credentials were invalid (already cleared by agent), retry with auto-registration
+    if (isAuthFailed) {
+      info('Retrying with fresh credentials...');
+      
+      // Stop the current agent before retrying
+      try {
+        await agent.stop();
+      } catch {
+        // Ignore errors when stopping
+      }
+      
+      // Retry by recursively calling this handler (credentials are now cleared, will trigger auto-registration)
+      return agentStartHandler(options);
+    }
+    
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    error('Failed to start agent', { message: errorMessage });
     process.exit(1);
   }
 

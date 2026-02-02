@@ -89,6 +89,7 @@ export type NodeAgentEvent =
   | 'disconnected'
   | 'reconnecting'
   | 'error'
+  | 'credentials_invalid'
   | 'stopped'
   | 'pod:deployed'
   | 'pod:started'
@@ -653,6 +654,23 @@ export class NodeAgent {
       }
     } catch (error) {
       this.config.logger.error('Authentication failed', { error });
+      
+      // Check if this is an AUTH_FAILED error - credentials are invalid/expired
+      // The error could be an Error object, or a raw payload object from the server
+      const isAuthFailed = 
+        (error instanceof Error && error.message.includes('AUTH_FAILED')) ||
+        (typeof error === 'object' && error !== null && 'code' in error && (error as { code: string }).code === 'AUTH_FAILED');
+      
+      if (isAuthFailed) {
+        this.config.logger.info('Credentials are invalid, clearing stored credentials');
+        this.stateStore.clearCredentials();
+        this.stateStore.removeNode(this.config.nodeName);
+        this.authToken = '';
+        this.nodeId = null;
+        this.emit('credentials_invalid', error);
+        throw error;
+      }
+      
       this.emit('error', error);
       throw error;
     }

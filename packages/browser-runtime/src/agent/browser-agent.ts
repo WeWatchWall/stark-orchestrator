@@ -85,6 +85,7 @@ export type BrowserAgentEvent =
   | 'disconnected'
   | 'reconnecting'
   | 'error'
+  | 'credentials_invalid'
   | 'stopped'
   | 'pod:deployed'
   | 'pod:started'
@@ -209,6 +210,7 @@ export class BrowserAgent {
   private reconnectTimer: number | null = null;
   private tokenRefreshTimer: number | null = null;
   private reconnectAttempts = 0;
+  private authRetryCount = 0;
   private isShuttingDown = false;
   private isRefreshingToken = false;
   private startTime: number = Date.now();
@@ -531,7 +533,9 @@ export class BrowserAgent {
 
       // Check for error responses
       if (message.type.endsWith(':error')) {
-        pending.reject(message.payload);
+        const errorPayload = message.payload as { code?: string; message?: string } | null;
+        const errorMessage = errorPayload?.message ?? errorPayload?.code ?? 'Unknown error';
+        pending.reject(new Error(errorMessage));
       } else {
         pending.resolve(message.payload);
       }
@@ -792,16 +796,37 @@ export class BrowserAgent {
 
   /**
    * Generate a random password for auto-registration
+   * Ensures at least one uppercase, one lowercase, and one digit to meet validation requirements
    */
   private generateRandomPassword(): string {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-    let result = '';
+    const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const lower = 'abcdefghijklmnopqrstuvwxyz';
+    const digits = '0123456789';
+    const special = '!@#$%^&*';
+    const allChars = upper + lower + digits + special;
+
     const randomValues = new Uint8Array(16);
     crypto.getRandomValues(randomValues);
-    for (let i = 0; i < 16; i++) {
-      result += chars.charAt(randomValues[i]! % chars.length);
+
+    // Guarantee at least one of each required character type
+    const result: string[] = [
+      upper.charAt(randomValues[0]! % upper.length),
+      lower.charAt(randomValues[1]! % lower.length),
+      digits.charAt(randomValues[2]! % digits.length),
+    ];
+
+    // Fill the rest randomly from all characters
+    for (let i = 3; i < 16; i++) {
+      result.push(allChars.charAt(randomValues[i]! % allChars.length));
     }
-    return result;
+
+    // Shuffle to avoid predictable positions for required characters
+    for (let i = result.length - 1; i > 0; i--) {
+      const j = randomValues[i]! % (i + 1);
+      [result[i], result[j]] = [result[j]!, result[i]!];
+    }
+
+    return result.join('');
   }
 
   /**
@@ -902,6 +927,18 @@ export class BrowserAgent {
       return;
     }
 
+    // If access token is expired but we have a refresh token, try to refresh
+    const storedCredentials = this.stateStore.getCredentials();
+    if (storedCredentials?.refreshToken) {
+      this.logger.info('Access token expired, attempting to refresh...');
+      const refreshed = await this.refreshToken(storedCredentials.refreshToken);
+      if (refreshed) {
+        this.logger.info('Token refreshed successfully');
+        return;
+      }
+      this.logger.warn('Token refresh failed, falling back to auto-registration');
+    }
+
     if (!this.config.autoRegister) {
       throw new Error('No auth token provided, no stored credentials, and autoRegister is disabled');
     }
@@ -917,7 +954,11 @@ export class BrowserAgent {
     this.authToken = await this.autoRegisterUser();
 
     // Save the credentials for future sessions
-    if (this.config.persistState && this.autoRegResult) {
+    if (!this.autoRegResult) {
+      this.logger.error('Auto-registration succeeded but autoRegResult is missing');
+    } else if (!this.config.persistState) {
+      this.logger.info('Skipping credential save (persistState is disabled)');
+    } else {
       const credentials: BrowserNodeCredentials = {
         accessToken: this.autoRegResult.accessToken,
         refreshToken: this.autoRegResult.refreshToken,
@@ -927,7 +968,11 @@ export class BrowserAgent {
         createdAt: new Date().toISOString(),
       };
       this.stateStore.saveCredentials(credentials);
-      this.logger.info('Saved credentials for future sessions', { email: this.autoRegResult.email });
+      this.logger.info('Saved credentials for future sessions', { 
+        email: this.autoRegResult.email,
+        hasRefreshToken: !!this.autoRegResult.refreshToken,
+        expiresAt: this.autoRegResult.expiresAt,
+      });
     }
 
     // Update the executor with the new auth token
@@ -961,6 +1006,8 @@ export class BrowserAgent {
         token: this.authToken,
       });
 
+      // Reset retry counter on successful auth
+      this.authRetryCount = 0;
       this.state = 'authenticated';
       this.emit('authenticated');
       this.logger.info('Authenticated successfully');
@@ -973,6 +1020,26 @@ export class BrowserAgent {
       }
     } catch (error) {
       this.logger.error('Authentication failed', { error: String(error) });
+      
+      // Check if this is an AUTH_FAILED error - credentials are invalid/expired
+      const isAuthFailed = 
+        (error instanceof Error && error.message.includes('AUTH_FAILED')) ||
+        (typeof error === 'object' && error !== null && 'code' in error && (error as { code: string }).code === 'AUTH_FAILED');
+      
+      if (isAuthFailed && this.authRetryCount < 1) {
+        this.authRetryCount++;
+        this.logger.info('Credentials are invalid, clearing stored credentials and retrying...');
+        this.stateStore.clearCredentials();
+        this.stateStore.removeNode(this.config.nodeName);
+        this.authToken = '';
+        this.nodeId = null;
+        this.emit('credentials_invalid', error);
+        
+        // Retry authentication - ensureAuthToken will auto-register since credentials are cleared
+        this.logger.info('Retrying authentication with fresh credentials...');
+        return this.authenticate();
+      }
+      
       this.emit('error', error);
       throw error;
     }
