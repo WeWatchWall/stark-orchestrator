@@ -642,6 +642,7 @@ export class NodeAgent {
             maxMemoryMB: this.config.allocatable.memory,
             logger: this.config.logger,
           });
+          await this.executor.initialize();
         }
       }
 
@@ -1114,7 +1115,7 @@ export class NodeAgent {
       };
 
       // Save credentials and update auth token
-      this.saveCredentials(newCredentials);
+      await this.saveCredentials(newCredentials);
 
       this.config.logger.info('Access token refreshed successfully', {
         userId: newCredentials.userId,
@@ -1283,7 +1284,7 @@ export class NodeAgent {
    * Save credentials for future node agent sessions
    * This stores credentials separately from CLI user credentials
    */
-  saveCredentials(credentials: NodeCredentials): void {
+  async saveCredentials(credentials: NodeCredentials): Promise<void> {
     this.stateStore.saveCredentials(credentials);
     this.authToken = credentials.accessToken;
     
@@ -1295,6 +1296,7 @@ export class NodeAgent {
       maxMemoryMB: this.config.allocatable.memory,
       logger: this.config.logger,
     });
+    await this.executor.initialize();
 
     this.config.logger.info('Saved node credentials', { userId: credentials.userId, email: credentials.email });
   }
@@ -1316,7 +1318,7 @@ export class NodeAgent {
   /**
    * Set the auth token (updates executor as well)
    */
-  setAuthToken(token: string): void {
+  async setAuthToken(token: string): Promise<void> {
     this.authToken = token;
     
     // Update the executor with the new auth token
@@ -1327,6 +1329,7 @@ export class NodeAgent {
       maxMemoryMB: this.config.allocatable.memory,
       logger: this.config.logger,
     });
+    await this.executor.initialize();
   }
 }
 
