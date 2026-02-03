@@ -3,6 +3,28 @@
  * @module @stark-o/shared/types
  */
 
+// Capability types
+export type {
+  Capability,
+  CapabilityGrantContext,
+  CapabilityGrantResult,
+} from './capabilities.js';
+
+export {
+  ALL_CAPABILITIES,
+  SYSTEM_ONLY_CAPABILITIES,
+  DEFAULT_CAPABILITIES,
+  UI_PACK_CAPABILITIES,
+  isValidCapability,
+  requiresSystemNamespace,
+  grantCapabilities,
+  hasCapability,
+  hasAnyCapability,
+  hasAllCapabilities,
+  requiresMainThread,
+  validateCapabilities,
+} from './capabilities.js';
+
 // User types
 export type {
   User,

@@ -10,6 +10,7 @@
 import type { RuntimeTag, PackNamespace } from './pack.js';
 import type { Labels, Annotations } from './labels.js';
 import type { ResourceRequirements } from './pod.js';
+import type { Capability } from './capabilities.js';
 
 /**
  * WebSocket message structure used for agent communication
@@ -80,6 +81,7 @@ export interface PodDeployPayload {
     bundlePath: string;
     bundleContent?: string;
     metadata?: Record<string, unknown>;
+    grantedCapabilities?: Capability[];
   };
   resourceRequests?: ResourceRequirements;
   resourceLimits?: ResourceRequirements;

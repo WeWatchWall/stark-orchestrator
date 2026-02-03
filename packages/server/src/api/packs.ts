@@ -6,8 +6,8 @@
  */
 
 import { Router, Request, Response } from 'express';
-import type { RuntimeTag, RegisterPackInput, UpdatePackInput, PackVisibility } from '@stark-o/shared';
-import { validateRegisterPackInput, validateUpdatePackInput, createServiceLogger, generateCorrelationId } from '@stark-o/shared';
+import type { RuntimeTag, RegisterPackInput, UpdatePackInput, PackVisibility, Capability } from '@stark-o/shared';
+import { validateRegisterPackInput, validateUpdatePackInput, createServiceLogger, generateCorrelationId, grantCapabilities } from '@stark-o/shared';
 import { getPackQueries, getPackQueriesAdmin } from '../supabase/packs.js';
 import {
   authMiddleware,
@@ -66,6 +66,7 @@ interface RegisterPackResponse {
     bundlePath: string;
     description?: string;
     metadata: Record<string, unknown>;
+    grantedCapabilities: Capability[];
     createdAt: Date;
     updatedAt: Date;
   };
@@ -86,6 +87,7 @@ interface PackListResponse {
     bundlePath: string;
     description?: string;
     metadata: Record<string, unknown>;
+    grantedCapabilities: Capability[];
     createdAt: Date;
     updatedAt: Date;
   }>;
@@ -255,10 +257,37 @@ async function registerPack(req: Request, res: Response): Promise<void> {
     const bundlePath = generateBundlePath(input.name, input.version);
     requestLogger.debug('Creating pack record', { name: input.name, version: input.version, bundlePath });
     
+    // Grant capabilities based on namespace, runtime, and requested capabilities
+    const authReq = req as AuthenticatedRequest;
+    const isAdmin = authReq.user?.roles?.includes('admin') ?? false;
+    const requestedCapabilities = (input.metadata?.requestedCapabilities ?? []) as Capability[];
+    
+    const capabilityResult = grantCapabilities(requestedCapabilities, {
+      namespace: input.namespace ?? 'user',
+      runtimeTag: input.runtimeTag,
+      isAdmin,
+    });
+    
+    // Log any denied capabilities
+    if (capabilityResult.denied.length > 0) {
+      requestLogger.info('Some requested capabilities were denied', {
+        name: input.name,
+        denied: capabilityResult.denied,
+      });
+    }
+    
+    requestLogger.debug('Granting capabilities', {
+      name: input.name,
+      requested: requestedCapabilities,
+      granted: capabilityResult.granted,
+      denied: capabilityResult.denied.map(d => d.capability),
+    });
+    
     const createResult = await packQueriesAdmin.createPack({
       ...input,
       ownerId: userId,
       bundlePath,
+      grantedCapabilities: capabilityResult.granted,
     });
 
     if (createResult.error) {
@@ -303,6 +332,7 @@ async function registerPack(req: Request, res: Response): Promise<void> {
         bundlePath: createResult.data.bundlePath,
         description: createResult.data.description,
         metadata: createResult.data.metadata,
+        grantedCapabilities: createResult.data.grantedCapabilities,
         createdAt: createResult.data.createdAt,
         updatedAt: createResult.data.updatedAt,
       },
@@ -314,6 +344,7 @@ async function registerPack(req: Request, res: Response): Promise<void> {
       name: createResult.data.name,
       version: createResult.data.version,
       runtimeTag: createResult.data.runtimeTag,
+      grantedCapabilities: createResult.data.grantedCapabilities,
       userId,
     });
 
@@ -390,6 +421,7 @@ async function listPacks(req: Request, res: Response): Promise<void> {
       bundlePath: `packs/${item.name}/${item.latestVersion}/bundle.js`,
       description: item.description,
       metadata: {},
+      grantedCapabilities: [],
       createdAt: item.createdAt,
       updatedAt: item.createdAt, // List items don't have updatedAt
     }));

@@ -3,6 +3,8 @@
  * @module @stark-o/shared/types/pack
  */
 
+import type { Capability } from './capabilities.js';
+
 /**
  * Runtime tags for targeting execution environment
  * - node: Only runs on Node.js runtimes
@@ -21,6 +23,12 @@ export interface PackMetadata {
   timeout?: number;
   /** Environment variables */
   env?: Record<string, string>;
+  /**
+   * Capabilities requested by this pack.
+   * These are validated and granted based on namespace and context.
+   * See capabilities.ts for available capabilities.
+   */
+  requestedCapabilities?: Capability[];
   /** Additional configuration */
   [key: string]: unknown;
 }
@@ -65,6 +73,12 @@ export interface Pack {
   description?: string;
   /** Additional metadata */
   metadata: PackMetadata;
+  /**
+   * Capabilities granted to this pack.
+   * Determined at registration time based on namespace, runtime, and requested capabilities.
+   * 'root' capability means pack runs on main thread (not in worker).
+   */
+  grantedCapabilities: Capability[];
   /** Creation timestamp */
   createdAt: Date;
   /** Last update timestamp */

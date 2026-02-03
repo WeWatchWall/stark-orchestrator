@@ -13,6 +13,7 @@ export {
   validateRuntimeTag,
   validatePackDescription,
   validatePackMetadata,
+  validateRequestedCapabilities,
   validateRegisterPackInput,
   validateUpdatePackInput,
   isRuntimeCompatible as validateRuntimeCompatibility,

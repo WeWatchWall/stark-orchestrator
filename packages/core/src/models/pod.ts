@@ -16,6 +16,7 @@ import type {
   Labels,
   Annotations,
   PodSchedulingConfig,
+  Capability,
 } from '@stark-o/shared';
 import type { Toleration } from '@stark-o/shared';
 import {
@@ -403,7 +404,8 @@ export class PodModel {
     packVersion: string,
     createdBy: string,
     priority: number = 0,
-    id?: string
+    id?: string,
+    grantedCapabilities: Capability[] = []
   ): PodModel {
     const now = new Date();
     const pod: Pod = {
@@ -433,6 +435,7 @@ export class PodModel {
       startedAt: undefined,
       stoppedAt: undefined,
       metadata: input.metadata ?? {},
+      grantedCapabilities,
       createdAt: now,
       updatedAt: now,
     };

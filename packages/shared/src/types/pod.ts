@@ -6,6 +6,7 @@
 import type { Labels, Annotations } from './labels';
 import type { Toleration } from './taints';
 import type { NodeAffinity, PodAffinity, PodAntiAffinity } from './scheduling';
+import type { Capability } from './capabilities.js';
 
 /**
  * Pod status values
@@ -178,6 +179,11 @@ export interface Pod {
   stoppedAt?: Date;
   /** Additional metadata */
   metadata: Record<string, unknown>;
+  /**
+   * Capabilities granted to this pod (copied from pack at scheduling time).
+   * 'root' capability means pod runs on main thread (not in worker).
+   */
+  grantedCapabilities: Capability[];
   /** Creation timestamp */
   createdAt: Date;
   /** Last update timestamp */

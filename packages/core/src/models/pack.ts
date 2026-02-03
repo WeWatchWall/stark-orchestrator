@@ -12,6 +12,7 @@ import type {
   RuntimeTag,
   PackVersionSummary,
   PackListItem,
+  Capability,
 } from '@stark-o/shared';
 import {
   validateRegisterPackInput,
@@ -205,7 +206,8 @@ export class PackModel {
     input: RegisterPackInput,
     ownerId: string,
     bundlePath: string,
-    id?: string
+    id?: string,
+    grantedCapabilities: Capability[] = []
   ): PackModel {
     const now = new Date();
     const pack: Pack = {
@@ -219,6 +221,7 @@ export class PackModel {
       bundlePath,
       description: input.description,
       metadata: input.metadata ?? {},
+      grantedCapabilities,
       createdAt: now,
       updatedAt: now,
     };

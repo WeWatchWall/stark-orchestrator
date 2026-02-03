@@ -15,6 +15,7 @@ import type {
   UpdatePackInput,
   RuntimeTag,
   PackNamespace,
+  Capability,
 } from '@stark-o/shared';
 import { getSupabaseClient, getSupabaseServiceClient } from './client.js';
 
@@ -33,6 +34,7 @@ interface PackRow {
   bundle_content: string | null;
   description: string | null;
   metadata: PackMetadata;
+  granted_capabilities: string[];
   created_at: string;
   updated_at: string;
 }
@@ -61,6 +63,7 @@ function rowToPack(row: PackRow): Pack {
     bundleContent: row.bundle_content ?? undefined,
     description: row.description ?? undefined,
     metadata: row.metadata ?? {},
+    grantedCapabilities: (row.granted_capabilities ?? []) as Capability[],
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -107,7 +110,7 @@ export class PackQueries {
   /**
    * Creates a new pack in the database
    */
-  async createPack(input: RegisterPackInput & { ownerId: string; bundlePath: string }): Promise<PackResult<Pack>> {
+  async createPack(input: RegisterPackInput & { ownerId: string; bundlePath: string; grantedCapabilities: Capability[] }): Promise<PackResult<Pack>> {
     const { data, error } = await this.client
       .from('packs')
       .insert({
@@ -121,6 +124,7 @@ export class PackQueries {
         bundle_content: input.bundleContent ?? null,
         description: input.description ?? null,
         metadata: input.metadata ?? {},
+        granted_capabilities: input.grantedCapabilities,
       })
       .select()
       .single();
@@ -472,7 +476,7 @@ export function resetPackQueries(): void {
 }
 
 // Export convenience functions that use the default instance
-export const createPack = (input: RegisterPackInput & { ownerId: string; bundlePath: string }) =>
+export const createPack = (input: RegisterPackInput & { ownerId: string; bundlePath: string; grantedCapabilities: Capability[] }) =>
   getPackQueries().createPack(input);
 
 export const getPackById = (id: string) =>

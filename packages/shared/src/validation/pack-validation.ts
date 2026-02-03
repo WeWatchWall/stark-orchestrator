@@ -4,6 +4,7 @@
  */
 
 import type { RuntimeTag } from '../types/pack';
+import { ALL_CAPABILITIES, isValidCapability } from '../types/capabilities.js';
 
 /**
  * Validation result
@@ -285,6 +286,60 @@ export function validatePackNamespace(namespace: unknown): ValidationError | nul
 }
 
 /**
+ * Maximum number of requested capabilities
+ */
+const MAX_CAPABILITIES = 20;
+
+/**
+ * Validate requested capabilities in metadata
+ */
+export function validateRequestedCapabilities(capabilities: unknown): ValidationError | null {
+  if (capabilities === undefined || capabilities === null) {
+    return null; // Optional field
+  }
+
+  if (!Array.isArray(capabilities)) {
+    return {
+      field: 'metadata.requestedCapabilities',
+      message: 'Requested capabilities must be an array',
+      code: 'INVALID_TYPE',
+    };
+  }
+
+  if (capabilities.length > MAX_CAPABILITIES) {
+    return {
+      field: 'metadata.requestedCapabilities',
+      message: `Cannot request more than ${MAX_CAPABILITIES} capabilities`,
+      code: 'TOO_MANY_ITEMS',
+    };
+  }
+
+  const invalidCaps: string[] = [];
+  for (const cap of capabilities) {
+    if (typeof cap !== 'string') {
+      return {
+        field: 'metadata.requestedCapabilities',
+        message: 'Each capability must be a string',
+        code: 'INVALID_TYPE',
+      };
+    }
+    if (!isValidCapability(cap)) {
+      invalidCaps.push(cap);
+    }
+  }
+
+  if (invalidCaps.length > 0) {
+    return {
+      field: 'metadata.requestedCapabilities',
+      message: `Invalid capabilities: ${invalidCaps.join(', ')}. Valid capabilities are: ${ALL_CAPABILITIES.join(', ')}`,
+      code: 'INVALID_VALUE',
+    };
+  }
+
+  return null;
+}
+
+/**
  * Validate pack registration input
  */
 export function validateRegisterPackInput(input: unknown): ValidationResult {
@@ -328,6 +383,13 @@ export function validateRegisterPackInput(input: unknown): ValidationResult {
 
   const metadataError = validatePackMetadata(data.metadata);
   if (metadataError) errors.push(metadataError);
+
+  // Validate requested capabilities if present in metadata
+  if (data.metadata && typeof data.metadata === 'object') {
+    const metadata = data.metadata as Record<string, unknown>;
+    const capabilitiesError = validateRequestedCapabilities(metadata.requestedCapabilities);
+    if (capabilitiesError) errors.push(capabilitiesError);
+  }
 
   return {
     valid: errors.length === 0,

@@ -19,6 +19,7 @@ import { HttpAdapter, type HttpAdapterConfig } from '../adapters/http-adapter.js
 import {
   createServiceLogger,
   PodError,
+  requiresMainThread,
   type Logger,
   type Pack,
   type Pod,
@@ -493,6 +494,42 @@ export class PackExecutor {
       // Update state to running
       state.status = 'running';
 
+      // Check if pack has root capability - run on main thread instead of worker pool
+      // Root packs need main thread access for UI/DOM or privileged operations
+      const hasRootCapability = requiresMainThread(pack.grantedCapabilities ?? []);
+
+      if (hasRootCapability) {
+        this.config.logger.info('Executing pack on main thread (root capability)', {
+          packId: pack.id,
+          packVersion: pack.version,
+          executionId: context.executionId,
+        });
+
+        // Execute on main thread WITHOUT blocking - yield to event loop first
+        // This ensures the execute() call returns immediately with the ExecutionHandle
+        // and the actual pack execution happens in a subsequent tick
+        const mainThreadResult = await new Promise<PackExecutionResult>((resolve, reject) => {
+          // Use setImmediate to yield control back to the event loop
+          // This allows the caller to receive the ExecutionHandle before execution starts
+          setImmediate(() => {
+            this.executeOnMainThread(bundleCode, context, args)
+              .then((result) => {
+                resolve({
+                  executionId: context.executionId,
+                  podId: context.podId,
+                  success: true,
+                  returnValue: result,
+                  durationMs: Date.now() - startTime,
+                  exitCode: 0,
+                });
+              })
+              .catch(reject);
+          });
+        });
+        
+        return mainThreadResult;
+      }
+
       // Create the worker function that will execute the pack
       // Note: bundleCode and context must be passed as arguments, not captured via closure,
       // because the function is serialized when sent to the worker thread
@@ -748,6 +785,109 @@ export class PackExecutor {
         }
       }
     };
+  }
+
+  /**
+   * Execute a pack directly on the main thread (for root capability packs).
+   * 
+   * Root packs run on the main thread without worker isolation, which is required for:
+   * - UI packs that need DOM access (in browser)
+   * - Privileged operations that need direct node access
+   * 
+   * Per the Root Package Execution Contract, root packs must:
+   * - Use budgeted execution with explicit max time per slice
+   * - Yield control cooperatively back to the runtime
+   * - Use only async/non-blocking I/O
+   * - Never perform unbounded synchronous work
+   * 
+   * @param bundleCode - The JavaScript bundle code to execute
+   * @param context - Execution context with environment and metadata
+   * @param args - Arguments to pass to the entrypoint
+   * @returns The return value from the pack entrypoint
+   */
+  private async executeOnMainThread(
+    bundleCode: string,
+    context: PackExecutionContext,
+    args: unknown[]
+  ): Promise<unknown> {
+    // Set up environment variables
+    const env = context.env;
+    const originalEnv: Record<string, string | undefined> = {};
+    
+    for (const [key, value] of Object.entries(env)) {
+      originalEnv[key] = process.env[key];
+      process.env[key] = value;
+    }
+
+    try {
+      // Create a sandboxed module context
+      // eslint-disable-next-line @typescript-eslint/no-implied-eval
+      const moduleFactory = new Function(
+        'exports',
+        'require',
+        'module',
+        '__filename',
+        '__dirname',
+        'context',
+        'args',
+        `${bundleCode}\n//# sourceURL=pack-${context.packId}-${context.packVersion}.js`
+      );
+
+      // Create module-like objects for the pack
+      const moduleExports: Record<string, unknown> = {};
+      const module = { exports: moduleExports };
+
+      // More permissive require function for main thread execution
+      // Root packs have more access but should still be bundled
+      const requireFn = (id: string): unknown => {
+        // Allow safe built-in modules
+        const allowedModules = ['url', 'path', 'querystring', 'util', 'crypto', 'buffer', 'events', 'stream', 'os'];
+        if (allowedModules.includes(id)) {
+          // Dynamic require for allowed modules
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          return require(id);
+        }
+        throw new Error(`Module '${id}' is not available in pack execution context`);
+      };
+
+      // Execute the bundle
+      moduleFactory(
+        moduleExports,
+        requireFn,
+        module,
+        `pack-${context.packId}.js`,
+        '/pack',
+        context,
+        args
+      );
+
+      // Get the entrypoint function
+      const entrypoint = (context.metadata.entrypoint as string | undefined) ?? 'default';
+      const packExports = module.exports;
+      const entrypointFn = packExports[entrypoint] ?? packExports.default;
+
+      if (typeof entrypointFn !== 'function') {
+        throw new Error(
+          `Pack entrypoint '${entrypoint}' is not a function. ` +
+          `Available exports: ${Object.keys(packExports).join(', ')}`
+        );
+      }
+
+      // Execute the entrypoint
+      const result: unknown = await Promise.resolve(
+        (entrypointFn as (ctx: PackExecutionContext, ...args: unknown[]) => unknown)(context, ...args)
+      );
+      return result;
+    } finally {
+      // Restore original environment variables
+      for (const [key, originalValue] of Object.entries(originalEnv)) {
+        if (originalValue === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = originalValue;
+        }
+      }
+    }
   }
 
   /**

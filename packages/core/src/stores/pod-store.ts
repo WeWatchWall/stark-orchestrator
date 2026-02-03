@@ -13,6 +13,7 @@ import type {
   PodAction,
   Labels,
   ResourceRequirements,
+  Capability,
 } from '@stark-o/shared';
 import {
   DEFAULT_RESOURCE_REQUESTS,
@@ -28,6 +29,7 @@ interface InternalCreatePodInput extends CreatePodInput {
   id?: string;
   priority?: number;
   createdBy?: string;
+  grantedCapabilities?: Capability[];
 }
 
 /**
@@ -156,6 +158,7 @@ export function createPod(input: InternalCreatePodInput): Pod {
     scheduling: input.scheduling,
     createdBy: input.createdBy ?? 'system',
     metadata: input.metadata ?? {},
+    grantedCapabilities: input.grantedCapabilities ?? [],
     createdAt: now,
     updatedAt: now,
   };

@@ -17,6 +17,7 @@ import { FetchAdapter, type BrowserHttpAdapterConfig } from '../adapters/fetch-a
 import {
   createServiceLogger,
   PodError,
+  requiresMainThread,
   type Logger,
   type Pack,
   type Pod,
@@ -492,6 +493,42 @@ export class PackExecutor {
       // Update state to running
       state.status = 'running';
 
+      // Check if pack has root capability - run on main thread instead of Web Worker
+      // Root packs need main thread access for DOM manipulation and UI rendering
+      const hasRootCapability = requiresMainThread(pack.grantedCapabilities ?? []);
+
+      if (hasRootCapability) {
+        this.config.logger.info('Executing pack on main thread (root capability)', {
+          packId: pack.id,
+          packVersion: pack.version,
+          executionId: context.executionId,
+        });
+
+        // Execute on main thread WITHOUT blocking - yield to event loop first
+        // This ensures the execute() call returns immediately with the ExecutionHandle
+        // and the actual pack execution happens in a subsequent microtask
+        const mainThreadResult = await new Promise<PackExecutionResult>((resolve, reject) => {
+          // Use queueMicrotask to yield control back to the event loop
+          // This allows the caller to receive the ExecutionHandle before execution starts
+          queueMicrotask(() => {
+            this.executeOnMainThread(bundleCode, context, args)
+              .then((result) => {
+                resolve({
+                  executionId: context.executionId,
+                  podId: context.podId,
+                  success: true,
+                  returnValue: result,
+                  durationMs: Date.now() - startTime,
+                  exitCode: 0,
+                });
+              })
+              .catch(reject);
+          });
+        });
+        
+        return mainThreadResult;
+      }
+
       // Create the worker function that will execute the pack
       const workerFn = this.createWorkerFunction(bundleCode, context);
 
@@ -797,6 +834,88 @@ export class PackExecutor {
     ) as (args: unknown[]) => Promise<unknown>;
 
     return workerFn;
+  }
+
+  /**
+   * Execute a pack directly on the main thread (for root capability packs).
+   * 
+   * Root packs run on the main thread without Web Worker isolation, which is required for:
+   * - UI packs that need DOM access (document, window, etc.)
+   * - Packs that need to interact with the browser's rendering engine
+   * - Packs that need access to browser APIs not available in workers
+   * 
+   * Per the Root Package Execution Contract, root packs must:
+   * - Use budgeted execution with explicit max time per slice
+   * - Yield control cooperatively back to the runtime
+   * - Use only async/non-blocking I/O
+   * - Never perform unbounded synchronous work
+   * 
+   * @param bundleCode - The JavaScript bundle code to execute
+   * @param context - Execution context with environment and metadata
+   * @param args - Arguments to pass to the entrypoint
+   * @returns The return value from the pack entrypoint
+   */
+  private async executeOnMainThread(
+    bundleCode: string,
+    context: PackExecutionContext,
+    args: unknown[]
+  ): Promise<unknown> {
+    const env = context.env;
+
+    // Make environment variables available via a global object
+    const globalScope = typeof self !== 'undefined' ? self : globalThis;
+    (globalScope as Record<string, unknown>).__STARK_ENV__ = env;
+    (globalScope as Record<string, unknown>).__STARK_CONTEXT__ = context;
+
+    try {
+      // Create a sandboxed module context for browser
+      // Note: More limited than Node.js - no require, no fs, etc.
+      const moduleExports: Record<string, unknown> = {};
+      const module = { exports: moduleExports };
+
+      // Execute the bundle code
+      // Using Function constructor for sandboxing (similar to eval but safer)
+      // eslint-disable-next-line @typescript-eslint/no-implied-eval
+      const moduleFactory = new Function(
+        'exports',
+        'module',
+        'context',
+        'args',
+        '__STARK_ENV__',
+        bundleCode + '\n//# sourceURL=pack-' + context.packId + '-' + context.packVersion + '.js'
+      );
+
+      // Execute the bundle
+      moduleFactory(
+        moduleExports,
+        module,
+        context,
+        args,
+        env
+      );
+
+      // Get the entrypoint function
+      const entrypoint = (context.metadata && (context.metadata.entrypoint as string)) || 'default';
+      const packExports = module.exports;
+      const entrypointFn = packExports[entrypoint] ?? packExports.default;
+
+      if (typeof entrypointFn !== 'function') {
+        throw new Error(
+          `Pack entrypoint '${entrypoint}' is not a function. ` +
+          `Available exports: ${Object.keys(packExports).join(', ')}`
+        );
+      }
+
+      // Execute the entrypoint
+      const result: unknown = await Promise.resolve(
+        (entrypointFn as (ctx: PackExecutionContext, ...args: unknown[]) => unknown)(context, ...args)
+      );
+      return result;
+    } finally {
+      // Clean up globals
+      delete (globalScope as Record<string, unknown>).__STARK_ENV__;
+      delete (globalScope as Record<string, unknown>).__STARK_CONTEXT__;
+    }
   }
 
   /**

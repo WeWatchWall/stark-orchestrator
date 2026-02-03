@@ -18,6 +18,7 @@ import type {
   ResourceRequirements,
   Labels,
   Annotations,
+  Capability,
 } from '@stark-o/shared';
 import type { Toleration } from '@stark-o/shared';
 import type { NodeAffinity, PodAffinity, PodAntiAffinity } from '@stark-o/shared';
@@ -47,6 +48,7 @@ interface PodRow {
   pod_anti_affinity: PodAntiAffinity | null;
   resource_requests: ResourceRequirements;
   resource_limits: ResourceRequirements;
+  granted_capabilities: string[];
   created_by: string;
   scheduled_at: string | null;
   started_at: string | null;
@@ -110,6 +112,7 @@ function rowToPod(row: PodRow): Pod {
       podAffinity: row.pod_affinity ?? undefined,
       podAntiAffinity: row.pod_anti_affinity ?? undefined,
     },
+    grantedCapabilities: (row.granted_capabilities ?? []) as Capability[],
     createdBy: row.created_by,
     scheduledAt: row.scheduled_at ? new Date(row.scheduled_at) : undefined,
     startedAt: row.started_at ? new Date(row.started_at) : undefined,

@@ -10,6 +10,7 @@ import type {
   RegisterPackInput,
   UpdatePackInput,
   PackVersionSummary,
+  Capability,
 } from '@stark-o/shared';
 import { clusterState } from './cluster-store';
 
@@ -104,7 +105,7 @@ export const packsByOwner: ComputedRef<Map<string, Pack[]>> = computed(() => {
  * Register a new pack
  */
 export function registerPack(
-  input: RegisterPackInput & { id?: string; ownerId: string; bundlePath: string }
+  input: RegisterPackInput & { id?: string; ownerId: string; bundlePath: string; grantedCapabilities?: Capability[] }
 ): Pack {
   const now = new Date();
   const pack: Pack = {
@@ -118,6 +119,7 @@ export function registerPack(
     bundlePath: input.bundlePath,
     description: input.description,
     metadata: input.metadata ?? {},
+    grantedCapabilities: input.grantedCapabilities ?? [],
     createdAt: now,
     updatedAt: now,
   };
