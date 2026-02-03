@@ -14,6 +14,7 @@ import { createAuthRouter } from './auth.js';
 import { createNamespacesRouter } from './namespaces.js';
 import { createConfigRouter } from './config.js';
 import { createDeploymentsRouter } from './deployments.js';
+import { createChaosRouter } from '../chaos/routes.js';
 import { apiRateLimiter, authRateLimiter } from '../middleware/rate-limit-middleware.js';
 
 /**
@@ -251,6 +252,9 @@ export function createApiRouter(options: ApiRouterOptions = {}): Router {
 
   // Config route (public read, admin-only write)
   apiRouter.use('/config', createConfigRouter());
+
+  // Chaos testing routes (only available in dev/test with STARK_CHAOS_ENABLED=true)
+  apiRouter.use('/chaos', createChaosRouter());
 
   // Mount API router at /api
   router.use('/api', apiRouter);

@@ -16,6 +16,7 @@ import { createPodCommand } from './commands/pod.js';
 import { createDeploymentCommand } from './commands/deployment.js';
 import { createNamespaceCommand } from './commands/namespace.js';
 import { createServerConfigCommand } from './commands/server-config.js';
+import { createChaosCommand } from './commands/chaos.js';
 
 /**
  * CLI version from package.json
@@ -38,6 +39,7 @@ Commands:
   pod         Pod management (create, list, status, rollback)
   deployment  Deployment management (create, list, scale, pause)
   namespace   Namespace management (create, list, delete)
+  chaos       Chaos testing commands (fault injection, partitions)
 
 Examples:
   $ stark auth login
@@ -88,6 +90,7 @@ function createProgram(): Command {
   program.addCommand(createDeploymentCommand());
   program.addCommand(createNamespaceCommand());
   program.addCommand(createServerConfigCommand());
+  program.addCommand(createChaosCommand());
 
   // Add config command for managing CLI settings
   program

@@ -35,6 +35,7 @@
     "build:client": "pnpm --filter @stark-o/client run generate",
     "dev": "pnpm -r --parallel run dev",
     "dev:server": "pnpm --filter @stark-o/server run dev",
+    "dev:test": "pnpm --filter @stark-o/server run chaos",
     "lint": "eslint packages/*/src --ext .ts",
     "lint:fix": "eslint packages/*/src --ext .ts --fix",
     "format": "prettier --write \"packages/*/src/**/*.ts\"",

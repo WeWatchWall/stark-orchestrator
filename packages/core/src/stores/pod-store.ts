@@ -14,6 +14,7 @@ import type {
   Labels,
   ResourceRequirements,
   Capability,
+  LabelSelector,
 } from '@stark-o/shared';
 import {
   DEFAULT_RESOURCE_REQUESTS,
@@ -429,14 +430,9 @@ export function clearPodHistory(podId: string): void {
 /**
  * Find pods matching a label selector
  */
-export function findPodsBySelector(selector: Record<string, string>): Pod[] {
-  const selectorObj = {
-    matchLabels: selector,
-    matchExpressions: [],
-  };
-
+export function findPodsBySelector(selector: LabelSelector): Pod[] {
   return [...clusterState.pods.values()].filter(pod =>
-    matchesSelector(pod.labels, selectorObj)
+    matchesSelector(pod.labels, selector)
   );
 }
 

@@ -12,3 +12,4 @@ export { createPodCommand } from './pod.js';
 export { createDeploymentCommand } from './deployment.js';
 export { createNamespaceCommand } from './namespace.js';
 export { createServerConfigCommand } from './server-config.js';
+export { createChaosCommand } from './chaos.js';

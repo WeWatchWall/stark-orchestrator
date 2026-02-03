@@ -374,8 +374,9 @@ export function hasAvailableNodes(): boolean {
 /**
  * Get nodes that need heartbeat check
  * Returns nodes whose last heartbeat is older than the threshold
+ * @param thresholdMs - Threshold in milliseconds (default: 30000ms)
  */
-export function getStaleNodes(thresholdMs: number): Node[] {
+export function getStaleNodes(thresholdMs: number = 30000): Node[] {
   const now = Date.now();
   return [...clusterState.nodes.values()].filter(node => {
     if (!node.lastHeartbeat) return true;

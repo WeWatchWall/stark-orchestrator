@@ -16,6 +16,9 @@ export * from './models';
 // Export services
 export * from './services';
 
+// Export query modules for chaos testing and external access
+export * from './queries';
+
 // Export Vue reactivity utilities for consumers
 export {
   ref,

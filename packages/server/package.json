@@ -15,6 +15,7 @@
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
+    "chaos": "tsx src/chaos-cli.ts",
     "lint": "eslint src --ext .ts",
     "test": "vitest run",
     "test:watch": "vitest"

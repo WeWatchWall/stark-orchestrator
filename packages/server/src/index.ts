@@ -22,6 +22,7 @@ import { createSchedulerService } from './services/scheduler-service.js';
 import { getDeploymentController } from './services/deployment-controller.js';
 import { createNodeHealthService } from './services/node-health-service.js';
 import { setConnectionManager } from './services/connection-service.js';
+import { bootstrapChaosMode } from './chaos/bootstrap.js';
 
 // ============================================================================
 // Configuration
@@ -409,6 +410,9 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
 
       // Register connection manager with the connection service for global access
       setConnectionManager(connectionManager);
+
+      // Bootstrap chaos mode if enabled (development/testing only)
+      bootstrapChaosMode(connectionManager);
 
       logger.debug('WebSocket server attached', { path: finalConfig.wsPath });
 
