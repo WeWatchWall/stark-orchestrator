@@ -63,7 +63,7 @@ export interface PackExecutorConfig {
   storageConfig?: BrowserStorageConfig;
   /** HTTP adapter configuration */
   httpConfig?: BrowserHttpAdapterConfig;
-  /** Default execution timeout in milliseconds (default: 300000 = 5 minutes) */
+  /** Default execution timeout in milliseconds (default: 0 = no timeout) */
   defaultTimeout?: number;
   /** Maximum concurrent executions (default: 4) */
   maxConcurrent?: number;
@@ -133,7 +133,7 @@ export class PackExecutor {
       workerConfig: config.workerConfig,
       storageConfig: config.storageConfig,
       httpConfig: config.httpConfig,
-      defaultTimeout: config.defaultTimeout ?? 300000,
+      defaultTimeout: config.defaultTimeout ?? 0,
       maxConcurrent: config.maxConcurrent ?? 4, // Lower default for browsers
       logger: config.logger ?? createServiceLogger({
         component: 'pack-executor',

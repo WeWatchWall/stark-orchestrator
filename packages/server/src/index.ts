@@ -20,6 +20,7 @@ import { createApiRouter } from './api/router.js';
 import { createConnectionManager, type ConnectionManagerOptions } from './ws/connection-manager.js';
 import { createSchedulerService } from './services/scheduler-service.js';
 import { getDeploymentController } from './services/deployment-controller.js';
+import { createNodeHealthService } from './services/node-health-service.js';
 import { setConnectionManager } from './services/connection-service.js';
 
 // ============================================================================
@@ -155,6 +156,8 @@ export interface ServerInstance {
   schedulerService: ReturnType<typeof createSchedulerService>;
   /** Deployment controller for reconciling deployments */
   deploymentController: ReturnType<typeof getDeploymentController>;
+  /** Node health service for stale node detection */
+  nodeHealthService: ReturnType<typeof createNodeHealthService>;
   /** Server configuration */
   config: ServerConfig;
   /** Start the server */
@@ -234,6 +237,7 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
   let connectionManager: ReturnType<typeof createConnectionManager>;
   let schedulerService: ReturnType<typeof createSchedulerService>;
   let deploymentController: ReturnType<typeof getDeploymentController>;
+  let nodeHealthService: ReturnType<typeof createNodeHealthService>;
 
   // Server instance
   const instance: ServerInstance = {
@@ -244,6 +248,7 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
     get connectionManager() { return connectionManager; },
     get schedulerService() { return schedulerService; },
     get deploymentController() { return deploymentController; },
+    get nodeHealthService() { return nodeHealthService; },
     config: finalConfig,
 
     start: async () => {
@@ -423,6 +428,13 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
         autoStart: false, // We'll start it after the server is listening
       });
 
+      // Create node health service for detecting stale nodes
+      nodeHealthService = createNodeHealthService({
+        checkInterval: 60_000,    // Check every 60 seconds
+        heartbeatTimeout: 90_000, // Mark stale after 90 seconds
+        autoStart: false,
+      });
+
       return new Promise<void>((resolve, reject) => {
         try {
           // Determine HTTP host based on exposeHttp setting
@@ -452,6 +464,10 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
               deploymentController.start();
               logger.info('Deployment controller started');
 
+              // Start the node health service for stale node detection
+              nodeHealthService.start();
+              logger.info('Node health service started');
+
               resolve();
             });
 
@@ -474,6 +490,10 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
     stop: async () => {
       return new Promise<void>((resolve, reject) => {
         logger.info('Stopping server...');
+
+        // Stop the node health service
+        nodeHealthService.stop();
+        logger.info('Node health service stopped');
 
         // Stop the deployment controller
         deploymentController.stop();

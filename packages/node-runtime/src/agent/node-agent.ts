@@ -377,7 +377,18 @@ export class NodeAgent {
         });
 
         this.ws.on('message', (data) => {
-          this.handleMessage(data);
+          this.handleMessage(data).catch((err) => {
+            this.config.logger.error('Error handling message', { error: err });
+            // If this is an auth failure, we need to stop so the CLI can restart with fresh credentials
+            const isAuthFailed = 
+              (err instanceof Error && err.message.includes('AUTH_FAILED')) ||
+              (typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'AUTH_FAILED');
+            if (isAuthFailed) {
+              this.stop().catch(() => {
+                // Ignore stop errors
+              });
+            }
+          });
         });
 
         this.ws.on('close', (code, reason) => {
@@ -832,11 +843,11 @@ export class NodeAgent {
     this.stopHeartbeat();
 
     this.heartbeatTimer = setInterval(() => {
-      this.sendHeartbeat();
+      void this.sendHeartbeat();
     }, this.config.heartbeatInterval);
 
     // Send initial heartbeat
-    this.sendHeartbeat();
+    void this.sendHeartbeat();
   }
 
   /**
@@ -856,11 +867,11 @@ export class NodeAgent {
     this.stopMetricsCollection();
 
     this.metricsTimer = setInterval(() => {
-      this.sendMetrics();
+      void this.sendMetrics();
     }, this.config.metricsInterval);
 
     // Send initial metrics
-    this.sendMetrics();
+    void this.sendMetrics();
   }
 
   /**

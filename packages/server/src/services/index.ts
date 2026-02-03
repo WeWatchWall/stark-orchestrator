@@ -31,3 +31,11 @@ export {
   resetMetricsService,
   type MetricsServiceConfig,
 } from './metrics-service.js';
+
+export {
+  NodeHealthService,
+  createNodeHealthService,
+  getNodeHealthService,
+  resetNodeHealthService,
+  type NodeHealthServiceConfig,
+} from './node-health-service.js';

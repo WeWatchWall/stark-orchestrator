@@ -917,6 +917,9 @@ export class BrowserAgent {
         authToken: this.authToken,
       });
 
+      // Initialize the new executor so metrics collection works
+      await this.executor.initialize();
+
       // Re-initialize the pod handler with the new executor
       this.podHandler = createPodHandler({
         executor: this.executor,
@@ -981,6 +984,9 @@ export class BrowserAgent {
       orchestratorUrl: this.getHttpBaseUrl(),
       authToken: this.authToken,
     });
+
+    // Initialize the new executor so metrics collection works
+    await this.executor.initialize();
 
     // Re-initialize the pod handler with the new executor
     this.podHandler = createPodHandler({
@@ -1581,6 +1587,9 @@ export class BrowserAgent {
         orchestratorUrl: this.getHttpBaseUrl(),
         authToken: this.authToken,
       });
+
+      // Initialize the new executor so metrics collection works
+      await this.executor.initialize();
 
       // Re-initialize the pod handler with the new executor
       this.podHandler = createPodHandler({

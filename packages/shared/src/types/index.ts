@@ -290,6 +290,50 @@ export {
   mapLocalStatusToPodStatus,
 } from './runtime.js';
 
+// Event types
+export type {
+  EventCategory,
+  EventSeverity,
+  PodEventType,
+  NodeEventType,
+  PackEventType,
+  DeploymentEventType,
+  SystemEventType,
+  AuthEventType,
+  SchedulerEventType,
+  StarkEventType,
+  EventActorType,
+  EventSource,
+  EventMetadata,
+  StarkEvent,
+  PodEventState,
+  PodEvent,
+  NodeEventState,
+  NodeEvent,
+  PackEventState,
+  PackEvent,
+  DeploymentEventState,
+  DeploymentEvent,
+  EmitPodEventInput,
+  EmitNodeEventInput,
+  EmitEventInput,
+  EventQueryOptions,
+  EventQueryResult,
+  EventTimelineItem,
+  EventSubscriptionFilter,
+  EventCallback,
+} from './events.js';
+
+export {
+  PodEventReasons,
+  NodeEventReasons,
+  SEVERITY_ORDER,
+  compareSeverity,
+  meetsMinSeverity,
+  getDefaultSeverity,
+  getCategoryFromEventType,
+} from './events.js';
+
 // Metrics types
 export type {
   NodeSystemMetrics,

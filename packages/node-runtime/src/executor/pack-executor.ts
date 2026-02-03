@@ -49,7 +49,7 @@ export interface PackExecutorConfig {
   fsConfig?: FsAdapterConfig;
   /** HTTP adapter configuration */
   httpConfig?: HttpAdapterConfig;
-  /** Default execution timeout in milliseconds (default: 300000 = 5 minutes) */
+  /** Default execution timeout in milliseconds (default: 0 = no timeout) */
   defaultTimeout?: number;
   /** Maximum concurrent executions (default: 10) */
   maxConcurrent?: number;
@@ -122,7 +122,7 @@ export class PackExecutor {
       workerConfig: config.workerConfig,
       fsConfig: config.fsConfig,
       httpConfig: config.httpConfig,
-      defaultTimeout: config.defaultTimeout ?? 300000,
+      defaultTimeout: config.defaultTimeout ?? 0,
       maxConcurrent: config.maxConcurrent ?? 10,
       gracefulShutdownTimeout: config.gracefulShutdownTimeout ?? 5000,
       logger: config.logger ?? createServiceLogger({

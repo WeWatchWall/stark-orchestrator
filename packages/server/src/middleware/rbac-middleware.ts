@@ -85,11 +85,12 @@ const logger = createServiceLogger(
  *
  * Role permissions:
  * - admin: Full access to all resources (manage all)
+ * - user: Self-service users - can CRUD own packs, pods, nodes; read namespaces
  * - node: Node agents - can create/update own node, update pods assigned to it, read packs
  * - viewer: Read-only access to packs, pods, nodes, namespaces
  *
- * Note: The 'node' role provides baseline permissions. Ownership-based access control
- * (e.g., node can only update its own record) is enforced in route handlers.
+ * Note: Ownership-based access control (e.g., user can only update their own resources)
+ * is enforced in route handlers.
  *
  * @param user - The authenticated user
  * @returns CASL MongoAbility instance
@@ -103,6 +104,24 @@ export function defineAbilityFor(user: User): AppAbility {
       case 'admin':
         // Admin has full access to everything
         can('manage', 'all');
+        break;
+
+      case 'user':
+        // Regular users manage their own resources
+        // Note: Ownership checks are enforced in route handlers
+        can('create', 'Pack');  // Register own packs
+        can('read', 'Pack');    // Read own/public packs
+        can('update', 'Pack');  // Update own packs
+        can('delete', 'Pack');  // Delete own packs
+        can('create', 'Pod');   // Create pods from accessible packs
+        can('read', 'Pod');     // Read own pods
+        can('update', 'Pod');   // Update own pod status
+        can('delete', 'Pod');   // Delete own pods
+        can('create', 'Node');  // Register own nodes
+        can('read', 'Node');    // Read own nodes
+        can('update', 'Node');  // Update own nodes
+        can('delete', 'Node');  // Delete own nodes
+        can('read', 'Namespace'); // Read namespaces
         break;
 
       case 'node':

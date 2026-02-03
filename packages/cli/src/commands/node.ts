@@ -922,6 +922,11 @@ async function agentStartHandler(options: {
   // Create and start the agent
   // Track if we need to restart due to invalid credentials
   let shouldRestartOnStop = false;
+  // Promise that resolves when we should exit the main loop (for restart)
+  let resolveStoppedPromise: (() => void) | null = null;
+  const stoppedPromise = new Promise<void>((resolve) => {
+    resolveStoppedPromise = resolve;
+  });
   
   const agent = new NodeAgent(agentConfig);
 
@@ -965,6 +970,11 @@ async function agentStartHandler(options: {
         break;
       case 'stopped':
         info('Node agent stopped');
+        // If we stopped due to invalid credentials, restart with fresh credentials
+        if (shouldRestartOnStop && resolveStoppedPromise) {
+          info('Retrying with fresh credentials...');
+          resolveStoppedPromise();
+        }
         break;
     }
   });
@@ -973,6 +983,8 @@ async function agentStartHandler(options: {
   const shutdown = async () => {
     console.log('\n');
     info('Shutting down node agent...');
+    // Prevent restart when user manually shuts down
+    shouldRestartOnStop = false;
     await agent.stop();
     process.exit(0);
   };
@@ -1009,6 +1021,10 @@ async function agentStartHandler(options: {
     process.exit(1);
   }
 
-  // Keep the process running
-  await new Promise(() => {}); // Never resolves
+  // Keep the process running until stopped (for restart)
+  await stoppedPromise;
+  
+  // If we get here, it means shouldRestartOnStop was true
+  // Recursively call to restart with fresh credentials
+  return agentStartHandler(options);
 }

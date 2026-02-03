@@ -540,10 +540,14 @@ export class WorkerAdapter implements IWorkerAdapter {
    * Wrap a promise with a timeout.
    *
    * @param promise - The promise to wrap
-   * @param timeout - Timeout in milliseconds
+   * @param timeout - Timeout in milliseconds (0 or Infinity means no timeout)
    * @returns Promise that rejects if timeout is exceeded
    */
   private withTimeout<T>(promise: Promise<T>, timeout: number): Promise<T> {
+    // No timeout if 0 or Infinity
+    if (timeout <= 0 || !Number.isFinite(timeout)) {
+      return promise;
+    }
     return Promise.race([
       promise,
       new Promise<T>((_, reject) => {

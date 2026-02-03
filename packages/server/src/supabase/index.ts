@@ -186,3 +186,27 @@ export {
   getMetricsQueries,
   resetMetricsQueries,
 } from './metrics.js';
+
+// Event service (unified event log for debugging, UI timelines, and audits)
+export {
+  type EventServiceOptions,
+  type EventStats,
+  emitEvent,
+  emitPodEvent,
+  emitNodeEvent,
+  getResourceEvents,
+  getPodEvents,
+  getNodeEvents,
+  queryEvents,
+  getEventsByCategory,
+  getCriticalEvents,
+  getNamespaceTimeline,
+  getClusterTimeline,
+  getEventStats,
+  // Convenience emitters
+  emitPodScheduled,
+  emitPodFailed,
+  emitPodRestarted,
+  emitNodeLost,
+  emitNodeRecovered,
+} from './events.js';
