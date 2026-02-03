@@ -9,6 +9,7 @@ import type { RegisterNodeInput, NodeHeartbeat, UserRole } from '@stark-o/shared
 import { validateRegisterNodeInput, createServiceLogger } from '@stark-o/shared';
 import { getNodeQueries } from '../../supabase/nodes.js';
 import { getPodQueriesAdmin } from '../../supabase/pods.js';
+import { getConnectionManager } from '../../services/connection-service.js';
 
 /**
  * Logger for node handler operations
@@ -176,6 +177,12 @@ export async function handleNodeRegister(
       correlationId,
     );
     return;
+  }
+
+  // Register the node ID to the connection for chaos testing and tracking
+  const connManager = getConnectionManager();
+  if (connManager) {
+    connManager.registerNodeToConnection(ws.id, createResult.data.id);
   }
 
   sendResponse(
@@ -372,6 +379,12 @@ export async function handleNodeReconnect(
       correlationId,
     );
     return;
+  }
+
+  // Register the node ID to the connection for chaos testing and tracking
+  const connManager = getConnectionManager();
+  if (connManager) {
+    connManager.registerNodeToConnection(ws.id, reconnectResult.data.id);
   }
 
   sendResponse(

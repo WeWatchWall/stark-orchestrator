@@ -161,6 +161,20 @@ class ChaosApiClient {
   async getEvents(count?: number): Promise<unknown[]> {
     return this.request('GET', `/events${count ? `?count=${count}` : ''}`);
   }
+
+  async listNodes(): Promise<{
+    count: number;
+    nodes: Array<{ nodeId: string; connectionId: string; userId?: string; connectedAt: string }>;
+  }> {
+    return this.request('GET', '/nodes');
+  }
+
+  async listConnections(): Promise<{
+    count: number;
+    connections: Array<{ id: string; nodeIds: string[]; userId?: string; connectedAt: string }>;
+  }> {
+    return this.request('GET', '/connections');
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -171,7 +185,7 @@ function printBanner(): void {
   console.log(`
 ╔══════════════════════════════════════════════════════════════╗
 ║                                                              ║
-║   ⚡ STARK CHAOS INJECTION CLI ⚡                             ║
+║   ⚡ STARK CHAOS INJECTION CLI ⚡                            ║
 ║                                                              ║
 ║   Inject failures into a running Stark server                ║
 ║                                                              ║
@@ -195,6 +209,9 @@ Commands:
   stats                             Show chaos statistics
   events [count]                    Show recent chaos events
   clear                             Clear all chaos rules
+
+  nodes                             List connected nodes (use to find node IDs)
+  connections                       List active WebSocket connections
 
   node kill <nodeId>                Kill a node's connection
   heartbeat delay <nodeId> <ms> [duration]   Add heartbeat delay
@@ -263,6 +280,9 @@ Commands:
   events [n]          Show last n events
   clear               Clear all rules
 
+  nodes               List connected nodes (use this to get node IDs)
+  connections         List active WebSocket connections
+
   kill <nodeId>       Kill node connection
   delay <nodeId> <ms> Add heartbeat delay
   drop <nodeId> <rate> Drop messages
@@ -307,6 +327,37 @@ Commands:
         case 'clear':
           console.log(await client.clearAll());
           break;
+
+        case 'nodes': {
+          const nodesResult = await client.listNodes();
+          if (nodesResult.count === 0) {
+            console.log('No nodes currently connected via WebSocket.');
+            console.log('Note: Nodes must be connected to be targeted by chaos commands.');
+          } else {
+            console.log(`\nConnected nodes (${nodesResult.count}):`);
+            for (const node of nodesResult.nodes) {
+              console.log(`  ${node.nodeId}`);
+              console.log(`    Connection: ${node.connectionId}`);
+              if (node.userId) console.log(`    User: ${node.userId}`);
+            }
+          }
+          break;
+        }
+
+        case 'connections': {
+          const connsResult = await client.listConnections();
+          if (connsResult.count === 0) {
+            console.log('No active WebSocket connections.');
+          } else {
+            console.log(`\nActive connections (${connsResult.count}):`);
+            for (const conn of connsResult.connections) {
+              console.log(`  ${conn.id}`);
+              console.log(`    Nodes: ${conn.nodeIds.length > 0 ? conn.nodeIds.join(', ') : '(none)'}`);
+              if (conn.userId) console.log(`    User: ${conn.userId}`);
+            }
+          }
+          break;
+        }
 
         case 'kill':
           if (!parts[1]) {
@@ -462,6 +513,18 @@ async function runCommand(client: ChaosApiClient, args: string[]): Promise<void>
     case 'clear':
       console.log(await client.clearAll());
       break;
+
+    case 'nodes': {
+      const nodesResult = await client.listNodes();
+      console.log(JSON.stringify(nodesResult, null, 2));
+      break;
+    }
+
+    case 'connections': {
+      const connsResult = await client.listConnections();
+      console.log(JSON.stringify(connsResult, null, 2));
+      break;
+    }
 
     case 'node':
       if (args[1] === 'kill' && args[2]) {
