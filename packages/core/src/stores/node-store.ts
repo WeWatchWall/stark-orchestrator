@@ -96,6 +96,7 @@ export function addNode(input: RegisterNodeInput & { id?: string; registeredBy?:
     lastHeartbeat: now,
     capabilities: input.capabilities ?? {},
     registeredBy: input.registeredBy,
+    trusted: false,
     allocatable: { ...DEFAULT_ALLOCATABLE, ...input.allocatable },
     allocated: { ...DEFAULT_ALLOCATED },
     labels: input.labels ?? {},

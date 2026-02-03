@@ -17,6 +17,7 @@ import {
   canUpdatePack,
   canDeletePack,
 } from '../middleware/index.js';
+import type { AuthenticatedRequest } from '../middleware/auth-middleware.js';
 
 /**
  * Logger for pack API operations
@@ -213,6 +214,17 @@ async function registerPack(req: Request, res: Response): Promise<void> {
     }
 
     const input = req.body as RegisterPackInput;
+
+    // System packs can only be registered by admins
+    if (input.namespace === 'system') {
+      const authReq = req as AuthenticatedRequest;
+      const isAdmin = authReq.user?.roles?.includes('admin') ?? false;
+      if (!isAdmin) {
+        requestLogger.warn('Non-admin attempted to register system pack', { userId, namespace: input.namespace });
+        sendError(res, 'FORBIDDEN', 'Only admins can register system namespace packs', 403);
+        return;
+      }
+    }
 
     // Check for duplicate pack name+version
     // Use regular client for reads, admin client for writes (since we've already verified permissions via RBAC middleware)

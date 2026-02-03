@@ -67,6 +67,8 @@ export interface Node {
   capabilities: NodeCapabilities;
   /** User who registered the node */
   registeredBy?: string;
+  /** Whether this node is trusted (can run system packs). Derived from owner's admin role. */
+  trusted: boolean;
   /** WebSocket connection ID */
   connectionId?: string;
   /** IP address */
@@ -204,6 +206,14 @@ export function isNodeSchedulable(node: Node): boolean {
     !node.unschedulable &&
     node.allocated.pods < node.allocatable.pods
   );
+}
+
+/**
+ * Check if a node can run system namespace packs.
+ * Only trusted nodes (owned by admins) can run system packs.
+ */
+export function canRunSystemPacks(node: Node): boolean {
+  return node.trusted === true;
 }
 
 /**

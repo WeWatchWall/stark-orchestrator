@@ -7,7 +7,7 @@
  * @module @stark-o/shared/types/runtime
  */
 
-import type { RuntimeTag } from './pack.js';
+import type { RuntimeTag, PackNamespace } from './pack.js';
 import type { Labels, Annotations } from './labels.js';
 import type { ResourceRequirements } from './pod.js';
 
@@ -76,6 +76,7 @@ export interface PodDeployPayload {
     name: string;
     version: string;
     runtimeTag: RuntimeTag;
+    namespace?: PackNamespace;
     bundlePath: string;
     bundleContent?: string;
     metadata?: Record<string, unknown>;

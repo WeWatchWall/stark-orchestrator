@@ -5,7 +5,7 @@
  * Handles WebSocket messages for pod lifecycle operations with history tracking.
  */
 
-import type { PodStatus } from '@stark-o/shared';
+import type { PodStatus, UserRole } from '@stark-o/shared';
 import { createServiceLogger, generateCorrelationId } from '@stark-o/shared';
 import {
   schedulePodWithHistory,
@@ -68,6 +68,7 @@ export interface WsConnection {
   send: (data: string) => void;
   close: () => void;
   userId?: string;
+  userRoles?: UserRole[];
   nodeId?: string;
 }
 

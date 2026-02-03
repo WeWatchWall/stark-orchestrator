@@ -33,6 +33,13 @@ export interface PackMetadata {
 export type PackVisibility = 'private' | 'public';
 
 /**
+ * Pack namespace for trust boundary
+ * - system: Can access cluster state, manage packs, subscribe to global events (admin only)
+ * - user: Scoped access, self-lifecycle only, resource capped (default)
+ */
+export type PackNamespace = 'system' | 'user';
+
+/**
  * Pack entity - a registered software package
  */
 export interface Pack {
@@ -46,6 +53,8 @@ export interface Pack {
   runtimeTag: RuntimeTag;
   /** Owner user ID */
   ownerId: string;
+  /** Pack namespace (system or user) - determines trust level */
+  namespace: PackNamespace;
   /** Pack visibility (private or public) */
   visibility: PackVisibility;
   /** Path to bundle in storage */
@@ -72,6 +81,8 @@ export interface RegisterPackInput {
   version: string;
   /** Target runtime */
   runtimeTag: RuntimeTag;
+  /** Pack namespace (default: user) - system requires admin role */
+  namespace?: PackNamespace;
   /** Pack visibility (default: private) */
   visibility?: PackVisibility;
   /** Pack description */

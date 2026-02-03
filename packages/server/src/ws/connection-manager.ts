@@ -20,8 +20,9 @@ import {
 } from './handlers/node-handler.js';
 import { routePodMessage } from './handlers/pod-handler.js';
 import { routeMetricsMessage } from './handlers/metrics-handler.js';
-import type { RegisterNodeInput, NodeHeartbeat } from '@stark-o/shared';
+import type { RegisterNodeInput, NodeHeartbeat, UserRole } from '@stark-o/shared';
 import { getSupabaseServiceClient } from '../supabase/client.js';
+import { getUserById } from '../supabase/auth.js';
 
 const logger = createLogger({ component: 'ws-connection-manager' });
 
@@ -44,6 +45,8 @@ export interface ConnectionInfo {
   ws: WebSocket;
   /** User ID (from authentication) */
   userId?: string;
+  /** User roles (from authentication) */
+  userRoles?: UserRole[];
   /** IP address of the client */
   ipAddress?: string;
   /** User agent string */
@@ -86,6 +89,7 @@ export type WsMessageType =
 export interface AuthResult {
   success: boolean;
   userId?: string;
+  userRoles?: UserRole[];
   error?: string;
 }
 
@@ -128,7 +132,11 @@ const devAuthHandler: AuthHandler = async (token: string): Promise<AuthResult> =
       return { success: false, error: error?.message || 'Invalid token' };
     }
 
-    return { success: true, userId: data.user.id };
+    // Fetch user roles from users table
+    const userResult = await getUserById(data.user.id);
+    const userRoles: UserRole[] = userResult.data?.roles ?? ['user'];
+
+    return { success: true, userId: data.user.id, userRoles };
   } catch (err) {
     logger.error('Auth handler error', { error: err instanceof Error ? err.message : 'Unknown error' });
     return { success: false, error: 'Authentication failed' };
@@ -435,15 +443,17 @@ export class ConnectionManager {
       if (result.success && result.userId) {
         conn.isAuthenticated = true;
         conn.userId = result.userId;
+        conn.userRoles = result.userRoles;
 
         logger.info('Connection authenticated', {
           connectionId: conn.id,
           userId: result.userId,
+          userRoles: result.userRoles,
         });
 
         this.sendMessage(conn.ws, {
           type: 'auth:authenticated',
-          payload: { userId: result.userId },
+          payload: { userId: result.userId, roles: result.userRoles },
           correlationId,
         });
       } else {
@@ -513,6 +523,7 @@ export class ConnectionManager {
       send: (data: string) => conn.ws.send(data),
       close: () => conn.ws.close(),
       userId: conn.userId,
+      userRoles: conn.userRoles,
     };
   }
 

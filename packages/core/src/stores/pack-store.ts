@@ -113,6 +113,7 @@ export function registerPack(
     version: input.version,
     runtimeTag: input.runtimeTag,
     ownerId: input.ownerId,
+    namespace: input.namespace ?? 'user',
     visibility: input.visibility ?? 'private',
     bundlePath: input.bundlePath,
     description: input.description,

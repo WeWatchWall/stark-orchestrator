@@ -448,6 +448,7 @@ export class NodeModel {
       lastHeartbeat: now,
       capabilities: input.capabilities ?? {},
       registeredBy,
+      trusted: false,
       connectionId,
       ipAddress,
       userAgent,

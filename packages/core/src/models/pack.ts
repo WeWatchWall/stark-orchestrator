@@ -214,6 +214,7 @@ export class PackModel {
       version: input.version,
       runtimeTag: input.runtimeTag,
       ownerId,
+      namespace: input.namespace ?? 'user',
       visibility: input.visibility ?? 'private',
       bundlePath,
       description: input.description,

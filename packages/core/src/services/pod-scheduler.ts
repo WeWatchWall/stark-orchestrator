@@ -687,6 +687,11 @@ export class PodScheduler {
         return false;
       }
 
+      // System packs can only run on trusted nodes
+      if (pack.namespace === 'system' && !node.trusted) {
+        return false;
+      }
+
       // Check blocking taints/tolerations (NoSchedule and NoExecute effects)
       // PreferNoSchedule is a soft constraint handled in scoring, not filtering
       if (!toleratesBlockingTaints(pod.tolerations, node.taints)) {

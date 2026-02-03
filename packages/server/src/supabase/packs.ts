@@ -14,6 +14,7 @@ import type {
   RegisterPackInput,
   UpdatePackInput,
   RuntimeTag,
+  PackNamespace,
 } from '@stark-o/shared';
 import { getSupabaseClient, getSupabaseServiceClient } from './client.js';
 
@@ -26,6 +27,7 @@ interface PackRow {
   version: string;
   runtime_tag: RuntimeTag;
   owner_id: string;
+  namespace: PackNamespace;
   visibility: 'private' | 'public';
   bundle_path: string;
   bundle_content: string | null;
@@ -53,6 +55,7 @@ function rowToPack(row: PackRow): Pack {
     version: row.version,
     runtimeTag: row.runtime_tag,
     ownerId: row.owner_id,
+    namespace: row.namespace,
     visibility: row.visibility,
     bundlePath: row.bundle_path,
     bundleContent: row.bundle_content ?? undefined,
@@ -112,6 +115,7 @@ export class PackQueries {
         version: input.version,
         runtime_tag: input.runtimeTag,
         owner_id: input.ownerId,
+        namespace: input.namespace ?? 'user',
         visibility: input.visibility ?? 'private',
         bundle_path: input.bundlePath,
         bundle_content: input.bundleContent ?? null,

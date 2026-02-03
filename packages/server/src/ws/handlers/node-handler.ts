@@ -5,7 +5,7 @@
  * Handles WebSocket messages for node registration, heartbeat, and disconnect.
  */
 
-import type { RegisterNodeInput, NodeHeartbeat } from '@stark-o/shared';
+import type { RegisterNodeInput, NodeHeartbeat, UserRole } from '@stark-o/shared';
 import { validateRegisterNodeInput, createServiceLogger } from '@stark-o/shared';
 import { getNodeQueries } from '../../supabase/nodes.js';
 import { getPodQueriesAdmin } from '../../supabase/pods.js';
@@ -71,6 +71,7 @@ export interface WsConnection {
   send: (data: string) => void;
   close: () => void;
   userId?: string;
+  userRoles?: UserRole[];
 }
 
 /**
@@ -151,6 +152,8 @@ export async function handleNodeRegister(
   }
 
   // Create the node
+  // Nodes are trusted if registered by an admin (can run system packs)
+  const isAdmin = ws.userRoles?.includes('admin') ?? false;
   const createResult = await nodeQueries.createNode({
     name: payload.name,
     runtimeType: payload.runtimeType,
@@ -161,6 +164,7 @@ export async function handleNodeRegister(
     taints: payload.taints ?? [],
     registeredBy: ws.userId,
     connectionId: ws.id,
+    trusted: isAdmin,
   });
 
   if (createResult.error || !createResult.data) {

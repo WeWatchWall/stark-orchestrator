@@ -226,6 +226,11 @@ export function validatePackMetadata(metadata: unknown): ValidationError | null 
 const VALID_VISIBILITY_VALUES = ['private', 'public'];
 
 /**
+ * Valid namespace values
+ */
+const VALID_NAMESPACE_VALUES = ['system', 'user'];
+
+/**
  * Validate pack visibility
  */
 export function validatePackVisibility(visibility: unknown): ValidationError | null {
@@ -245,6 +250,33 @@ export function validatePackVisibility(visibility: unknown): ValidationError | n
     return {
       field: 'visibility',
       message: `Pack visibility must be one of: ${VALID_VISIBILITY_VALUES.join(', ')}`,
+      code: 'INVALID_VALUE',
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Validate pack namespace
+ */
+export function validatePackNamespace(namespace: unknown): ValidationError | null {
+  if (namespace === undefined || namespace === null) {
+    return null; // Optional field, defaults to 'user'
+  }
+
+  if (typeof namespace !== 'string') {
+    return {
+      field: 'namespace',
+      message: 'Pack namespace must be a string',
+      code: 'INVALID_TYPE',
+    };
+  }
+
+  if (!VALID_NAMESPACE_VALUES.includes(namespace)) {
+    return {
+      field: 'namespace',
+      message: `Pack namespace must be one of: ${VALID_NAMESPACE_VALUES.join(', ')}`,
       code: 'INVALID_VALUE',
     };
   }
@@ -290,6 +322,9 @@ export function validateRegisterPackInput(input: unknown): ValidationResult {
 
   const visibilityError = validatePackVisibility(data.visibility);
   if (visibilityError) errors.push(visibilityError);
+
+  const namespaceError = validatePackNamespace(data.namespace);
+  if (namespaceError) errors.push(namespaceError);
 
   const metadataError = validatePackMetadata(data.metadata);
   if (metadataError) errors.push(metadataError);

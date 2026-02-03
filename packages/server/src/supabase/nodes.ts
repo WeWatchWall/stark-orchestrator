@@ -32,6 +32,7 @@ interface NodeRow {
   last_heartbeat: string | null;
   capabilities: NodeCapabilities;
   registered_by: string | null;
+  trusted: boolean;
   connection_id: string | null;
   ip_address: string | null;
   user_agent: string | null;
@@ -65,6 +66,7 @@ function rowToNode(row: NodeRow): Node {
     lastHeartbeat: row.last_heartbeat ? new Date(row.last_heartbeat) : undefined,
     capabilities: row.capabilities ?? {},
     registeredBy: row.registered_by ?? undefined,
+    trusted: row.trusted ?? false,
     connectionId: row.connection_id ?? undefined,
     ipAddress: row.ip_address ?? undefined,
     userAgent: row.user_agent ?? undefined,
@@ -112,7 +114,7 @@ export class NodeQueries {
    * Creates a new node in the database
    */
   async createNode(
-    input: RegisterNodeInput & { registeredBy?: string; connectionId?: string }
+    input: RegisterNodeInput & { registeredBy?: string; connectionId?: string; trusted?: boolean }
   ): Promise<NodeResult<Node>> {
     const { data, error } = await this.client
       .from('nodes')
@@ -122,6 +124,7 @@ export class NodeQueries {
         status: 'online' as NodeStatus,
         capabilities: input.capabilities ?? {},
         registered_by: input.registeredBy ?? null,
+        trusted: input.trusted ?? false,
         connection_id: input.connectionId ?? null,
         allocatable: { ...DEFAULT_ALLOCATABLE, ...input.allocatable },
         allocated: DEFAULT_ALLOCATED,

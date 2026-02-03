@@ -10,6 +10,7 @@ import type {
   CreatePodMetricsInput,
   RuntimeType,
   PodStatus,
+  UserRole,
 } from '@stark-o/shared';
 import { createServiceLogger } from '@stark-o/shared';
 import { getMetricsService } from '../../services/metrics-service.js';
@@ -53,6 +54,7 @@ export interface WsConnection {
   send: (data: string) => void;
   close: () => void;
   userId?: string;
+  userRoles?: UserRole[];
 }
 
 /**
