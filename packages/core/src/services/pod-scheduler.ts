@@ -19,6 +19,7 @@ import type {
 import {
   validateCreatePodInput,
   isRuntimeCompatible,
+  isNodeVersionCompatible,
   toleratesBlockingTaints,
   getUntoleratedPreferNoScheduleTaints,
   matchesSelector,
@@ -143,6 +144,7 @@ export const PodSchedulerErrorCodes = {
   POD_NOT_FOUND: 'POD_NOT_FOUND',
   INVALID_STATUS_TRANSITION: 'INVALID_STATUS_TRANSITION',
   RUNTIME_MISMATCH: 'RUNTIME_MISMATCH',
+  NODE_VERSION_MISMATCH: 'NODE_VERSION_MISMATCH',
   TAINT_NOT_TOLERATED: 'TAINT_NOT_TOLERATED',
   AFFINITY_NOT_SATISFIED: 'AFFINITY_NOT_SATISFIED',
   NODE_NOT_SCHEDULABLE: 'NODE_NOT_SCHEDULABLE',
@@ -684,6 +686,12 @@ export class PodScheduler {
 
       // Check runtime compatibility
       if (!isRuntimeCompatible(pack.runtimeTag, node.runtimeType)) {
+        return false;
+      }
+
+      // Check Node.js version compatibility
+      const minNodeVersion = pack.metadata?.minNodeVersion as string | undefined;
+      if (!isNodeVersionCompatible(node.capabilities?.version, minNodeVersion)) {
         return false;
       }
 

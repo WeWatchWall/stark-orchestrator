@@ -13,6 +13,7 @@ export {
   validateRuntimeTag,
   validatePackDescription,
   validatePackMetadata,
+  validateMinNodeVersion,
   validateRequestedCapabilities,
   validateRegisterPackInput,
   validateUpdatePackInput,

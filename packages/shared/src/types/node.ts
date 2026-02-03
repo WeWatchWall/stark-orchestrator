@@ -158,6 +158,8 @@ export interface NodeListItem {
   connectionId?: string;
   /** User who registered the node */
   registeredBy?: string;
+  /** Node capabilities including runtime version */
+  capabilities?: NodeCapabilities;
 }
 
 /**

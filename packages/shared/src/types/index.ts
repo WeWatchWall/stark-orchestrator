@@ -59,6 +59,7 @@ export type {
 
 export {
   isRuntimeCompatible,
+  isNodeVersionCompatible,
   parseSemVer,
   compareSemVer,
   ALL_RUNTIME_TAGS,

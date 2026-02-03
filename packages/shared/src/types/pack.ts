@@ -29,6 +29,13 @@ export interface PackMetadata {
    * See capabilities.ts for available capabilities.
    */
   requestedCapabilities?: Capability[];
+  /**
+   * Minimum Node.js version required to run this pack.
+   * Format: semver string (e.g., "18.0.0", "20.10.0")
+   * If not specified, the pack is assumed compatible with any Node version.
+   * Scheduler will refuse to schedule on nodes with incompatible versions.
+   */
+  minNodeVersion?: string;
   /** Additional configuration */
   [key: string]: unknown;
 }
@@ -233,6 +240,76 @@ export function compareSemVer(a: string, b: string): number {
   }
 
   return 0;
+}
+
+/**
+ * Check if a node's version is compatible with a pack's minimum version requirement.
+ * @param nodeVersion - The node's runtime version (e.g., "22.0.0", "Chrome 120")
+ * @param minNodeVersion - The pack's minimum Node.js version requirement (e.g., "18.0.0")
+ * @returns true if compatible (node version >= min version), false otherwise
+ * 
+ * Returns true if:
+ * - minNodeVersion is not specified (pack accepts any version)
+ * - nodeVersion is not specified (assume compatible for flexibility)
+ * - nodeVersion >= minNodeVersion (satisfies requirement)
+ * 
+ * Returns false if:
+ * - Both versions are valid semver and nodeVersion < minNodeVersion
+ */
+export function isNodeVersionCompatible(
+  nodeVersion: string | undefined,
+  minNodeVersion: string | undefined
+): boolean {
+  // If pack doesn't specify a minimum version, it's compatible with any node
+  if (!minNodeVersion) {
+    return true;
+  }
+
+  // If node doesn't report version, assume compatible (for flexibility)
+  if (!nodeVersion) {
+    return true;
+  }
+
+  // Clean up version strings - extract semver from strings like "v20.10.0" or "Chrome 120"
+  const cleanNodeVersion = extractSemVer(nodeVersion);
+  const cleanMinVersion = extractSemVer(minNodeVersion);
+
+  if (!cleanNodeVersion || !cleanMinVersion) {
+    // Can't parse versions, assume compatible
+    return true;
+  }
+
+  // Node version must be >= min version
+  return compareSemVer(cleanNodeVersion, cleanMinVersion) >= 0;
+}
+
+/**
+ * Extract a semver string from a version string.
+ * Handles formats like "v20.10.0", "20.10.0", "Chrome 120", "Node 18.0.0"
+ */
+function extractSemVer(version: string): string | null {
+  // Remove 'v' prefix if present
+  const cleaned = version.replace(/^v/i, '').trim();
+  
+  // Try to match a semver pattern (x.y.z with optional prerelease)
+  const semverMatch = cleaned.match(/(\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?)/);
+  if (semverMatch && semverMatch[1]) {
+    return semverMatch[1];
+  }
+
+  // Try to match just major.minor (e.g., "22.0")
+  const majorMinorMatch = cleaned.match(/(\d+\.\d+)/);
+  if (majorMinorMatch && majorMinorMatch[1]) {
+    return `${majorMinorMatch[1]}.0`;
+  }
+
+  // Try to match just major (e.g., "22" or "Chrome 120")
+  const majorMatch = cleaned.match(/(\d+)/);
+  if (majorMatch && majorMatch[1]) {
+    return `${majorMatch[1]}.0.0`;
+  }
+
+  return null;
 }
 
 /**

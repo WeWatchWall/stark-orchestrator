@@ -7,6 +7,7 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
+import * as readline from 'node:readline';
 import { createApiClient, requireAuth, loadConfig } from '../config.js';
 import {
   success,
@@ -19,6 +20,30 @@ import {
   statusBadge,
 } from '../output.js';
 import type { DeploymentStatus } from '@stark-o/shared';
+
+/**
+ * Get current Node.js version (without 'v' prefix)
+ */
+function getSystemNodeVersion(): string {
+  return process.version.replace(/^v/, '');
+}
+
+/**
+ * Prompts for yes/no confirmation
+ */
+async function confirm(message: string): Promise<boolean> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    rl.question(message, (answer) => {
+      rl.close();
+      resolve(answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes');
+    });
+  });
+}
 
 /**
  * API response types
@@ -80,6 +105,8 @@ async function createHandler(
     toleration?: string[];
     cpu?: string;
     memory?: string;
+    minNodeVersion?: string;
+    yes?: boolean;
   }
 ): Promise<void> {
   const name = nameArg || options.name;
@@ -177,6 +204,40 @@ async function createHandler(
       deploymentRequest.resourceRequests = {
         cpu: options.cpu ? parseInt(options.cpu, 10) : 100,
         memory: options.memory ? parseInt(options.memory, 10) : 128,
+      };
+    }
+
+    // Handle Node version compatibility
+    let minNodeVersion = options.minNodeVersion;
+    if (!minNodeVersion && !options.yes) {
+      // No explicit version specified - warn about using system version
+      const systemVersion = getSystemNodeVersion();
+      console.log();
+      warn(`No minimum Node.js version specified.`);
+      info(`Current system Node.js version: ${chalk.cyan(systemVersion)}`);
+      info(`Packs without minNodeVersion may fail on nodes with older Node.js versions.`);
+      console.log();
+      
+      const shouldUseSystemVersion = await confirm(
+        `Use current Node.js version (${systemVersion}) as minimum? [y/N] `
+      );
+      
+      if (shouldUseSystemVersion) {
+        minNodeVersion = systemVersion;
+        info(`Using minNodeVersion: ${chalk.cyan(minNodeVersion)}`);
+      } else {
+        info(`Proceeding without minNodeVersion constraint.`);
+        info(chalk.dim(`Tip: Use --min-node-version <version> to specify version requirements.`));
+        info(chalk.dim(`     Example: --min-node-version 18.0.0`));
+      }
+      console.log();
+    }
+
+    // Add minNodeVersion to pack metadata if specified
+    if (minNodeVersion) {
+      deploymentRequest.packMetadata = {
+        ...(deploymentRequest.packMetadata as Record<string, unknown> ?? {}),
+        minNodeVersion,
       };
     }
 
@@ -542,6 +603,8 @@ export function createDeploymentCommand(): Command {
     .option('-t, --toleration <key=value:effect...>', 'Toleration (can be repeated)')
     .option('--cpu <millicores>', 'CPU request in millicores')
     .option('--memory <mb>', 'Memory request in MB')
+    .option('--min-node-version <version>', 'Minimum Node.js version required (e.g., 18, 20.10.0)')
+    .option('-y, --yes', 'Skip confirmation prompts')
     .action(createHandler);
 
   // List deployments

@@ -97,6 +97,7 @@ function rowToNodeListItem(row: NodeRow & { pod_count?: number }): NodeListItem 
     podCount: row.pod_count ?? 0,
     connectionId: row.connection_id ?? undefined,
     registeredBy: row.registered_by ?? undefined,
+    capabilities: row.capabilities ?? undefined,
   };
 }
 
@@ -396,15 +397,27 @@ export class NodeQueries {
 
   /**
    * Updates node connection ID and sets status to online (used on reconnect)
+   * Optionally updates capabilities if the node's runtime version changed
    */
-  async reconnectNode(id: string, connectionId: string): Promise<NodeResult<Node>> {
+  async reconnectNode(
+    id: string,
+    connectionId: string,
+    capabilities?: NodeCapabilities
+  ): Promise<NodeResult<Node>> {
+    const updates: Record<string, unknown> = {
+      connection_id: connectionId,
+      status: 'online' as NodeStatus,
+      last_heartbeat: new Date().toISOString(),
+    };
+
+    // Update capabilities if provided (e.g., Node.js version changed after upgrade)
+    if (capabilities !== undefined) {
+      updates.capabilities = capabilities;
+    }
+
     const { data, error } = await this.client
       .from('nodes')
-      .update({
-        connection_id: connectionId,
-        status: 'online' as NodeStatus,
-        last_heartbeat: new Date().toISOString(),
-      })
+      .update(updates)
       .eq('id', id)
       .select()
       .single();

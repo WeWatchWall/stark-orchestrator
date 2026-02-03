@@ -218,6 +218,60 @@ export function validatePackMetadata(metadata: unknown): ValidationError | null 
     };
   }
 
+  // Validate minNodeVersion if present
+  const meta = metadata as Record<string, unknown>;
+  if (meta.minNodeVersion !== undefined) {
+    const minNodeVersionError = validateMinNodeVersion(meta.minNodeVersion);
+    if (minNodeVersionError) {
+      return minNodeVersionError;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Semver pattern for minNodeVersion validation (more lenient than pack version)
+ * Allows: x.y.z, x.y, or just x (major version only)
+ */
+const MIN_NODE_VERSION_PATTERN = /^\d+(\.\d+)?(\.\d+)?(-[a-zA-Z0-9.-]+)?$/;
+
+/**
+ * Validate minimum Node.js version requirement
+ * Accepts formats: "22", "22.0", "22.0.0", "22.0.0-beta.1"
+ */
+export function validateMinNodeVersion(minNodeVersion: unknown): ValidationError | null {
+  if (minNodeVersion === undefined || minNodeVersion === null) {
+    return null; // Optional field
+  }
+
+  if (typeof minNodeVersion !== 'string') {
+    return {
+      field: 'metadata.minNodeVersion',
+      message: 'Minimum Node version must be a string',
+      code: 'INVALID_TYPE',
+    };
+  }
+
+  if (minNodeVersion.length === 0) {
+    return {
+      field: 'metadata.minNodeVersion',
+      message: 'Minimum Node version cannot be empty',
+      code: 'EMPTY',
+    };
+  }
+
+  // Remove 'v' prefix if present for validation
+  const cleanVersion = minNodeVersion.replace(/^v/i, '');
+
+  if (!MIN_NODE_VERSION_PATTERN.test(cleanVersion)) {
+    return {
+      field: 'metadata.minNodeVersion',
+      message: 'Minimum Node version must be a valid version (e.g., 18, 18.0, 18.0.0, 20.10.0)',
+      code: 'INVALID_FORMAT',
+    };
+  }
+
   return null;
 }
 

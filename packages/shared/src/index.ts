@@ -18,6 +18,7 @@ export {
   validateRuntimeTag,
   validatePackDescription,
   validatePackMetadata,
+  validateMinNodeVersion,
   validateRegisterPackInput,
   validateUpdatePackInput,
   // Node validation

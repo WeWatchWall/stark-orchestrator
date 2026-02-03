@@ -282,6 +282,12 @@ export async function handleNodeHeartbeat(
  */
 export interface ReconnectNodePayload {
   nodeId: string;
+  /** Optional capabilities update - allows updating Node.js version on reconnect */
+  capabilities?: {
+    version?: string;
+    features?: string[];
+    [key: string]: unknown;
+  };
 }
 
 /**
@@ -352,8 +358,12 @@ export async function handleNodeReconnect(
     return;
   }
 
-  // Reconnect the node - update connection ID and set online
-  const reconnectResult = await nodeQueries.reconnectNode(payload.nodeId, ws.id);
+  // Reconnect the node - update connection ID, set online, and optionally update capabilities
+  const reconnectResult = await nodeQueries.reconnectNode(
+    payload.nodeId,
+    ws.id,
+    payload.capabilities
+  );
   if (reconnectResult.error || !reconnectResult.data) {
     sendResponse(
       ws,

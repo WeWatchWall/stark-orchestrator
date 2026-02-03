@@ -9,8 +9,8 @@
  * 4. Cleaning up pods when deployments are deleted
  */
 
-import { createServiceLogger, matchesSelector, isRuntimeCompatible, shouldCountTowardCrashLoop } from '@stark-o/shared';
-import type { Deployment, Labels, RuntimeTag, RuntimeType, PodTerminationReason, NodeListItem } from '@stark-o/shared';
+import { createServiceLogger, matchesSelector, isRuntimeCompatible, isNodeVersionCompatible, shouldCountTowardCrashLoop } from '@stark-o/shared';
+import type { Deployment, Labels, RuntimeTag, RuntimeType, PodTerminationReason, NodeListItem, PackMetadata } from '@stark-o/shared';
 import { toleratesBlockingTaints } from '@stark-o/shared';
 import { getDeploymentQueriesAdmin } from '../supabase/deployments.js';
 import { getPodQueriesAdmin } from '../supabase/pods.js';
@@ -546,7 +546,8 @@ export class DeploymentController {
     const eligibleNodes = this.filterEligibleNodes(
       accessibleNodes,
       deployment,
-      packRuntimeTag
+      packRuntimeTag,
+      pack.metadata
     );
 
     // Find nodes that don't have a pod yet
@@ -622,9 +623,11 @@ export class DeploymentController {
       runtimeType?: RuntimeType;
       labels?: Labels; 
       taints?: Array<{ key: string; value?: string; effect: string }>;
+      capabilities?: { version?: string; [key: string]: unknown };
     }>,
     deployment: Deployment,
-    packRuntimeTag?: RuntimeTag
+    packRuntimeTag?: RuntimeTag,
+    packMetadata?: PackMetadata
   ): Array<{ id: string; name: string }> {
     return nodes.filter(node => {
       // Check runtime compatibility
@@ -632,6 +635,12 @@ export class DeploymentController {
         if (!isRuntimeCompatible(packRuntimeTag, node.runtimeType)) {
           return false;
         }
+      }
+
+      // Check Node.js version compatibility
+      const minNodeVersion = packMetadata?.minNodeVersion as string | undefined;
+      if (!isNodeVersionCompatible(node.capabilities?.version, minNodeVersion)) {
+        return false;
       }
 
       // Check node selector

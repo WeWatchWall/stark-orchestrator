@@ -804,8 +804,10 @@ export class NodeAgent {
     this.config.logger.info('Reconnecting node', { nodeId: this.nodeId, nodeName: this.config.nodeName });
 
     try {
+      // Send current capabilities on reconnect in case Node.js version changed
       const response = await this.sendRequest<{ node: Node }>('node:reconnect', {
         nodeId: this.nodeId,
+        capabilities: this.config.capabilities,
       });
 
       // Update the lastStarted timestamp in persisted state

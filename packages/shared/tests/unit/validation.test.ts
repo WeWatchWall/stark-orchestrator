@@ -46,7 +46,10 @@ import {
 } from '../../src/validation';
 
 // Import isRuntimeCompatible from types
-import { isRuntimeCompatible } from '../../src/types';
+import { isRuntimeCompatible, isNodeVersionCompatible } from '../../src/types';
+
+// Import validateMinNodeVersion
+import { validateMinNodeVersion } from '../../src/validation';
 
 // Use validateNodeLabels as validateLabels for the tests
 const validateLabels = validateNodeLabels;
@@ -150,6 +153,82 @@ describe('Pack Validation', () => {
     it('should reject mismatched runtime tags', () => {
       expect(isRuntimeCompatible('node', 'browser')).toBe(false);
       expect(isRuntimeCompatible('browser', 'node')).toBe(false);
+    });
+  });
+
+  describe('isNodeVersionCompatible', () => {
+    it('should return true when no minNodeVersion is specified', () => {
+      expect(isNodeVersionCompatible('22.0.0', undefined)).toBe(true);
+      expect(isNodeVersionCompatible('18.0.0', undefined)).toBe(true);
+      expect(isNodeVersionCompatible(undefined, undefined)).toBe(true);
+    });
+
+    it('should return true when node version is not reported', () => {
+      expect(isNodeVersionCompatible(undefined, '18.0.0')).toBe(true);
+    });
+
+    it('should return true when node version >= min version', () => {
+      expect(isNodeVersionCompatible('22.0.0', '18.0.0')).toBe(true);
+      expect(isNodeVersionCompatible('20.10.0', '20.0.0')).toBe(true);
+      expect(isNodeVersionCompatible('18.0.0', '18.0.0')).toBe(true);
+      expect(isNodeVersionCompatible('22.5.1', '22.5.0')).toBe(true);
+    });
+
+    it('should return false when node version < min version', () => {
+      expect(isNodeVersionCompatible('16.0.0', '18.0.0')).toBe(false);
+      expect(isNodeVersionCompatible('18.0.0', '20.0.0')).toBe(false);
+      expect(isNodeVersionCompatible('20.9.0', '20.10.0')).toBe(false);
+    });
+
+    it('should handle v-prefixed versions', () => {
+      expect(isNodeVersionCompatible('v22.0.0', '18.0.0')).toBe(true);
+      expect(isNodeVersionCompatible('22.0.0', 'v18.0.0')).toBe(true);
+      expect(isNodeVersionCompatible('v16.0.0', 'v18.0.0')).toBe(false);
+    });
+
+    it('should handle browser-style versions like "Chrome 120"', () => {
+      // Browser versions should still work for major version comparison
+      expect(isNodeVersionCompatible('Chrome 120', '100')).toBe(true);
+      expect(isNodeVersionCompatible('Chrome 90', '100')).toBe(false);
+    });
+
+    it('should handle partial versions (major only)', () => {
+      expect(isNodeVersionCompatible('22.0.0', '18')).toBe(true);
+      expect(isNodeVersionCompatible('16.0.0', '18')).toBe(false);
+    });
+  });
+
+  describe('validateMinNodeVersion', () => {
+    it('should accept valid version formats', () => {
+      expect(validateMinNodeVersion('18')).toBeNull();
+      expect(validateMinNodeVersion('18.0')).toBeNull();
+      expect(validateMinNodeVersion('18.0.0')).toBeNull();
+      expect(validateMinNodeVersion('20.10.0')).toBeNull();
+      expect(validateMinNodeVersion('22.5.1-beta')).toBeNull();
+    });
+
+    it('should accept v-prefixed versions', () => {
+      expect(validateMinNodeVersion('v18.0.0')).toBeNull();
+      expect(validateMinNodeVersion('v20')).toBeNull();
+    });
+
+    it('should allow undefined/null (optional field)', () => {
+      expect(validateMinNodeVersion(undefined)).toBeNull();
+      expect(validateMinNodeVersion(null)).toBeNull();
+    });
+
+    it('should reject empty strings', () => {
+      expect(validateMinNodeVersion('')?.code).toBe('EMPTY');
+    });
+
+    it('should reject invalid formats', () => {
+      expect(validateMinNodeVersion('abc')?.code).toBe('INVALID_FORMAT');
+      expect(validateMinNodeVersion('node18')?.code).toBe('INVALID_FORMAT');
+    });
+
+    it('should reject non-string values', () => {
+      expect(validateMinNodeVersion(18)?.code).toBe('INVALID_TYPE');
+      expect(validateMinNodeVersion({})?.code).toBe('INVALID_TYPE');
     });
   });
 });
