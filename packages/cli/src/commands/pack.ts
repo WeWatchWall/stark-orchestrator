@@ -9,6 +9,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as readline from 'node:readline';
 import { createApiClient, requireAuth } from '../config.js';
 import {
   success,
@@ -23,6 +24,30 @@ import {
 } from '../output.js';
 import { bundleNuxtProject, bundleSimple, isNuxtProject } from '../bundler.js';
 import type { RuntimeTag } from '@stark-o/shared';
+
+/**
+ * Get current Node.js version (without 'v' prefix)
+ */
+function getSystemNodeVersion(): string {
+  return process.version.replace(/^v/, '');
+}
+
+/**
+ * Prompts for yes/no confirmation
+ */
+async function confirm(message: string): Promise<boolean> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    rl.question(message, (answer) => {
+      rl.close();
+      resolve(answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes');
+    });
+  });
+}
 
 /**
  * API response types
@@ -135,6 +160,8 @@ async function registerHandler(
     runtime: string;
     description?: string;
     visibility?: string;
+    minNodeVersion?: string;
+    yes?: boolean;
   }
 ): Promise<void> {
   requireAuth();
@@ -171,13 +198,39 @@ async function registerHandler(
     process.exit(1);
   }
 
+  // Handle Node version compatibility for node runtime
+  let minNodeVersion = options.minNodeVersion;
+  if (options.runtime === 'node' && !minNodeVersion && !options.yes) {
+    // No explicit version specified - warn about using system version
+    const systemVersion = getSystemNodeVersion();
+    console.log();
+    warn(`No minimum Node.js version specified.`);
+    info(`Current system Node.js version: ${chalk.cyan(systemVersion)}`);
+    info(`Packs without minNodeVersion may fail on nodes with older Node.js versions.`);
+    console.log();
+    
+    const shouldUseSystemVersion = await confirm(
+      `Use current Node.js version (${systemVersion}) as minimum? [y/N] `
+    );
+    
+    if (shouldUseSystemVersion) {
+      minNodeVersion = systemVersion;
+      info(`Using minNodeVersion: ${chalk.cyan(minNodeVersion)}`);
+    } else {
+      info(`Proceeding without minNodeVersion constraint.`);
+      info(chalk.dim(`Tip: Use --min-node-version <version> to specify version requirements.`));
+      info(chalk.dim(`     Example: --min-node-version 18.0.0`));
+    }
+    console.log();
+  }
+
   info('Registering pack...');
 
   try {
     const api = createApiClient();
     
     // Include bundleContent directly in the request body
-    const requestBody = {
+    const requestBody: Record<string, unknown> = {
       name: options.name,
       version: options.ver,
       runtimeTag: options.runtime,
@@ -185,6 +238,11 @@ async function registerHandler(
       visibility: options.visibility,
       bundleContent: bundleContent,
     };
+
+    // Add minNodeVersion if specified
+    if (minNodeVersion) {
+      requestBody.minNodeVersion = minNodeVersion;
+    }
     
     info(`Sending registration request for ${options.name}@${options.ver}...`);
     const response = await api.post('/api/packs', requestBody);
@@ -468,6 +526,8 @@ export function createPackCommand(): Command {
     .requiredOption('-r, --runtime <runtime>', 'Runtime tag: node, browser, universal')
     .option('-d, --description <desc>', 'Pack description')
     .option('--visibility <visibility>', 'Pack visibility: private (default) or public')
+    .option('--min-node-version <version>', 'Minimum Node.js version required (e.g., 18, 20.10.0)')
+    .option('-y, --yes', 'Skip confirmation prompts')
     .action(registerHandler);
 
   pack
