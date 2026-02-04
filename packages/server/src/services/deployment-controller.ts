@@ -10,12 +10,13 @@
  */
 
 import { createServiceLogger, matchesSelector, isRuntimeCompatible, isNodeVersionCompatible, shouldCountTowardCrashLoop } from '@stark-o/shared';
-import type { Deployment, Labels, RuntimeTag, RuntimeType, PodTerminationReason, NodeListItem, PackMetadata } from '@stark-o/shared';
+import type { Deployment, Labels, RuntimeTag, RuntimeType, PodTerminationReason, NodeListItem, PackMetadata, Pack } from '@stark-o/shared';
 import { toleratesBlockingTaints } from '@stark-o/shared';
 import { getDeploymentQueriesAdmin } from '../supabase/deployments.js';
 import { getPodQueriesAdmin } from '../supabase/pods.js';
 import { getNodeQueries } from '../supabase/nodes.js';
 import { getPackQueriesAdmin } from '../supabase/packs.js';
+import { getConnectionManager } from './connection-service.js';
 
 /**
  * Logger for deployment controller
@@ -67,6 +68,12 @@ export class DeploymentController {
   private intervalTimer: NodeJS.Timeout | null = null;
   private isRunning = false;
   private isProcessing = false;
+  /** 
+   * Set to true when triggerReconcile() is called during an active cycle.
+   * Causes another reconcile to run immediately after the current one finishes.
+   * This prevents lost reconciles when orphaned pods are stopped mid-cycle.
+   */
+  private pendingReconcile = false;
 
   constructor(config: DeploymentControllerConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -116,13 +123,16 @@ export class DeploymentController {
    * Run a single reconciliation cycle
    */
   private async runReconcileLoop(): Promise<void> {
-    // Prevent overlapping runs
+    // Prevent overlapping runs - but queue a follow-up if triggered during processing
     if (this.isProcessing) {
-      logger.debug('Skipping reconcile cycle - previous cycle still running');
+      logger.debug('Queueing reconcile cycle - previous cycle still running');
+      this.pendingReconcile = true;
       return;
     }
 
     this.isProcessing = true;
+    // Clear pending flag before running - we're about to process
+    this.pendingReconcile = false;
 
     try {
       await this.reconcileDeployments();
@@ -130,6 +140,15 @@ export class DeploymentController {
       logger.error('Error in reconcile cycle', error instanceof Error ? error : undefined);
     } finally {
       this.isProcessing = false;
+      
+      // If a reconcile was requested while we were processing, run again immediately.
+      // This ensures orphaned pod cleanup triggers a fresh reconcile with updated data.
+      if (this.pendingReconcile) {
+        logger.debug('Running queued reconcile cycle');
+        this.pendingReconcile = false;
+        // Use setImmediate to avoid stack overflow on rapid triggers
+        setImmediate(() => this.runReconcileLoop());
+      }
     }
   }
 
@@ -664,7 +683,7 @@ export class DeploymentController {
   }
 
   /**
-   * Create a pod for a deployment
+   * Create a pod for a deployment with proper incarnation tracking
    */
   private async createPodForDeployment(
     deployment: Deployment,
@@ -683,9 +702,16 @@ export class DeploymentController {
       });
       return;
     }
+    const pack = packResult.data;
 
-    // Create pod with deployment reference
-    const result = await podQueries.createPod({
+    // Get the next incarnation number for this deployment
+    // This ensures late messages from old incarnations are rejected
+    const incarnationResult = await podQueries.getNextIncarnation(deployment.id);
+    const incarnation = incarnationResult.data ?? 1;
+
+    // Create pod with deployment reference and incarnation
+    // For DaemonSet mode (targetNodeId provided), the pod is pre-assigned to the node
+    const result = await podQueries.createPodWithIncarnation({
       packId: deployment.packId,
       packVersion: deployment.packVersion,
       namespace: deployment.namespace,
@@ -700,7 +726,7 @@ export class DeploymentController {
       resourceRequests: deployment.resourceRequests,
       resourceLimits: deployment.resourceLimits,
       scheduling: deployment.scheduling,
-    }, deployment.createdBy, deployment.id);
+    }, deployment.createdBy, deployment.id, incarnation, targetNodeId);
 
     if (result.error) {
       logger.error('Failed to create pod for deployment', undefined, {
@@ -710,11 +736,111 @@ export class DeploymentController {
       return;
     }
 
+    const pod = result.data;
+
     logger.info('Created pod for deployment', {
       deploymentName: deployment.name,
-      podId: result.data?.id,
+      podId: pod?.id,
+      incarnation,
       targetNodeId,
     });
+
+    // For DaemonSet mode: immediately deploy to the target node
+    if (targetNodeId && pod) {
+      await this.deployPodToNode(pod.id, targetNodeId, pack);
+    }
+  }
+
+  /**
+   * Send pod:deploy message to a node via WebSocket
+   * Used for DaemonSet pods that are pre-assigned to specific nodes
+   */
+  private async deployPodToNode(
+    podId: string,
+    nodeId: string,
+    pack: Pack
+  ): Promise<void> {
+    const connectionManager = getConnectionManager();
+    if (!connectionManager) {
+      logger.error('No connection manager available for pod deployment', {
+        podId,
+        nodeId,
+      });
+      return;
+    }
+
+    // Get node to find its connection ID
+    const nodeQueries = getNodeQueries();
+    const nodeResult = await nodeQueries.getNodeById(nodeId);
+    if (nodeResult.error || !nodeResult.data) {
+      logger.error('Failed to get node for pod deployment', undefined, {
+        podId,
+        nodeId,
+        error: nodeResult.error,
+      });
+      return;
+    }
+
+    const node = nodeResult.data;
+    if (!node.connectionId) {
+      logger.warn('Node has no connection, pod will be deployed when node reconnects', {
+        podId,
+        nodeId,
+        nodeName: node.name,
+      });
+      return;
+    }
+
+    // Get full pod details for deployment
+    const podQueries = getPodQueriesAdmin();
+    const podResult = await podQueries.getPodById(podId);
+    if (podResult.error || !podResult.data) {
+      logger.error('Failed to get pod for deployment', undefined, {
+        podId,
+        error: podResult.error,
+      });
+      return;
+    }
+
+    const pod = podResult.data;
+
+    // Send pod:deploy message to the node
+    const sent = connectionManager.sendToConnection(node.connectionId, {
+      type: 'pod:deploy',
+      payload: {
+        podId,
+        nodeId,
+        pack: {
+          id: pack.id,
+          name: pack.name,
+          version: pack.version,
+          runtimeTag: pack.runtimeTag,
+          bundlePath: pack.bundlePath,
+          bundleContent: pack.bundleContent,
+          metadata: pack.metadata,
+        },
+        resourceRequests: pod.resourceRequests,
+        resourceLimits: pod.resourceLimits,
+        labels: pod.labels,
+        annotations: pod.annotations,
+        namespace: pod.namespace,
+      },
+    });
+
+    if (sent) {
+      logger.info('DaemonSet pod deploy message sent to node', {
+        podId,
+        nodeId,
+        nodeName: node.name,
+        packName: pack.name,
+      });
+    } else {
+      logger.warn('Failed to send pod deploy message - connection not found', {
+        podId,
+        nodeId,
+        connectionId: node.connectionId,
+      });
+    }
   }
 
   /**

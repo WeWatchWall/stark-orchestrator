@@ -41,6 +41,13 @@ export class ChaosIntegration {
   private isAttached = false;
 
   /**
+   * Check if this integration is attached to a connection manager
+   */
+  isAttachedToManager(): boolean {
+    return this.isAttached;
+  }
+
+  /**
    * Attach to a ConnectionManager and wrap its methods
    */
   attach(connectionManager: ConnectionManager): void {
@@ -256,6 +263,13 @@ export function getChaosIntegration(): ChaosIntegration {
     chaosIntegration = new ChaosIntegration();
   }
   return chaosIntegration;
+}
+
+/**
+ * Check if chaos integration is attached to a connection manager
+ */
+export function isChaosIntegrationAttached(): boolean {
+  return chaosIntegration !== null && chaosIntegration.isAttachedToManager();
 }
 
 export function resetChaosIntegration(): void {

@@ -49,6 +49,7 @@ interface PodRow {
   resource_requests: ResourceRequirements;
   resource_limits: ResourceRequirements;
   granted_capabilities: string[];
+  incarnation: number;
   created_by: string;
   scheduled_at: string | null;
   started_at: string | null;
@@ -113,6 +114,7 @@ function rowToPod(row: PodRow): Pod {
       podAntiAffinity: row.pod_anti_affinity ?? undefined,
     },
     grantedCapabilities: (row.granted_capabilities ?? []) as Capability[],
+    incarnation: row.incarnation ?? 1,
     createdBy: row.created_by,
     scheduledAt: row.scheduled_at ? new Date(row.scheduled_at) : undefined,
     startedAt: row.started_at ? new Date(row.started_at) : undefined,
@@ -138,6 +140,7 @@ function rowToPodListItem(row: PodRow): PodListItem {
     namespace: row.namespace,
     labels: row.labels ?? {},
     priority: row.priority,
+    incarnation: row.incarnation ?? 1,
     createdBy: row.created_by,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
@@ -552,6 +555,239 @@ export class PodQueries {
   }
 
   /**
+   * Revokes all active pods on a node (marks them failed with lease_revoked reason)
+   * Called when a node's lease expires after being suspect
+   * Similar to failPodsOnNode but specifically for lease expiration
+   * @param nodeId - The node ID
+   * @returns Result with count of pods revoked and their IDs with incarnations
+   */
+  async revokePodsOnNode(
+    nodeId: string,
+  ): Promise<PodResult<{ revokedCount: number; podIds: string[]; incarnations: Map<string, number> }>> {
+    // Get all active pods on the node (with their incarnation for reference)
+    const activeStatuses: PodStatus[] = ['pending', 'scheduled', 'starting', 'running', 'stopping'];
+    
+    const { data: pods, error: listError } = await this.client
+      .from('pods')
+      .select('id, incarnation')
+      .eq('node_id', nodeId)
+      .in('status', activeStatuses);
+
+    if (listError) {
+      return { data: null, error: listError };
+    }
+
+    if (!pods || pods.length === 0) {
+      return { data: { revokedCount: 0, podIds: [], incarnations: new Map() }, error: null };
+    }
+
+    const podIds = pods.map((p: { id: string }) => p.id);
+    const incarnations = new Map<string, number>();
+    pods.forEach((p: { id: string; incarnation: number }) => {
+      incarnations.set(p.id, p.incarnation);
+    });
+
+    // Revoke all pods - mark as stopped (not failed) since this is an infrastructure issue.
+    // Using 'stopped' instead of 'failed' because:
+    // 1. The pods themselves didn't fail - they were running fine before the node went offline
+    // 2. 'failed' could confuse users/operators into thinking there's an application bug
+    // 3. The termination_reason 'node_lost' already conveys what happened
+    // The incarnation increment ensures late messages from these pods are rejected
+    const { error: updateError } = await this.client
+      .from('pods')
+      .update({
+        status: 'stopped' as PodStatus,
+        status_message: 'Node lease expired - pod authority revoked',
+        termination_reason: 'node_lost' as PodTerminationReason,
+        stopped_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('node_id', nodeId)
+      .in('status', activeStatuses);
+
+    if (updateError) {
+      return { data: null, error: updateError };
+    }
+
+    return { 
+      data: { revokedCount: podIds.length, podIds, incarnations }, 
+      error: null,
+    };
+  }
+
+  /**
+   * Stops orphaned pods on a node after the node agent restarts.
+   * Called when a node reconnects but doesn't have certain pods running locally.
+   * This handles the case where a node restarts quickly (before lease expires)
+   * but loses its in-memory pod state.
+   * 
+   * @param nodeId - The node ID
+   * @param runningPodIds - Pod IDs that the node reports as actually running
+   * @returns Result with count of pods stopped and their IDs
+   */
+  async stopOrphanedPodsOnNode(
+    nodeId: string,
+    runningPodIds: string[],
+  ): Promise<PodResult<{ stoppedCount: number; podIds: string[] }>> {
+    // Get all active pods assigned to this node in the database
+    const activeStatuses: PodStatus[] = ['pending', 'scheduled', 'starting', 'running', 'stopping'];
+    
+    const { data: dbPods, error: listError } = await this.client
+      .from('pods')
+      .select('id')
+      .eq('node_id', nodeId)
+      .in('status', activeStatuses);
+
+    if (listError) {
+      return { data: null, error: listError };
+    }
+
+    if (!dbPods || dbPods.length === 0) {
+      return { data: { stoppedCount: 0, podIds: [] }, error: null };
+    }
+
+    // Find orphaned pods: pods in DB that node doesn't have running
+    const runningSet = new Set(runningPodIds);
+    const orphanedPodIds = dbPods
+      .map((p: { id: string }) => p.id)
+      .filter((id: string) => !runningSet.has(id));
+
+    if (orphanedPodIds.length === 0) {
+      return { data: { stoppedCount: 0, podIds: [] }, error: null };
+    }
+
+    // Stop the orphaned pods with 'node_restart' termination reason
+    // This marks them as stopped (not failed) since they were running fine before the restart
+    const { error: updateError } = await this.client
+      .from('pods')
+      .update({
+        status: 'stopped' as PodStatus,
+        status_message: 'Node agent restarted - pod process lost',
+        termination_reason: 'node_restart' as PodTerminationReason,
+        stopped_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .in('id', orphanedPodIds);
+
+    if (updateError) {
+      return { data: null, error: updateError };
+    }
+
+    return { 
+      data: { stoppedCount: orphanedPodIds.length, podIds: orphanedPodIds }, 
+      error: null,
+    };
+  }
+
+  /**
+   * Gets the next incarnation number for a replacement pod
+   * Called when creating a replacement for a failed pod in a deployment
+   * @param deploymentId - The deployment ID
+   * @returns The next incarnation number to use
+   */
+  async getNextIncarnation(deploymentId: string): Promise<PodResult<number>> {
+    // Get the maximum incarnation from all pods in this deployment
+    const { data, error } = await this.client
+      .from('pods')
+      .select('incarnation')
+      .eq('deployment_id', deploymentId)
+      .order('incarnation', { ascending: false })
+      .limit(1);
+
+    if (error) {
+      return { data: null, error };
+    }
+
+    const maxIncarnation = data && data.length > 0 
+      ? (data[0] as { incarnation: number }).incarnation 
+      : 0;
+
+    return { data: maxIncarnation + 1, error: null };
+  }
+
+  /**
+   * Creates a pod with a specific incarnation number
+   * Used when creating replacement pods after revocation
+   * @param targetNodeId - Optional node ID to pre-assign the pod to (for DaemonSet mode)
+   */
+  async createPodWithIncarnation(
+    input: CreatePodInput,
+    createdBy: string,
+    deploymentId: string,
+    incarnation: number,
+    targetNodeId?: string
+  ): Promise<PodResult<Pod>> {
+    const defaultResourceRequests = { cpu: 100, memory: 128 };
+    const defaultResourceLimits = { cpu: 500, memory: 512 };
+
+    const insertData: Record<string, unknown> = {
+      pack_id: input.packId,
+      pack_version: input.packVersion ?? 'latest',
+      namespace: input.namespace ?? 'default',
+      labels: input.labels ?? {},
+      annotations: input.annotations ?? {},
+      priority_class_name: input.priorityClassName ?? null,
+      tolerations: input.tolerations ?? [],
+      node_selector: input.scheduling?.nodeSelector ?? {},
+      node_affinity: input.scheduling?.nodeAffinity ?? null,
+      pod_affinity: input.scheduling?.podAffinity ?? null,
+      pod_anti_affinity: input.scheduling?.podAntiAffinity ?? null,
+      resource_requests: {
+        cpu: input.resourceRequests?.cpu ?? defaultResourceRequests.cpu,
+        memory: input.resourceRequests?.memory ?? defaultResourceRequests.memory,
+      },
+      resource_limits: {
+        cpu: input.resourceLimits?.cpu ?? defaultResourceLimits.cpu,
+        memory: input.resourceLimits?.memory ?? defaultResourceLimits.memory,
+      },
+      created_by: createdBy,
+      metadata: input.metadata ?? {},
+      deployment_id: deploymentId,
+      incarnation: incarnation,
+    };
+
+    // For DaemonSet mode: pre-assign pod to specific node
+    if (targetNodeId) {
+      insertData.node_id = targetNodeId;
+      insertData.status = 'scheduled';
+    }
+
+    const { data, error } = await this.client
+      .from('pods')
+      .insert(insertData)
+      .select()
+      .single();
+
+    if (error) {
+      return { data: null, error };
+    }
+
+    return { data: rowToPod(data as PodRow), error: null };
+  }
+
+  /**
+   * Validates that a pod update is from the correct incarnation
+   * Returns true if the provided incarnation matches the current pod incarnation
+   */
+  async validatePodIncarnation(
+    podId: string,
+    expectedIncarnation: number
+  ): Promise<PodResult<boolean>> {
+    const { data, error } = await this.client
+      .from('pods')
+      .select('incarnation')
+      .eq('id', podId)
+      .single();
+
+    if (error) {
+      return { data: null, error };
+    }
+
+    const currentIncarnation = (data as { incarnation: number }).incarnation;
+    return { data: currentIncarnation === expectedIncarnation, error: null };
+  }
+
+  /**
    * Rolls back a pod to a different version
    */
   async rollbackPod(
@@ -871,6 +1107,9 @@ export const evictPod = (id: string, reason: string, terminationReason?: PodTerm
 
 export const failPodsOnNode = (nodeId: string, reason: string, terminationReason?: PodTerminationReason) =>
   getPodQueries().failPodsOnNode(nodeId, reason, terminationReason);
+
+export const stopOrphanedPodsOnNode = (nodeId: string, runningPodIds: string[]) =>
+  getPodQueries().stopOrphanedPodsOnNode(nodeId, runningPodIds);
 
 export const deletePod = (id: string) =>
   getPodQueries().deletePod(id);

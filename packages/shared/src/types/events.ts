@@ -63,6 +63,7 @@ export type PodEventType =
 export type NodeEventType =
   | 'NodeRegistered'
   | 'NodeReady'
+  | 'NodeSuspect'
   | 'NodeLost'
   | 'NodeRecovered'
   | 'NodeDraining'

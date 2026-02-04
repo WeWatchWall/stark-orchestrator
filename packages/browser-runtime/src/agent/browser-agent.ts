@@ -1171,8 +1171,21 @@ export class BrowserAgent {
     this.logger.info('Reconnecting node', { nodeId: this.nodeId, nodeName: this.config.nodeName });
 
     try {
+      // Get the list of pods we currently have running locally.
+      // This allows the server to detect orphaned pods:
+      // - On RECONNECT (network blip): We still have our pods, so runningPodIds contains them
+      // - On RESTART (page reload): We have no pods, so runningPodIds is empty
+      // The server will stop any DB pods that aren't in this list.
+      const runningPodIds = this.podHandler.getRunningPods();
+      
+      this.logger.debug('Reporting running pods on reconnect', {
+        runningPodIds,
+        count: runningPodIds.length,
+      });
+
       const response = await this.sendRequest<{ node: Node }>('node:reconnect', {
         nodeId: this.nodeId,
+        runningPodIds,
       });
 
       // Update the lastStarted timestamp in persisted state

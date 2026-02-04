@@ -30,6 +30,7 @@ interface NodeRow {
   runtime_type: RuntimeType;
   status: NodeStatus;
   last_heartbeat: string | null;
+  suspect_since: string | null;
   capabilities: NodeCapabilities;
   registered_by: string | null;
   trusted: boolean;
@@ -64,6 +65,7 @@ function rowToNode(row: NodeRow): Node {
     runtimeType: row.runtime_type,
     status: row.status,
     lastHeartbeat: row.last_heartbeat ? new Date(row.last_heartbeat) : undefined,
+    suspectSince: row.suspect_since ? new Date(row.suspect_since) : undefined,
     capabilities: row.capabilities ?? {},
     registeredBy: row.registered_by ?? undefined,
     trusted: row.trusted ?? false,
@@ -397,6 +399,7 @@ export class NodeQueries {
 
   /**
    * Updates node connection ID and sets status to online (used on reconnect)
+   * Clears suspect_since if the node was suspect
    * Optionally updates capabilities if the node's runtime version changed
    */
   async reconnectNode(
@@ -408,6 +411,7 @@ export class NodeQueries {
       connection_id: connectionId,
       status: 'online' as NodeStatus,
       last_heartbeat: new Date().toISOString(),
+      suspect_since: null, // Clear suspect state on reconnect
     };
 
     // Update capabilities if provided (e.g., Node.js version changed after upgrade)
@@ -427,6 +431,64 @@ export class NodeQueries {
     }
 
     return { data: rowToNode(data as NodeRow), error: null };
+  }
+
+  /**
+   * Marks a node as suspect (disconnected but lease not yet expired)
+   * Pods remain logically owned by the node during suspect period
+   */
+  async markNodeSuspect(id: string): Promise<NodeResult<void>> {
+    const { error } = await this.client
+      .from('nodes')
+      .update({
+        status: 'suspect' as NodeStatus,
+        suspect_since: new Date().toISOString(),
+      })
+      .eq('id', id);
+
+    if (error) {
+      return { data: null, error };
+    }
+
+    return { data: undefined, error: null };
+  }
+
+  /**
+   * Lists all suspect nodes (for lease expiration checks)
+   */
+  async listSuspectNodes(): Promise<NodeResult<Node[]>> {
+    const { data, error } = await this.client
+      .from('nodes')
+      .select('*')
+      .eq('status', 'suspect')
+      .order('suspect_since', { ascending: true });
+
+    if (error) {
+      return { data: null, error };
+    }
+
+    return { data: (data as NodeRow[]).map(rowToNode), error: null };
+  }
+
+  /**
+   * Transitions a suspect node to offline (lease expired)
+   * Called when the lease timer expires
+   */
+  async expireNodeLease(id: string): Promise<NodeResult<void>> {
+    const { error } = await this.client
+      .from('nodes')
+      .update({
+        status: 'offline' as NodeStatus,
+        // Keep suspect_since for debugging/auditing
+      })
+      .eq('id', id)
+      .eq('status', 'suspect'); // Only transition if still suspect
+
+    if (error) {
+      return { data: null, error };
+    }
+
+    return { data: undefined, error: null };
   }
 }
 

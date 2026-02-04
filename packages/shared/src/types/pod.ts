@@ -29,6 +29,7 @@ export type PodStatus =
 export type PodTerminationReason =
   // Infrastructure reasons (should NOT trigger crash loop)
   | 'node_lost'           // Node disconnected or went offline
+  | 'node_restart'        // Node agent restarted - pod processes lost
   | 'node_unhealthy'      // Node failed health checks
   | 'node_draining'       // Node is being drained for maintenance
   | 'node_maintenance'    // Node entered maintenance mode
@@ -59,6 +60,7 @@ export type PodTerminationReason =
  */
 export const INFRASTRUCTURE_TERMINATION_REASONS: readonly PodTerminationReason[] = [
   'node_lost',
+  'node_restart',
   'node_unhealthy',
   'node_draining',
   'node_maintenance',
@@ -102,7 +104,7 @@ export function shouldCountTowardCrashLoop(reason: PodTerminationReason | undefi
  * All available termination reasons
  */
 export const ALL_TERMINATION_REASONS: readonly PodTerminationReason[] = [
-  'node_lost', 'node_unhealthy', 'node_draining', 'node_maintenance',
+  'node_lost', 'node_restart', 'node_unhealthy', 'node_draining', 'node_maintenance',
   'oom_killed', 'evicted_resources', 'preempted', 'quota_exceeded',
   'error', 'init_error', 'config_error', 'pack_load_error',
   'user_stopped', 'rolling_update', 'scaled_down', 'deployment_deleted',
@@ -184,6 +186,11 @@ export interface Pod {
    * 'root' capability means pod runs on main thread (not in worker).
    */
   grantedCapabilities: Capability[];
+  /**
+   * Monotonic incarnation ID. Incremented when scheduling replacements.
+   * Used to reject late messages from old incarnations and prevent double-deploy.
+   */
+  incarnation: number;
   /** Creation timestamp */
   createdAt: Date;
   /** Last update timestamp */
@@ -294,6 +301,7 @@ export interface PodListItem {
   namespace: string;
   labels: Labels;
   priority: number;
+  incarnation: number;
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;

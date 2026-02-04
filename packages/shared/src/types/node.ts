@@ -16,12 +16,13 @@ export type RuntimeType = 'node' | 'browser';
 /**
  * Node status values
  * - online: Node is healthy and accepting pods
- * - offline: Node is disconnected
+ * - suspect: Node disconnected but lease hasn't expired; pods remain logically owned
+ * - offline: Node is disconnected (lease expired or never connected)
  * - unhealthy: Node missed heartbeats
  * - draining: Node is being evacuated (no new pods)
  * - maintenance: Node is under maintenance
  */
-export type NodeStatus = 'online' | 'offline' | 'unhealthy' | 'draining' | 'maintenance';
+export type NodeStatus = 'online' | 'suspect' | 'offline' | 'unhealthy' | 'draining' | 'maintenance';
 
 /**
  * Node capabilities - features supported by the node
@@ -63,6 +64,8 @@ export interface Node {
   status: NodeStatus;
   /** Last heartbeat timestamp */
   lastHeartbeat?: Date;
+  /** Timestamp when node entered suspect state (for lease expiration) */
+  suspectSince?: Date;
   /** Node capabilities */
   capabilities: NodeCapabilities;
   /** User who registered the node */

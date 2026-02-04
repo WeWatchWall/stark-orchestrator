@@ -135,6 +135,7 @@ export class PodHandler {
         resourceRequests: payload.resourceRequests ?? { cpu: 100, memory: 128 },
         resourceLimits: payload.resourceLimits ?? { cpu: 500, memory: 512 },
         scheduling: {},
+        incarnation: 1,
         grantedCapabilities: pack.grantedCapabilities ?? [],
         createdBy: 'system',
         metadata: {},

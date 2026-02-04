@@ -25,10 +25,13 @@ export interface ChaosConfig {
   seed?: number; // For reproducible randomness
 }
 
+export type MessageDirection = 'incoming' | 'outgoing' | 'both';
+
 export interface MessageChaosRule {
   connectionId?: string;
   nodeId?: string;
   messageTypes?: string[];
+  direction?: MessageDirection; // 'incoming' = node→orch, 'outgoing' = orch→node, 'both' (default)
   dropRate: number; // 0-1, probability of dropping message
   delayMs?: number; // Optional delay before delivery
   delayJitterMs?: number; // Random jitter added to delay
@@ -200,10 +203,20 @@ export class ChaosProxyService extends EventEmitter {
   addMessageRule(rule: MessageChaosRule): string {
     const ruleId = `msg_${Date.now()}_${this.messageRules.length}`;
     this.messageRules.push(rule);
+    const dirLabel = rule.direction === 'incoming' ? 'node→orch' 
+                   : rule.direction === 'outgoing' ? 'orch→node' 
+                   : 'both';
     console.log(
-      `[ChaosProxy] Added message rule: dropRate=${rule.dropRate}, delay=${rule.delayMs ?? 0}ms`
+      `[ChaosProxy] Added message rule: direction=${dirLabel}, dropRate=${rule.dropRate}, delay=${rule.delayMs ?? 0}ms, jitter=${rule.delayJitterMs ?? 0}ms, nodeId=${rule.nodeId ?? 'all'}`
     );
     return ruleId;
+  }
+
+  /**
+   * Get all active message rules (for debugging/status)
+   */
+  getMessageRules(): MessageChaosRule[] {
+    return [...this.messageRules];
   }
 
   clearMessageRules(): void {
@@ -211,7 +224,7 @@ export class ChaosProxyService extends EventEmitter {
   }
 
   /**
-   * Intercept outgoing message - returns modified message or null if dropped
+   * Intercept outgoing message (orchestrator → node) - returns modified message or null if dropped
    */
   interceptOutgoingMessage(
     connectionId: string,
@@ -224,10 +237,13 @@ export class ChaosProxyService extends EventEmitter {
     }
 
     for (const rule of this.messageRules) {
+      // Check direction filter - skip if rule is for incoming only
+      if (rule.direction === 'incoming') continue;
       // Check if rule matches
       if (rule.connectionId && rule.connectionId !== connectionId) continue;
       if (rule.nodeId && rule.nodeId !== nodeId) continue;
-      if (rule.messageTypes && !rule.messageTypes.includes(messageType)) continue;
+      // Empty array means "match all message types", only filter if array has items
+      if (rule.messageTypes && rule.messageTypes.length > 0 && !rule.messageTypes.includes(messageType)) continue;
 
       // Apply drop rate
       if (this.rng() < rule.dropRate) {
@@ -262,6 +278,11 @@ export class ChaosProxyService extends EventEmitter {
       return { action: 'process', message };
     }
 
+    // Debug logging for chaos message interception
+    if (this.messageRules.length > 0) {
+      console.log(`[ChaosProxy] Intercepting incoming message: type=${messageType}, nodeId=${nodeId ?? 'undefined'}, rules=${this.messageRules.length}`);
+    }
+
     // Check heartbeat-specific rules
     if (messageType === 'node:heartbeat' && nodeId) {
       const hbRule = this.heartbeatRules.get(nodeId);
@@ -286,14 +307,41 @@ export class ChaosProxyService extends EventEmitter {
 
     // Apply generic message rules
     for (const rule of this.messageRules) {
-      if (rule.connectionId && rule.connectionId !== connectionId) continue;
-      if (rule.nodeId && rule.nodeId !== nodeId) continue;
-      if (rule.messageTypes && !rule.messageTypes.includes(messageType)) continue;
+      // Check direction filter - skip if rule is for outgoing only
+      if (rule.direction === 'outgoing') {
+        console.log(`[ChaosProxy] Rule skipped: direction is outgoing-only`);
+        continue;
+      }
+      if (rule.connectionId && rule.connectionId !== connectionId) {
+        console.log(`[ChaosProxy] Rule skipped: connectionId mismatch (rule=${rule.connectionId}, actual=${connectionId})`);
+        continue;
+      }
+      if (rule.nodeId && rule.nodeId !== nodeId) {
+        console.log(`[ChaosProxy] Rule skipped: nodeId mismatch (rule=${rule.nodeId}, actual=${nodeId})`);
+        continue;
+      }
+      // Empty array means "match all message types", only filter if array has items
+      if (rule.messageTypes && rule.messageTypes.length > 0 && !rule.messageTypes.includes(messageType)) {
+        console.log(`[ChaosProxy] Rule skipped: messageType not in list`);
+        continue;
+      }
 
+      console.log(`[ChaosProxy] Rule matched! Applying delay=${rule.delayMs}ms, dropRate=${rule.dropRate}`);
+
+      // Apply drop rate
       if (this.rng() < rule.dropRate) {
         this.recordEvent('message_dropped', { connectionId, nodeId, messageType, direction: 'incoming' });
         this.stats.messagesDropped++;
         return { action: 'drop', message };
+      }
+
+      // Apply delay
+      if (rule.delayMs && rule.delayMs > 0) {
+        const jitter = rule.delayJitterMs ? this.rng() * rule.delayJitterMs : 0;
+        const totalDelay = rule.delayMs + jitter;
+        this.recordEvent('message_delayed', { connectionId, nodeId, messageType, direction: 'incoming', delayMs: totalDelay });
+        this.stats.messagesDelayed++;
+        return { action: 'delay', delayMs: totalDelay, message };
       }
     }
 

@@ -10,6 +10,7 @@ import { validateRegisterNodeInput, createServiceLogger } from '@stark-o/shared'
 import { getNodeQueries } from '../../supabase/nodes.js';
 import { getPodQueriesAdmin } from '../../supabase/pods.js';
 import { getConnectionManager } from '../../services/connection-service.js';
+import { getDeploymentController } from '../../services/deployment-controller.js';
 
 /**
  * Logger for node handler operations
@@ -295,6 +296,12 @@ export interface ReconnectNodePayload {
     features?: string[];
     [key: string]: unknown;
   };
+  /** 
+   * Pod IDs currently running on the node.
+   * Used to detect orphaned pods after node restart.
+   * If a pod is in the DB but not in this list, it means the node lost it (e.g., after restart).
+   */
+  runningPodIds?: string[];
 }
 
 /**
@@ -306,6 +313,12 @@ export async function handleNodeReconnect(
   message: WsMessage<ReconnectNodePayload>,
 ): Promise<void> {
   const { payload, correlationId } = message;
+
+  logger.info('Node reconnect request received', {
+    nodeId: payload.nodeId,
+    hasRunningPodIds: payload.runningPodIds !== undefined,
+    runningPodCount: payload.runningPodIds?.length ?? 0,
+  });
 
   // Check authentication
   if (!ws.userId) {
@@ -387,6 +400,49 @@ export async function handleNodeReconnect(
     connManager.registerNodeToConnection(ws.id, reconnectResult.data.id);
   }
 
+  // Handle orphaned pods after node restart.
+  // If the node provides runningPodIds, we stop any pods that the DB thinks are running
+  // but the node doesn't have (they were lost during the restart).
+  if (payload.runningPodIds !== undefined) {
+    const podQueries = getPodQueriesAdmin();
+    const orphanResult = await podQueries.stopOrphanedPodsOnNode(
+      payload.nodeId,
+      payload.runningPodIds
+    );
+
+    // Log errors from orphan cleanup - these should not happen and indicate
+    // a database issue (e.g., missing enum value for termination_reason)
+    if (orphanResult.error) {
+      logger.error('Failed to stop orphaned pods on node reconnect', undefined, {
+        nodeId: payload.nodeId,
+        nodeName: reconnectResult.data.name,
+        runningPodCount: payload.runningPodIds.length,
+        error: orphanResult.error.message || String(orphanResult.error),
+      });
+    }
+
+    if (orphanResult.data && orphanResult.data.stoppedCount > 0) {
+      logger.info('Stopped orphaned pods after node restart', {
+        nodeId: payload.nodeId,
+        nodeName: reconnectResult.data.name,
+        stoppedCount: orphanResult.data.stoppedCount,
+        podIds: orphanResult.data.podIds,
+      });
+
+      // Trigger immediate reconciliation to create replacement pods for stopped orphans.
+      // This ensures DaemonSet pods are re-created without waiting for the next reconcile cycle.
+      const deploymentController = getDeploymentController();
+      if (deploymentController && deploymentController.isActive()) {
+        // Run reconciliation asynchronously to not block the response
+        deploymentController.triggerReconcile().catch((error) => {
+          logger.error('Failed to trigger reconciliation after orphan cleanup', error instanceof Error ? error : undefined, {
+            nodeId: payload.nodeId,
+          });
+        });
+      }
+    }
+  }
+
   sendResponse(
     ws,
     'node:reconnect:ack',
@@ -397,11 +453,12 @@ export async function handleNodeReconnect(
 
 /**
  * Handle node disconnect (connection closed)
- * Marks nodes as offline and fails all active pods on those nodes
+ * Marks nodes as SUSPECT (not offline) to allow reconnection within lease period.
+ * Pods remain logically owned during suspect period - no replacements scheduled.
+ * The NodeHealthService will expire the lease and revoke pods if node doesn't reconnect.
  */
 export async function handleNodeDisconnect(ws: WsConnection): Promise<void> {
   const nodeQueries = getNodeQueries();
-  const podQueries = getPodQueriesAdmin();
 
   try {
     // Find all nodes associated with this connection
@@ -410,26 +467,26 @@ export async function handleNodeDisconnect(ws: WsConnection): Promise<void> {
       return;
     }
 
-    // Mark all nodes as offline, fail their pods, and clear connection ID
+    // Mark all nodes as SUSPECT (not offline) and clear connection ID
+    // Do NOT fail pods yet - they remain logically owned during lease period
     for (const node of nodesResult.data) {
-      // Fail all active pods on this node with 'node_lost' termination reason
-      // This reason does NOT count toward crash loop detection
-      const failResult = await podQueries.failPodsOnNode(
-        node.id,
-        'Node went offline',
-        'node_lost',
-      );
-      
-      if (failResult.data && failResult.data.failedCount > 0) {
-        logger.info('Failed pods due to node disconnect', {
+      logger.info('Node disconnected - marking as SUSPECT (lease started)', {
+        nodeId: node.id,
+        nodeName: node.name,
+        connectionId: ws.id,
+      });
+
+      // Mark node as suspect (starts the lease timer)
+      const suspectResult = await nodeQueries.markNodeSuspect(node.id);
+      if (suspectResult.error) {
+        logger.error('Failed to mark node as suspect', undefined, {
           nodeId: node.id,
           nodeName: node.name,
-          failedCount: failResult.data.failedCount,
-          podIds: failResult.data.podIds,
+          error: suspectResult.error,
         });
       }
 
-      await nodeQueries.setNodeStatus(node.id, 'offline');
+      // Clear connection ID so new connection can be established
       await nodeQueries.clearConnectionId(node.id);
     }
   } catch (error) {

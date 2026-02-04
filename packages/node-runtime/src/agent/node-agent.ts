@@ -804,10 +804,23 @@ export class NodeAgent {
     this.config.logger.info('Reconnecting node', { nodeId: this.nodeId, nodeName: this.config.nodeName });
 
     try {
-      // Send current capabilities on reconnect in case Node.js version changed
+      // Get the list of pods we currently have running locally.
+      // This allows the server to detect orphaned pods:
+      // - On RECONNECT (network blip): We still have our pods, so runningPodIds contains them
+      // - On RESTART (process restarted): We have no pods, so runningPodIds is empty
+      // The server will stop any DB pods that aren't in this list.
+      const runningPodIds = this.podHandler.getRunningPods();
+      
+      this.config.logger.debug('Reporting running pods on reconnect', {
+        runningPodIds,
+        count: runningPodIds.length,
+      });
+
+      // Send current capabilities and running pods on reconnect
       const response = await this.sendRequest<{ node: Node }>('node:reconnect', {
         nodeId: this.nodeId,
         capabilities: this.config.capabilities,
+        runningPodIds,
       });
 
       // Update the lastStarted timestamp in persisted state

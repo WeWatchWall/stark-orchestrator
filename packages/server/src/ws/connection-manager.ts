@@ -23,6 +23,7 @@ import { routeMetricsMessage } from './handlers/metrics-handler.js';
 import type { RegisterNodeInput, NodeHeartbeat, UserRole } from '@stark-o/shared';
 import { getSupabaseServiceClient } from '../supabase/client.js';
 import { getUserById } from '../supabase/auth.js';
+import { getChaosIntegration, isChaosIntegrationAttached } from '../chaos/integration.js';
 
 const logger = createLogger({ component: 'ws-connection-manager' });
 
@@ -324,6 +325,37 @@ export class ConnectionManager {
    * Route message to the appropriate handler
    */
   private async routeMessage(conn: ConnectionInfo, message: WsMessage): Promise<void> {
+    // Intercept incoming messages for chaos testing
+    const chaosAttached = isChaosIntegrationAttached();
+    if (chaosAttached) {
+      const nodeId = this.getFirstNodeId(conn);
+      console.log(`[CM-Chaos] routeMessage: type=${message.type}, nodeId=${nodeId ?? 'undefined'}, connNodeIds=${Array.from(conn.nodeIds).join(',') || 'empty'}`);
+      const chaosResult = await getChaosIntegration().interceptIncomingMessage(
+        conn.id,
+        nodeId,
+        message
+      );
+
+      if (!chaosResult.process) {
+        // Message was dropped by chaos proxy
+        logger.debug('Message dropped by chaos proxy', {
+          connectionId: conn.id,
+          type: message.type,
+        });
+        return;
+      }
+
+      if (chaosResult.delayMs && chaosResult.delayMs > 0) {
+        // Delay message processing
+        logger.debug('Message delayed by chaos proxy', {
+          connectionId: conn.id,
+          type: message.type,
+          delayMs: chaosResult.delayMs,
+        });
+        await new Promise(resolve => setTimeout(resolve, chaosResult.delayMs));
+      }
+    }
+
     const wsConnection = this.createWsConnection(conn);
 
     switch (message.type) {
@@ -512,6 +544,16 @@ export class ConnectionManager {
     if (conn) {
       conn.lastActivity = new Date();
     }
+  }
+
+  /**
+   * Get the first node ID from a connection (for chaos proxy)
+   */
+  private getFirstNodeId(conn: ConnectionInfo): string | undefined {
+    if (conn.nodeIds.size > 0) {
+      return conn.nodeIds.values().next().value;
+    }
+    return undefined;
   }
 
   /**

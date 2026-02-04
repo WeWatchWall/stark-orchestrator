@@ -768,41 +768,67 @@ async function heartbeatDelayHandler(
 }
 
 /**
- * Add message drop rule
+ * Add message drop/delay rule
+ * direction: 'incoming' = node→orch, 'outgoing' = orch→node, 'both' (default)
  */
 async function messageDropHandler(options: {
   node?: string;
   types?: string[];
-  rate: string;
+  rate?: string;
+  direction?: string;
+  delay?: string;
+  jitter?: string;
 }): Promise<void> {
   requireAuth();
+  
+  // Validate at least one effect is specified
+  if (!options.rate && !options.delay) {
+    error('At least --rate or --delay must be specified');
+    process.exit(1);
+  }
+  
+  // Validate direction
+  if (options.direction && !['incoming', 'outgoing', 'both'].includes(options.direction)) {
+    error(`Invalid direction: ${options.direction}. Must be 'incoming', 'outgoing', or 'both'`);
+    process.exit(1);
+  }
   
   try {
     const api = createApiClient();
     
     const body: Record<string, unknown> = {
-      dropRate: parseFloat(options.rate),
+      dropRate: options.rate ? parseFloat(options.rate) : 0,
     };
     if (options.node) body.nodeId = options.node;
     if (options.types?.length) body.messageTypes = options.types;
+    if (options.direction) body.direction = options.direction;
+    if (options.delay) body.delayMs = parseInt(options.delay, 10);
+    if (options.jitter) body.delayJitterMs = parseInt(options.jitter, 10);
     
-    info(`Adding message drop rule (${parseFloat(options.rate) * 100}% drop rate)...`);
+    const effects: string[] = [];
+    if (options.rate) effects.push(`${parseFloat(options.rate) * 100}% drop rate`);
+    if (options.delay) effects.push(`${options.delay}ms delay`);
+    const dirLabel = options.direction === 'incoming' ? 'node→orchestrator' 
+                   : options.direction === 'outgoing' ? 'orchestrator→node' 
+                   : 'bidirectional';
+    
+    info(`Adding message rule (${effects.join(', ')}) for ${dirLabel} messages...`);
     
     const response = await api.post('/chaos/message/drop', body);
     
     if (!response.ok) {
       const data = await response.json() as ApiResponse<never>;
-      error(`Failed to add message drop rule: ${data.error || response.statusText}`);
+      error(`Failed to add message rule: ${data.error || response.statusText}`);
       process.exit(1);
     }
     
-    const result = await response.json() as { success: boolean; ruleId: string };
+    const result = await response.json() as { success: boolean; ruleId: string; direction: string };
     
     if (result.success) {
-      success(`Message drop rule created (rule: ${result.ruleId})`);
+      success(`Message rule created (rule: ${result.ruleId}, direction: ${result.direction})`);
     }
   } catch (err) {
-    error(`Failed to add message drop rule: ${err instanceof Error ? err.message : String(err)}`);
+    error(`Failed to add message rule: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
   }
 }
@@ -1085,13 +1111,16 @@ Examples:
     .option('--drop-rate <rate>', 'Probability to drop heartbeats (0-1)')
     .action(heartbeatDelayHandler);
 
-  // Message drop command
+  // Message chaos command (drop/delay)
   chaos
     .command('message-drop')
-    .description('Add message drop rule')
+    .description('Add message drop/delay rule')
     .option('-n, --node <nodeId>', 'Target node ID')
-    .option('-t, --types <type...>', 'Message types to drop (repeatable)')
-    .requiredOption('-r, --rate <rate>', 'Drop rate (0-1, e.g., 0.5 for 50%)')
+    .option('-t, --types <type...>', 'Message types to affect (repeatable)')
+    .option('-r, --rate <rate>', 'Drop rate (0-1, e.g., 0.5 for 50%)')
+    .option('-d, --direction <dir>', "Message direction: 'incoming' (node→orch), 'outgoing' (orch→node), or 'both' (default)")
+    .option('--delay <ms>', 'Delay messages by this many milliseconds')
+    .option('--jitter <ms>', 'Random jitter to add to delay')
     .action(messageDropHandler);
 
   // API flaky command

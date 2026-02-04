@@ -94,6 +94,8 @@ interface PodStatusUpdatePayload {
   status: PodStatus;
   message?: string;
   reason?: string;
+  /** Pod incarnation - used to reject late messages from old incarnations */
+  incarnation?: number;
 }
 
 /**
@@ -103,6 +105,8 @@ interface PodActionPayload {
   podId: string;
   message?: string;
   reason?: string;
+  /** Pod incarnation - used to reject late messages from old incarnations */
+  incarnation?: number;
 }
 
 /**
@@ -480,9 +484,37 @@ export async function handlePodStatusUpdate(
     return;
   }
 
+  // Validate incarnation if provided - reject stale messages from old incarnations
+  if (payload.incarnation !== undefined) {
+    const podQueries = getPodQueries();
+    const validResult = await podQueries.validatePodIncarnation(payload.podId, payload.incarnation);
+    
+    if (validResult.error) {
+      requestLogger.warn('Failed to validate pod incarnation', {
+        podId: payload.podId,
+        incarnation: payload.incarnation,
+        error: validResult.error,
+      });
+      // Continue anyway - don't block updates due to validation errors
+    } else if (validResult.data === false) {
+      // Incarnation mismatch - this is a late message from an old pod instance
+      requestLogger.warn('Rejecting pod status update from stale incarnation', {
+        podId: payload.podId,
+        providedIncarnation: payload.incarnation,
+        status: payload.status,
+      });
+      sendResponse(ws, 'pod:status:update:error', {
+        code: 'STALE_INCARNATION',
+        message: 'Pod incarnation mismatch - this pod instance has been superseded',
+      }, correlationId);
+      return;
+    }
+  }
+
   requestLogger.debug('Pod status update request', {
     podId: payload.podId,
     status: payload.status,
+    incarnation: payload.incarnation,
   });
 
   // Route to appropriate handler based on status

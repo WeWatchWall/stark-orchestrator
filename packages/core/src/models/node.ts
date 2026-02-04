@@ -482,10 +482,11 @@ export class NodeModel {
   static sortByStatusAndName(nodes: Node[]): Node[] {
     const statusPriority: Record<NodeStatus, number> = {
       online: 0,
-      draining: 1,
-      maintenance: 2,
-      unhealthy: 3,
-      offline: 4,
+      suspect: 1,
+      draining: 2,
+      maintenance: 3,
+      unhealthy: 4,
+      offline: 5,
     };
 
     return [...nodes].sort((a, b) => {

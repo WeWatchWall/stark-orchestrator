@@ -344,8 +344,9 @@ export function createChaosRouter(): Router {
   });
 
   // POST /chaos/message/drop - Add message drop rules
+  // direction: 'incoming' = node→orch, 'outgoing' = orch→node, 'both' (default)
   router.post('/message/drop', (req: Request, res: Response): void => {
-    const { nodeId, messageTypes, dropRate } = req.body;
+    const { nodeId, messageTypes, dropRate, direction, delayMs, delayJitterMs } = req.body;
 
     const proxy = getChaosProxy();
     if (!proxy.isEnabled()) {
@@ -353,13 +354,24 @@ export function createChaosRouter(): Router {
       return;
     }
 
+    // Validate direction if provided
+    if (direction && !['incoming', 'outgoing', 'both'].includes(direction)) {
+      res.status(400).json({ 
+        error: `Invalid direction: ${direction}. Must be 'incoming', 'outgoing', or 'both'` 
+      });
+      return;
+    }
+
     const ruleId = proxy.addMessageRule({
       nodeId,
       messageTypes,
-      dropRate: dropRate || 0.5,
+      dropRate: dropRate ?? 0,
+      direction: direction || 'both',
+      delayMs,
+      delayJitterMs,
     });
 
-    res.json({ success: true, ruleId });
+    res.json({ success: true, ruleId, direction: direction || 'both' });
   });
 
   // POST /chaos/api/flaky - Make API calls flaky
@@ -387,6 +399,15 @@ export function createChaosRouter(): Router {
   router.get('/stats', (_req: Request, res: Response): void => {
     const proxy = getChaosProxy();
     res.json(proxy.getStats());
+  });
+
+  // GET /chaos/rules - Get active chaos rules
+  router.get('/rules', (_req: Request, res: Response): void => {
+    const proxy = getChaosProxy();
+    res.json({
+      enabled: proxy.isEnabled(),
+      messageRules: proxy.getMessageRules(),
+    });
   });
 
   // GET /chaos/events - Get recent chaos events

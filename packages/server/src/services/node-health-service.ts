@@ -2,9 +2,14 @@
  * Node Health Service
  * @module @stark-o/server/services/node-health-service
  *
- * Background service that periodically checks for stale nodes (nodes that
- * haven't sent a heartbeat within the timeout threshold) and marks them offline.
- * This prevents "zombie" nodes that crashed without a clean WebSocket disconnect.
+ * Background service that manages node health with a lease-based model to prevent
+ * double-deploy bugs during transient disconnections.
+ * 
+ * Lease Model:
+ * 1. On disconnect: node becomes 'suspect' (not immediately offline)
+ * 2. While suspect: pods remain logically owned, no replacements scheduled
+ * 3. If reconnects before lease expires: restore to online, nothing else changes
+ * 4. If lease expires: node becomes 'offline', pods are REVOKED (not just failed)
  */
 
 import { createServiceLogger } from '@stark-o/shared';
@@ -22,10 +27,12 @@ const logger = createServiceLogger({
  * Node health service configuration
  */
 export interface NodeHealthServiceConfig {
-  /** Interval between health checks in milliseconds (default: 60000 = 1 minute) */
+  /** Interval between health checks in milliseconds (default: 30000 = 30 seconds) */
   checkInterval?: number;
-  /** Heartbeat timeout threshold in milliseconds (default: 90000 = 90 seconds) */
+  /** Heartbeat timeout for marking online nodes as suspect (default: 60000 = 60 seconds) */
   heartbeatTimeout?: number;
+  /** Lease duration before suspect nodes become offline (default: 120000 = 2 minutes) */
+  leaseTimeout?: number;
   /** Whether to start the service automatically when attached (default: true) */
   autoStart?: boolean;
 }
@@ -34,8 +41,9 @@ export interface NodeHealthServiceConfig {
  * Default configuration
  */
 const DEFAULT_CONFIG: Required<NodeHealthServiceConfig> = {
-  checkInterval: 60_000,     // Check every 60 seconds
-  heartbeatTimeout: 90_000,  // Mark stale after 90 seconds without heartbeat
+  checkInterval: 30_000,     // Check every 30 seconds
+  heartbeatTimeout: 60_000,  // Mark suspect after 60 seconds without heartbeat
+  leaseTimeout: 120_000,     // Lease expires after 2 minutes of being suspect
   autoStart: true,
 };
 
@@ -43,10 +51,9 @@ const DEFAULT_CONFIG: Required<NodeHealthServiceConfig> = {
  * Node Health Service
  *
  * Runs a background loop that:
- * 1. Queries all online nodes
- * 2. Checks last_heartbeat against timeout threshold
- * 3. Marks stale nodes as offline
- * 4. Fails all pods on stale nodes with 'node_lost' termination reason
+ * 1. Checks online nodes for stale heartbeats -> marks as 'suspect'
+ * 2. Checks suspect nodes for lease expiration -> marks as 'offline' + revokes pods
+ * 3. Uses incarnation tracking to prevent double-deploy bugs
  */
 export class NodeHealthService {
   private config: Required<NodeHealthServiceConfig>;
@@ -68,9 +75,10 @@ export class NodeHealthService {
     }
 
     this.isRunning = true;
-    logger.info('Starting node health service', {
+    logger.info('Starting node health service with lease model', {
       checkInterval: this.config.checkInterval,
       heartbeatTimeout: this.config.heartbeatTimeout,
+      leaseTimeout: this.config.leaseTimeout,
     });
 
     // Run immediately, then on interval
@@ -119,7 +127,11 @@ export class NodeHealthService {
     this.isProcessing = true;
 
     try {
-      await this.detectAndMarkStaleNodes();
+      // Step 1: Check online nodes -> mark stale ones as 'suspect'
+      await this.markStaleNodesAsSuspect();
+      
+      // Step 2: Check suspect nodes -> expire leases and revoke pods
+      await this.expireNodeLeases();
     } catch (error) {
       logger.error('Error in node health check', error instanceof Error ? error : undefined);
     } finally {
@@ -128,11 +140,11 @@ export class NodeHealthService {
   }
 
   /**
-   * Find nodes that are marked online but haven't sent a heartbeat recently
+   * Find nodes that are marked online but haven't sent a heartbeat recently.
+   * Marks them as 'suspect' - pods remain logically owned, no replacements yet.
    */
-  private async detectAndMarkStaleNodes(): Promise<void> {
+  private async markStaleNodesAsSuspect(): Promise<void> {
     const nodeQueries = getNodeQueries();
-    const podQueries = getPodQueriesAdmin();
 
     // Get all online nodes
     const nodesResult = await nodeQueries.listNodes({ status: 'online' });
@@ -145,88 +157,160 @@ export class NodeHealthService {
 
     const now = Date.now();
     const staleThreshold = now - this.config.heartbeatTimeout;
-    let staleCount = 0;
+    let suspectCount = 0;
 
     for (const node of nodesResult.data) {
       // Check if heartbeat is stale
       const lastHeartbeat = node.lastHeartbeat ? node.lastHeartbeat.getTime() : 0;
       
       if (lastHeartbeat < staleThreshold) {
-        staleCount++;
+        suspectCount++;
         const staleDuration = now - lastHeartbeat;
 
-        logger.warn('Detected stale node - marking offline', {
+        logger.warn('Detected stale node - marking as SUSPECT (lease started)', {
           nodeId: node.id,
           nodeName: node.name,
           lastHeartbeat: node.lastHeartbeat?.toISOString() ?? 'never',
           staleDurationMs: staleDuration,
+          leaseTimeoutMs: this.config.leaseTimeout,
         });
 
-        // Fail all active pods on this node
-        const failResult = await podQueries.failPodsOnNode(
-          node.id,
-          'Node heartbeat timeout',
-          'node_lost',
-        );
-
-        if (failResult.data && failResult.data.failedCount > 0) {
-          logger.info('Failed pods due to stale node', {
-            nodeId: node.id,
-            nodeName: node.name,
-            failedCount: failResult.data.failedCount,
-            podIds: failResult.data.podIds,
-          });
-        }
-
-        // Mark node as offline and clear connection
-        const statusResult = await nodeQueries.setNodeStatus(node.id, 'offline');
+        // Mark node as suspect (starts lease timer)
+        const statusResult = await nodeQueries.markNodeSuspect(node.id);
         if (statusResult.error) {
-          logger.error('Failed to set node status to offline', undefined, {
+          logger.error('Failed to mark node as suspect', undefined, {
             nodeId: node.id,
             nodeName: node.name,
-            errorCode: statusResult.error.code,
-            errorMessage: statusResult.error.message,
-            errorDetails: statusResult.error.details,
-            errorHint: statusResult.error.hint,
+            error: statusResult.error,
           });
-          continue; // Skip to next node, don't clear connection or emit event
+          continue;
         }
 
-        const clearResult = await nodeQueries.clearConnectionId(node.id);
-        if (clearResult.error) {
-          logger.error('Failed to clear node connection ID', undefined, {
-            nodeId: node.id,
-            nodeName: node.name,
-            errorCode: clearResult.error.code,
-            errorMessage: clearResult.error.message,
-          });
-        }
-
-        logger.info('Node marked offline successfully', {
-          nodeId: node.id,
-          nodeName: node.name,
-        });
-
-        // Emit event for observability
+        // Emit event for observability - node is now suspect, NOT lost yet
         await emitNodeEvent({
-          eventType: 'NodeLost',
+          eventType: 'NodeSuspect',
           nodeId: node.id,
           nodeName: node.name,
           previousStatus: 'online',
-          newStatus: 'offline',
+          newStatus: 'suspect',
           reason: 'heartbeat_timeout',
-          message: `Node marked offline after ${Math.round(staleDuration / 1000)}s without heartbeat`,
+          message: `Node marked suspect after ${Math.round(staleDuration / 1000)}s without heartbeat. Lease expires in ${this.config.leaseTimeout / 1000}s`,
           metadata: {
             lastHeartbeat: node.lastHeartbeat?.toISOString() ?? null,
             staleDurationMs: staleDuration,
+            leaseTimeoutMs: this.config.leaseTimeout,
             detectedBy: 'node-health-service',
           },
         }, { useAdmin: true });
       }
     }
 
-    if (staleCount > 0) {
-      logger.info('Health check complete', { staleNodesMarkedOffline: staleCount });
+    if (suspectCount > 0) {
+      logger.info('Stale node detection complete', { nodesMarkedSuspect: suspectCount });
+    }
+  }
+
+  /**
+   * Check suspect nodes for lease expiration.
+   * When lease expires: mark offline, REVOKE pods (with incarnation tracking).
+   */
+  private async expireNodeLeases(): Promise<void> {
+    const nodeQueries = getNodeQueries();
+    const podQueries = getPodQueriesAdmin();
+
+    // Get all suspect nodes
+    const nodesResult = await nodeQueries.listSuspectNodes();
+    if (nodesResult.error || !nodesResult.data) {
+      logger.error('Failed to get suspect nodes for lease check', undefined, { 
+        error: nodesResult.error 
+      });
+      return;
+    }
+
+    const now = Date.now();
+    let expiredCount = 0;
+
+    for (const node of nodesResult.data) {
+      // Check if lease has expired
+      const suspectSince = node.suspectSince ? node.suspectSince.getTime() : now;
+      const leaseExpiry = suspectSince + this.config.leaseTimeout;
+      
+      if (now >= leaseExpiry) {
+        expiredCount++;
+        const suspectDuration = now - suspectSince;
+
+        logger.warn('Node lease EXPIRED - revoking pods and marking offline', {
+          nodeId: node.id,
+          nodeName: node.name,
+          suspectSince: node.suspectSince?.toISOString() ?? 'unknown',
+          suspectDurationMs: suspectDuration,
+        });
+
+        // REVOKE all active pods on this node (not just fail - uses incarnation)
+        const revokeResult = await podQueries.revokePodsOnNode(node.id);
+
+        if (revokeResult.error) {
+          logger.error('Failed to revoke pods on node', undefined, {
+            nodeId: node.id,
+            nodeName: node.name,
+            error: revokeResult.error,
+          });
+        } else if (revokeResult.data && revokeResult.data.revokedCount > 0) {
+          logger.info('Revoked pods due to lease expiration', {
+            nodeId: node.id,
+            nodeName: node.name,
+            revokedCount: revokeResult.data.revokedCount,
+            podIds: revokeResult.data.podIds,
+          });
+        }
+
+        // Transition node from suspect to offline
+        const statusResult = await nodeQueries.expireNodeLease(node.id);
+        if (statusResult.error) {
+          logger.error('Failed to expire node lease', undefined, {
+            nodeId: node.id,
+            nodeName: node.name,
+            error: statusResult.error,
+          });
+          continue;
+        }
+
+        // Clear connection ID
+        const clearResult = await nodeQueries.clearConnectionId(node.id);
+        if (clearResult.error) {
+          logger.error('Failed to clear node connection ID', undefined, {
+            nodeId: node.id,
+            nodeName: node.name,
+            error: clearResult.error,
+          });
+        }
+
+        logger.info('Node lease expired - now offline', {
+          nodeId: node.id,
+          nodeName: node.name,
+        });
+
+        // Emit NodeLost event - NOW the node is truly lost
+        await emitNodeEvent({
+          eventType: 'NodeLost',
+          nodeId: node.id,
+          nodeName: node.name,
+          previousStatus: 'suspect',
+          newStatus: 'offline',
+          reason: 'lease_expired',
+          message: `Node lease expired after ${Math.round(suspectDuration / 1000)}s suspect. Pods revoked.`,
+          metadata: {
+            suspectSince: node.suspectSince?.toISOString() ?? null,
+            suspectDurationMs: suspectDuration,
+            revokedPodCount: revokeResult.data?.revokedCount ?? 0,
+            detectedBy: 'node-health-service',
+          },
+        }, { useAdmin: true });
+      }
+    }
+
+    if (expiredCount > 0) {
+      logger.info('Lease expiration check complete', { nodesExpired: expiredCount });
     }
   }
 }
