@@ -1,603 +1,484 @@
-# Stark Orchestrator Architecture
+# Stark Orchestrator — Architecture
 
-This document describes the architecture of the Stark Orchestrator, an isomorphic JavaScript orchestration platform for deploying and managing software packages across Node.js and browser runtimes.
+> **Version 0.9.2** · Last updated February 2026
 
-## Table of Contents
-
-1. [Overview](#overview)
-2. [Design Principles](#design-principles)
-3. [System Architecture](#system-architecture)
-4. [Package Structure](#package-structure)
-5. [Core Concepts](#core-concepts)
-6. [Data Flow](#data-flow)
-7. [State Management](#state-management)
-8. [Authentication & Authorization](#authentication--authorization)
-9. [Scheduling System](#scheduling-system)
-10. [Database Schema](#database-schema)
-11. [API Design](#api-design)
-12. [WebSocket Protocol](#websocket-protocol)
-13. [Deployment Architecture](#deployment-architecture)
+Stark is an isomorphic JavaScript orchestration platform that treats both server-side and browser-side code as deployable, schedulable workloads. It borrows proven Kubernetes concepts — pods, nodes, namespaces, scheduling, deployments — and maps them onto JavaScript runtimes connected over WebSockets.
 
 ---
 
-## Overview
+## 1  Design Philosophy
 
-Stark Orchestrator manages the deployment and lifecycle of software packages ("packs") across distributed runtimes. It supports both Node.js servers and browser clients as deployment targets, using an isomorphic core that works identically in both environments.
-
-### Key Characteristics
-
-- **Isomorphic Design**: Core business logic runs in any JavaScript environment
-- **Reactive State**: Vue.js reactivity system for automatic state synchronization
-- **Kubernetes-Inspired**: Familiar concepts like namespaces, taints, and affinity
-- **Real-Time Updates**: WebSocket connections for live status monitoring
-- **Secure by Default**: Authentication and RBAC on all protected endpoints
-
----
-
-## Design Principles
-
-### 1. Isomorphic Core
-The `@stark-o/core` package contains no platform-specific code. It uses only standard JavaScript/TypeScript features and the Vue reactivity system, enabling it to run in Node.js, browsers, or any JavaScript runtime.
-
-### 2. Separation of Concerns
-```
-shared/     → Types, validation, utilities (pure functions)
-core/       → Business logic, reactive state (platform-agnostic)
-server/     → HTTP API, WebSocket server (Node.js specific)
-*-runtime/  → Platform adapters (Node.js/browser specific)
-cli/        → Command-line interface (Node.js specific)
-```
-
-### 3. Reactive-First State Management
-All state changes propagate automatically through Vue's reactivity system. This eliminates manual synchronization and ensures consistency across the application.
-
-### 4. Test-Driven Development
-- 80% code coverage target
-- Integration tests for all user stories
-- Contract tests for API endpoints
-- Unit tests for business logic
+| Principle | What it means in practice |
+|---|---|
+| **Desired-state reconciliation** | The system continuously compares what is declared (deployments, replicas) with what exists, and converges. |
+| **Isomorphic first** | Core logic is runtime-agnostic TypeScript. The same pack can be scheduled onto a Node.js process *or* a browser tab. |
+| **Kubernetes-inspired, JavaScript-native** | Familiar resource model (pods, nodes, taints, tolerations, affinity) — no YAML, no containers, no complex networking. |
+| **Reactive state** | Vue 3 `@vue/reactivity` primitives (`ref`, `reactive`, `computed`, `watch`) propagate state changes through every layer. |
+| **UI is just another workload** | The browser is a first-class node. UI packs are scheduled and observed identically to backend packs. |
+| **Failure is normal** | Auto-restart, crash-loop back-off, heartbeat-based liveness, automatic deployment rollback after 3 consecutive failures. |
+| **Security by default** | RBAC (admin / user / node / viewer), Supabase RLS, pack namespaces with trust boundaries, JWT auth on every request. |
+| **Developer experience first** | A single, consistent CLI: `stark <resource> <action> [name] [options]`. |
 
 ---
 
-## System Architecture
+## 2  Conceptual Model
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Clients                                  │
-├─────────────────┬───────────────────┬───────────────────────────┤
-│   CLI Client    │   Browser Agent   │      Node.js Agent        │
-│  (stark-cli)    │ (browser-runtime) │    (node-runtime)         │
-└────────┬────────┴─────────┬─────────┴────────────┬──────────────┘
-         │                  │                      │
-         │    REST API      │     WebSocket        │
-         ▼                  ▼                      ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     Orchestrator Server                         │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐   │
-│  │   REST API   │  │   WebSocket  │  │    Middleware        │   │
-│  │  (Express)   │  │   Server     │  │ - Auth               │   │
-│  │              │  │   (ws)       │  │ - RBAC               │   │
-│  │ /api/packs   │  │              │  │ - Rate Limiting      │   │
-│  │ /api/pods    │  │ /ws          │  │ - Correlation ID     │   │
-│  │ /api/nodes   │  │              │  │                      │   │
-│  └──────────────┘  └──────────────┘  └──────────────────────┘   │
-│                            │                                    │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │                    Core Services                         │   │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌──────────────┐      │   │
-│  │  │    Pack     │  │    Pod      │  │    Node      │      │   │
-│  │  │  Registry   │  │  Scheduler  │  │   Manager    │      │   │
-│  │  └─────────────┘  └─────────────┘  └──────────────┘      │   │
-│  │  ┌─────────────┐  ┌─────────────┐                        │   │
-│  │  │  Namespace  │  │    Auth     │                        │   │
-│  │  │   Manager   │  │  Service    │                        │   │
-│  │  └─────────────┘  └─────────────┘                        │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                            │                                    │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │                   Reactive Stores                        │   │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐     │   │
-│  │  │ Cluster  │ │   Node   │ │   Pod    │ │   Pack   │     │   │
-│  │  │  Store   │ │  Store   │ │  Store   │ │  Store   │     │   │
-│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘     │   │
-│  └──────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                         Supabase                                │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐   │
-│  │  PostgreSQL  │  │     Auth     │  │       Storage        │   │
-│  │  (Database)  │  │   (Users)    │  │   (Pack Bundles)     │   │
-│  └──────────────┘  └──────────────┘  └──────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                        STARK ORCHESTRATOR                        │
+│                                                                  │
+│   Source Code ──► Bundle ──► Register ──►  PACK  (the "what")    │
+│                                             │                    │
+│                                    create / deploy               │
+│                                             ▼                    │
+│   Browser ─────────────────────────►  NODE  (the "where")        │
+│   Node.js process ─────────────────►        │                    │
+│                                             │ schedule            │
+│                                             ▼                    │
+│                                          POD  (the "how")        │
+│                               Pending → Scheduled → Running      │
+│                                          │            │          │
+│                                     Stopping    Succeeded/Failed │
+│                                          │                       │
+│                                       Stopped                    │
+└──────────────────────────────────────────────────────────────────┘
 ```
+
+| Concept | Kubernetes analogue | Description |
+|---|---|---|
+| **Pack** | Container Image | Immutable, versioned, bundled JavaScript artifact. Private or public visibility. |
+| **Pod** | Container / Pod | Ephemeral running instance of a pack on a specific node. Owns its lifecycle state machine. |
+| **Node** | Node | A runtime environment (Node.js process or browser tab) connected via WebSocket. Reports heartbeats, resources, labels. |
+| **Namespace** | Namespace | Isolation boundary for resource scoping. |
+| **Deployment** | Deployment | Declarative desired-state spec: replica count, auto-healing, rolling updates, rollback, DaemonSet mode. |
 
 ---
 
-## Package Structure
-
-### @stark-o/shared
-Pure utility functions, types, and validation schemas. No dependencies on other packages.
+## 3  System Architecture
 
 ```
-shared/
-├── src/
-│   ├── types/           # TypeScript type definitions
-│   │   ├── user.ts      # User, Role types
-│   │   ├── pack.ts      # Pack, RuntimeTag types
-│   │   ├── node.ts      # Node, NodeStatus types
-│   │   ├── pod.ts       # Pod, PodStatus types
-│   │   ├── labels.ts    # Labels, LabelSelector types
-│   │   ├── taints.ts    # Taint, Toleration types
-│   │   ├── scheduling.ts # Affinity, scheduling types
-│   │   ├── namespace.ts # Namespace, Quota types
-│   │   └── cluster.ts   # ClusterConfig types
-│   ├── validation/      # Input validation functions
-│   ├── errors/          # Custom error classes
-│   ├── logging/         # Structured logging
-│   └── utils/           # Pure utility functions
-└── tests/
+ ┌─────────┐   ┌──────────────┐   ┌──────────────┐
+ │   CLI   │   │ Browser Node │   │  Node.js Node│
+ │(Commander)  │ (Web Workers) │   │(worker_threads)
+ └────┬────┘   └──────┬───────┘   └──────┬───────┘
+      │  REST/HTTPS    │  WSS             │  WSS
+      ▼                ▼                  ▼
+ ┌────────────────────────────────────────────────┐
+ │                   SERVER                        │
+ │                                                 │
+ │  ┌────────────┐  ┌──────────────────────────┐   │
+ │  │  REST API   │  │  WebSocket Gateway       │   │
+ │  │ (Express)   │  │  (ws)                    │   │
+ │  └─────┬──────┘  └──────────┬───────────────┘   │
+ │        │                    │                    │
+ │        ▼                    ▼                    │
+ │  ┌─────────────────────────────────────────┐    │
+ │  │             CORE SERVICES               │    │
+ │  │                                         │    │
+ │  │  PackService   PodService   NodeService │    │
+ │  │  SchedulerService   DeploymentController│    │
+ │  │  NodeHealthService  NamespaceService    │    │
+ │  │  AuthService   EventService             │    │
+ │  └────────────────┬────────────────────────┘    │
+ │                   │                              │
+ │  ┌────────────────▼────────────────────────┐    │
+ │  │          REACTIVE STORES                │    │
+ │  │    (@vue/reactivity refs & computeds)    │    │
+ │  └────────────────┬────────────────────────┘    │
+ │                   │                              │
+ └───────────────────┼──────────────────────────────┘
+                     │
+                     ▼
+ ┌──────────────────────────────────────────────────┐
+ │                  SUPABASE                         │
+ │  PostgreSQL · RLS · Auth · Realtime (Channels)    │
+ └──────────────────────────────────────────────────┘
 ```
 
-### @stark-o/core
-Isomorphic business logic with Vue reactivity. Depends only on `@stark-o/shared` and `@vue/reactivity`.
+### Layer responsibilities
+
+| Layer | Responsibility |
+|---|---|
+| **CLI** (`packages/cli`) | User-facing command-line interface built on Commander.js. Outputs JSON, table, or plain text. |
+| **Client** (`packages/client`) | Nuxt 3 dashboard for visual cluster management. |
+| **Server** (`packages/server`) | Express HTTPS server + WebSocket gateway. Starts scheduler, deployment controller, and node-health services on boot. Auto-generates self-signed TLS certs for development. |
+| **Core** (`packages/core`) | Pure orchestration logic — services, stores (reactive), models, queries, type definitions. Zero I/O side-effects; all external interaction injected. |
+| **Shared** (`packages/shared`) | Cross-package types, validation functions (~60+), structured logging, utility helpers (retry, deepClone, debounce, etc.), error classes. |
+| **Node Runtime** (`packages/node-runtime`) | Runtime adapter for Node.js. `NodeAgent` connects to the server, `PackExecutor` runs packs in `worker_threads`. File-system credential store. |
+| **Browser Runtime** (`packages/browser-runtime`) | Runtime adapter for browsers. `BrowserAgent` connects via WebSocket, `PackExecutor` runs packs in Web Workers (Workerpool). IndexedDB credential store (ZenFS). |
+
+---
+
+## 4  Package Dependency Graph
 
 ```
-core/
-├── src/
-│   ├── models/          # Reactive data models
-│   │   ├── pack.ts      # Pack model with validation
-│   │   ├── pod.ts       # Pod model with state machine
-│   │   ├── node.ts      # Node model with health tracking
-│   │   ├── user.ts      # User model with roles
-│   │   └── namespace.ts # Namespace model with quotas
-│   ├── services/        # Business logic services
-│   │   ├── pack-registry.ts   # Pack registration & versioning
-│   │   ├── pod-scheduler.ts   # Pod orchestration & scheduling
-│   │   ├── node-manager.ts    # Node lifecycle management
-│   │   ├── namespace-manager.ts # Namespace & quota management
-│   │   └── auth.ts            # Authentication integration
-│   ├── stores/          # Reactive state stores
-│   │   ├── cluster-store.ts   # Global cluster state
-│   │   ├── node-store.ts      # Node registry
-│   │   ├── pod-store.ts       # Active pods
-│   │   └── pack-store.ts      # Pack catalog
-│   └── types/           # Re-exports from shared
-└── tests/
+                 ┌──────────┐
+                 │  shared  │  (types, validation, logging, utils)
+                 └────┬─────┘
+                      │
+              ┌───────┴────────┐
+              ▼                ▼
+         ┌────────┐       ┌────────┐
+         │  core  │       │  cli   │
+         └───┬────┘       └────────┘
+             │
+     ┌───────┼──────────┐
+     ▼       ▼          ▼
+ ┌────────┐┌──────────┐┌───────────────┐
+ │ server ││node-     ││browser-       │
+ │        ││runtime   ││runtime        │
+ └────────┘└──────────┘└───────────────┘
 ```
 
-### @stark-o/server
-HTTP REST API and WebSocket server. Node.js specific.
+All packages are ESM (`"type": "module"`), built with **tsup** or **Vite**, managed via **pnpm workspaces**.
+
+---
+
+## 5  Data Flows
+
+### 5.1  Pack lifecycle
 
 ```
-server/
-├── src/
-│   ├── api/             # REST API routes
-│   │   ├── router.ts    # Central router
-│   │   ├── packs.ts     # Pack endpoints
-│   │   ├── pods.ts      # Pod endpoints
-│   │   ├── nodes.ts     # Node endpoints
-│   │   ├── namespaces.ts # Namespace endpoints
-│   │   └── auth.ts      # Auth endpoints
-│   ├── ws/              # WebSocket handling
-│   │   ├── connection-manager.ts
-│   │   └── handlers/
-│   ├── middleware/      # Express middleware
-│   │   ├── auth-middleware.ts
-│   │   ├── rbac-middleware.ts
-│   │   └── rate-limit-middleware.ts
-│   ├── supabase/        # Database queries
-│   └── index.ts         # Server entry point
-└── tests/
+Developer                 CLI                  Server               Database
+    │    stark pack bundle   │                     │                     │
+    │───────────────────────►│  POST /api/packs    │                     │
+    │                        │────────────────────►│  INSERT pack        │
+    │                        │                     │────────────────────►│
+    │                        │  201 Created        │                     │
+    │◄───────────────────────│◄────────────────────│                     │
 ```
 
-### @stark-o/node-runtime
-Node.js runtime adapter for executing packs.
+1. **Bundle** — CLI resolves the entry point, runs Vite/Rollup to produce a single self-contained JS artifact with inlined dependencies.
+2. **Register** — The bundle content, metadata (name, version, runtime compatibility, resource requirements), and visibility are sent to the server.
+3. **Store** — Server validates, deduplicates version, persists to PostgreSQL. Pack is now available for pod creation.
+
+### 5.2  Pod scheduling
 
 ```
-node-runtime/
-├── src/
-│   ├── adapters/        # Platform adapters
-│   │   ├── fs-adapter.ts       # File system operations
-│   │   ├── http-adapter.ts     # HTTP client
-│   │   └── worker-adapter.ts   # worker_threads wrapper
-│   ├── agent/           # Node agent
-│   │   └── node-agent.ts       # Registers with orchestrator
-│   └── executor/        # Pack execution
-│       └── pack-executor.ts    # Executes packs in workers
+Client/CLI          Server               Scheduler            Node (agent)
+    │ POST /api/pods   │                     │                     │
+    │─────────────────►│  validate           │                     │
+    │                  │──► pod = Pending     │                     │
+    │                  │                     │                     │
+    │                  │  scheduleIfPending() │                     │
+    │                  │────────────────────►│                     │
+    │                  │   Filter → Score     │                     │
+    │                  │   → Select node      │                     │
+    │                  │◄────────────────────│                     │
+    │                  │  pod = Scheduled     │                     │
+    │                  │  ws: pod:assign ─────┼────────────────────►│
+    │                  │                     │   executor.run(pack) │
+    │                  │  ◄── ws: pod:status (Running) ────────────│
+    │  200 OK          │                     │                     │
+    │◄─────────────────│                     │                     │
 ```
 
-### @stark-o/browser-runtime
-Browser runtime adapter for executing packs in browsers.
+### 5.3  Node heartbeat & health
 
 ```
-browser-runtime/
-├── src/
-│   ├── adapters/        # Platform adapters
-│   │   ├── storage-adapter.ts  # IndexedDB wrapper
-│   │   ├── fetch-adapter.ts    # Fetch API wrapper
-│   │   └── worker-adapter.ts   # Web Worker wrapper
-│   ├── agent/           # Browser agent
-│   │   └── browser-agent.ts    # Registers with orchestrator
-│   └── executor/        # Pack execution
-│       └── pack-executor.ts    # Executes packs in Web Workers
+Node Agent              Server                    NodeHealthService
+    │  ws: node:heartbeat  │                           │
+    │─────────────────────►│  update lastHeartbeat     │
+    │                      │──────────────────────────►│
+    │                      │                           │ (periodic check)
+    │                      │                           │ if now - lastHeartbeat
+    │                      │                           │   > threshold:
+    │                      │                           │   node → NotReady → Offline
+    │                      │                           │   reschedule pods
 ```
 
-### @stark-o/cli
-Command-line interface for orchestrator operations.
+Nodes send heartbeats at a configurable interval. If a node is unresponsive beyond the threshold, its pods are rescheduled to healthy nodes.
+
+### 5.4  Deployment reconciliation
 
 ```
-cli/
-├── src/
-│   ├── commands/        # CLI commands
-│   │   ├── auth.ts      # login, logout, whoami
-│   │   ├── pack.ts      # bundle, register, list
-│   │   ├── node.ts      # list, status
-│   │   ├── deploy.ts    # create, rollback, status
-│   │   └── namespace.ts # create, list, delete
-│   ├── config.ts        # Configuration management
-│   ├── output.ts        # Output formatting
-│   └── index.ts         # CLI entry point
+                  DeploymentController (reconciliation loop)
+                           │
+          ┌────────────────┼────────────────┐
+          ▼                ▼                ▼
+   Count running     Compare to       Handle failures
+   pods for deploy   desired replicas  (crash-loop backoff,
+          │                │            auto-rollback after 3
+          │                │            consecutive failures)
+          │                ▼
+          │          Create / delete
+          │          pods to converge
+          ▼
+   DaemonSet mode:
+   one pod per
+   matching node
 ```
 
 ---
 
-## Core Concepts
+## 6  Scheduling Algorithm
 
-### Pack
-A bundled software package that can be deployed to nodes.
+The scheduler runs **Filter → Score → Select → Assign**:
+
+### Filter (hard constraints — any failure excludes the node)
+
+| # | Criterion | Detail |
+|---|---|---|
+| 1 | Resource capacity | `allocatable - allocated ≥ requested` for CPU (millicores) and memory (MB) |
+| 2 | Pod count limit | Node's `maxPods` not exceeded |
+| 3 | Node selectors | Pod's `nodeSelector` labels match node labels |
+| 4 | Taints / tolerations | `NoSchedule` taints block unless tolerated |
+| 5 | Runtime type | Pod's required runtime (`node` / `browser`) matches node type |
+| 6 | Node schedulable | Node not cordoned (`unschedulable: false`) |
+| 7 | Ownership | Private packs only schedule to owner's or admin-registered (trusted) nodes |
+
+### Score (soft preferences — higher is better)
+
+- **Resource balance** — prefer nodes with more headroom.
+- **Existing pod count** — spread across nodes.
+- **`PreferNoSchedule` taints** — penalty if tolerated but not preferred.
+- **Priority** — 0–1000; higher-priority pods may **preempt** lower-priority ones.
+
+### DaemonSet mode
+
+When `replicas = 0`, the controller ensures exactly **one pod per matching node**, automatically adapting as nodes join or leave.
+
+---
+
+## 7  State Management
+
+All in-process state lives in **Vue 3 reactive primitives** exposed by the core stores:
 
 ```typescript
-interface Pack {
-  id: string;
-  name: string;
-  version: string;
-  runtimeTag: 'node' | 'browser' | 'universal';
-  ownerId: string;
-  bundlePath: string;
-  description?: string;
-  createdAt: Date;
-}
-```
+// Simplified example
+const pods = reactive(new Map<string, Pod>());
+const podCount = computed(() => pods.size);
 
-### Node
-A runtime environment that can execute packs.
-
-```typescript
-interface Node {
-  id: string;
-  name: string;
-  runtimeType: 'node' | 'browser';
-  status: 'healthy' | 'unhealthy' | 'unknown';
-  lastHeartbeat: Date;
-  capabilities: Record<string, unknown>;
-  labels: Record<string, string>;
-  taints: Taint[];
-}
-```
-
-### Pod
-A running instance of a pack on a specific node.
-
-```typescript
-interface Pod {
-  id: string;
-  packId: string;
-  packVersion: string;
-  nodeId: string;
-  namespaceId: string;
-  status: 'pending' | 'scheduled' | 'starting' | 'running' | 'stopping' | 'stopped' | 'failed';
-  tolerations: Toleration[];
-  priority: number;
-}
-```
-
-### Namespace
-An isolated resource boundary with quotas.
-
-```typescript
-interface Namespace {
-  id: string;
-  name: string;
-  resourceQuota: {
-    maxPods: number;
-    maxCpu: string;
-    maxMemory: string;
-  };
-  labels: Record<string, string>;
-}
-```
-
----
-
-## Data Flow
-
-### Pack Registration Flow
-```
-CLI/API → Server → Validation → Pack Registry → Database → Storage
-                                     ↓
-                              Reactive Store Update
-```
-
-### Pod Creation Flow
-```
-CLI/API → Server → Validation → Pod Scheduler → Node Selection
-                                     ↓
-                              Scheduling Checks:
-                              - Runtime compatibility
-                              - Namespace quotas
-                              - Taint/toleration matching
-                              - Affinity rules
-                              - Priority scoring
-                                     ↓
-                              Node Assignment → Database
-                                     ↓
-                              WebSocket → Node Agent → Pack Executor
-```
-
-### Node Health Flow
-```
-Node Agent → WebSocket → Server → Node Manager → Heartbeat Processing
-                                       ↓
-                                 Health Status Update
-                                       ↓
-                                 Reactive Store Update
-```
-
----
-
-## State Management
-
-State is managed through Vue's reactivity system in the core stores:
-
-```typescript
-// Cluster Store - Global state
-const clusterStore = reactive({
-  nodes: new Map<string, Node>(),
-  config: { ... },
-  schedulingPolicy: { ... }
+watch(pods, (newPods) => {
+  // react to any pod change
 });
-
-// Watch for changes
-watch(
-  () => clusterStore.nodes.size,
-  (count) => console.log(`Cluster has ${count} nodes`)
-);
 ```
 
-### Store Update Pattern
-```typescript
-// Services modify stores, reactivity propagates changes
-nodeManager.registerNode(nodeData); // Modifies nodeStore
-podScheduler.schedulePod(podData);  // Modifies podStore
+Changes propagate through a reactive pipeline:
+
 ```
+API request
+  → Core service mutates reactive store
+    → Database write (Supabase)
+      → Realtime channel broadcast
+        → WebSocket push to connected nodes / clients
+          → Node executor acts on change
+            → Status update flows back
+```
+
+This eliminates manual pub/sub wiring; adding a `watch()` or `computed()` on any store value is enough to react to cluster-wide state changes.
 
 ---
 
-## Authentication & Authorization
+## 8  Security Architecture
 
-### Authentication Flow
+### Authentication
+
 ```
-Client → POST /auth/login → Supabase Auth → JWT Token
-                                ↓
-              Token stored in client (cookie/localStorage)
-                                ↓
-         Subsequent requests include Authorization header
+User ──► POST /auth/login ──► Supabase Auth ──► JWT
+                                                  │
+                              every request carries │
+                              Authorization: Bearer ◄┘
 ```
 
-### RBAC Implementation
-Uses CASL for attribute-based access control:
+Initial admin bootstrap: `stark auth setup` (only works when zero users exist).
 
-```typescript
-// Role hierarchy
-const roles = {
-  admin: ['manage:all'],
-  operator: ['read:all', 'manage:nodes', 'manage:pods'],
-  developer: ['read:all', 'manage:packs', 'create:pods'],
-  viewer: ['read:all']
-};
+### Authorization (RBAC)
 
-// Permission check
-if (can('delete', 'Pod', pod)) {
-  await deletePod(pod.id);
-}
+| Role | Capabilities |
+|---|---|
+| **admin** | Full cluster access. Register system packs. Mark nodes trusted. Manage all users. |
+| **user** | Self-service: own packs, pods, deployments, namespaces. Cannot access other users' private resources. |
+| **node** | Agent role. Receives only its assigned pod data. |
+| **viewer** | Read-only across visible resources. |
+
+### Trust boundaries
+
 ```
+┌──────────────────────────────────────────────┐
+│               Pack Namespaces                │
+│                                              │
+│  ┌──────────────┐     ┌──────────────────┐   │
+│  │   "system"   │     │     "user"       │   │
+│  │  Admin-only  │     │  Any user can    │   │
+│  │  Cluster-wide│     │  register packs  │   │
+│  │  access      │     │  Scoped access   │   │
+│  └──────┬───────┘     └────────┬─────────┘   │
+│         │                      │             │
+│         ▼                      ▼             │
+│  Trusted nodes only     Any node             │
+│  (admin-registered)     (including user)     │
+└──────────────────────────────────────────────┘
+```
+
+### Database security
+
+Every table enforces Supabase **Row-Level Security** (RLS) policies. Users can only query rows they own or that are public. Service-role access (used by the server) bypasses RLS.
 
 ---
 
-## Scheduling System
+## 9  Event System
 
-### Scheduling Algorithm
-```
-1. Filter nodes by runtime compatibility
-2. Filter nodes by taint/toleration matching
-3. Apply required affinity rules (hard constraints)
-4. Score nodes by:
-   - Preferred affinity rules (soft constraints)
-   - Resource availability
-   - Priority class
-5. Select highest-scoring node
-6. Check namespace quotas
-7. Schedule pod
-```
+Events are **first-class, structured, persistent, queryable** records:
 
-### Taints and Tolerations
-```yaml
-# Node taint
-node:
-  taints:
-    - key: "dedicated"
-      value: "gpu"
-      effect: "NoSchedule"
-
-# Pod toleration
-pod:
-  tolerations:
-    - key: "dedicated"
-      operator: "Equal"
-      value: "gpu"
-      effect: "NoSchedule"
-```
-
-### Affinity Rules
-```yaml
-pod:
-  affinity:
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-          - matchExpressions:
-              - key: "zone"
-                operator: "In"
-                values: ["us-west-1a"]
-```
-
----
-
-## Database Schema
-
-### Core Tables
-```
-users          - User accounts and roles
-packs          - Registered pack metadata
-nodes          - Registered node information
-pods           - Pod instances
-pod_history    - Pod lifecycle audit log
-namespaces     - Namespace definitions
-priority_classes - Priority class definitions
-cluster_config - Cluster-wide configuration
-```
-
-### Key Relationships
-```
-users 1--* packs      (owner)
-packs 1--* pods       (deployed from)
-nodes 1--* pods       (runs on)
-namespaces 1--* pods  (contains)
-```
-
----
-
-## API Design
-
-### REST Principles
-- Resource-based URLs (`/api/packs`, `/api/pods`)
-- HTTP methods for CRUD (`GET`, `POST`, `PUT`, `DELETE`)
-- Consistent response format:
-
-```typescript
-// Success
+```json
 {
-  "success": true,
-  "data": { ... }
+  "id": "uuid",
+  "eventType": "PodScheduled",
+  "category": "pod",
+  "severity": "info",
+  "resourceType": "pod",
+  "resourceId": "pod-uuid",
+  "resourceName": "my-api-pod",
+  "previousState": "Pending",
+  "newState": "Scheduled",
+  "reason": "Scheduled",
+  "message": "Pod scheduled to node web-node-1",
+  "correlationId": "request-uuid",
+  "timestamp": "2026-02-05T12:00:00Z"
 }
-
-// Error
-{
-  "success": false,
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Invalid pack name"
-  }
-}
 ```
 
-### Request Correlation
-All requests include correlation IDs for distributed tracing:
-```
-X-Correlation-ID: abc-123-def-456
-```
+**Categories:** Pod · Node · Deployment · Pack · System · Auth · Scheduler
+
+Events are emitted by database triggers and programmatic calls, delivered in real time over WebSocket channels, and queryable via `GET /api/events`.
 
 ---
 
-## WebSocket Protocol
+## 10  Database Schema
 
-### Message Format
-```typescript
-interface WebSocketMessage {
-  type: string;      // e.g., 'node:register', 'node:heartbeat'
-  payload: unknown;
-  timestamp: string;
-  correlationId?: string;
-}
-```
+27 incremental migrations define the schema in `supabase/migrations/`:
 
-### Message Types
-```
-node:register    - Register a new node
-node:heartbeat   - Send heartbeat signal
-node:disconnect  - Node disconnecting
-pod:status       - Pod status update
-pod:logs         - Pod log stream
-```
+| Table | Purpose |
+|---|---|
+| `users` | User accounts (synced from Supabase Auth) with roles |
+| `packs` | Registered pack metadata, bundle content, version history |
+| `nodes` | Connected runtime nodes — labels, taints, resources, heartbeat, trust |
+| `pods` | Running instances — state, assigned node, resource requests, config |
+| `pod_history` | Audit trail of pod state transitions |
+| `namespaces` | Isolation boundaries |
+| `cluster_config` | Singleton cluster-wide settings |
+| `deployments` | Desired-state declarations with replica targets |
+| `priority_classes` | Named priority levels for preemption |
+| `events` | Structured event log |
+
+All tables include `created_at`, `updated_at`, and owner references. RLS policies enforce access control at the database level.
 
 ---
 
-## Deployment Architecture
+## 11  Runtime Adapters
+
+Both runtime adapters implement the same conceptual interface — only the underlying primitives differ:
+
+| Concern | Node.js (`node-runtime`) | Browser (`browser-runtime`) |
+|---|---|---|
+| Pack execution | `worker_threads` | Web Workers (Workerpool) |
+| Credential storage | File system (`~/.stark/`) | IndexedDB (ZenFS) |
+| HTTP client | Axios / Node fetch | Axios / Fetch API |
+| WebSocket | `ws` library | Native `WebSocket` |
+| Agent class | `NodeAgent` | `BrowserAgent` |
+
+### Execution contract for root packages
+
+Root packs run on the **main thread** and share fate with their node. They **must not** perform unbounded synchronous work. The runtime may terminate and restart any pack that blocks the event loop beyond its execution budget.
+
+---
+
+## 12  CLI Design
+
+```
+stark <resource> <action> [name] [options]
+
+  auth      login | logout | whoami | setup | register | users
+  pack      bundle | register | list | versions
+  pod       create | status | rollback | delete | list
+  deployment create | list | status | scale | pause | resume | delete
+  node      list | status | update | cordon | uncordon | agents
+  namespace list | create | delete
+  config    get | set
+  status    (cluster-wide health summary)
+```
+
+Global options: `--output json|table|plain`, `--api-url`, `--no-color`, `-k/--insecure`.
+
+---
+
+## 13  WebSocket Protocol
+
+All persistent connections use WSS. Messages are JSON with a `type` field:
+
+| Direction | Message | Payload |
+|---|---|---|
+| Node → Server | `node:register` | Node metadata, labels, resources, capabilities |
+| Node → Server | `node:heartbeat` | Timestamp, resource usage snapshot |
+| Server → Node | `pod:assign` | Pod spec + pack bundle content |
+| Node → Server | `pod:status` | Pod ID, new state, optional exit code / error |
+| Server → Node | `pod:stop` | Pod ID, reason |
+
+---
+
+## 14  Observability
+
+- **Structured JSON logging** — every log line carries `timestamp`, `level`, `service`, `nodeId`, `podId`, `userId`.
+- **Health endpoint** — `GET /health` returns server status.
+- **Node heartbeats** — configurable interval; missed heartbeats trigger `NotReady` → `Offline` transitions and pod rescheduling.
+- **Real-time WebSocket events** — subscribe to `node:*`, `pod:*`, `deployment:*` channels.
+- **Crash-loop detection** — exponential back-off with automatic deployment rollback after 3 consecutive failures.
+- **Resource monitoring** — `stark node status` shows allocatable vs. allocated CPU/memory; `stark pod status` shows per-pod resource usage.
+- **JSON output** — `--output json` for scripting and pipeline integration.
+
+---
+
+## 15  Deployment Topology
 
 ### Development
+
 ```
-Local machine:
-├── Supabase (Docker)
-│   ├── PostgreSQL
-│   ├── Auth
-│   └── Storage
-└── Server (Node.js)
-    └── https://localhost:443
+pnpm dev
+  └─► Vite dev server (hot reload)
+  └─► Supabase local (Docker)
+  └─► Express + WSS on https://localhost:443  (self-signed cert)
 ```
 
 ### Production
+
 ```
-                    ┌─────────────────┐
-                    │  Load Balancer  │
-                    └────────┬────────┘
-                             │
-           ┌─────────────────┼─────────────────┐
-           ▼                 ▼                 ▼
-    ┌──────────┐      ┌──────────┐      ┌──────────┐
-    │ Server 1 │      │ Server 2 │      │ Server N │
-    └────┬─────┘      └────┬─────┘      └────┬─────┘
-         │                 │                 │
-         └─────────────────┼─────────────────┘
-                           ▼
-                    ┌──────────────┐
-                    │   Supabase   │
-                    │   (Hosted)   │
-                    └──────────────┘
+┌───────────────┐       ┌───────────────┐
+│  Load Balancer│──────►│  Stark Server │──► Supabase (managed)
+│  (TLS term.)  │       │  (Express+WSS)│
+└───────────────┘       └───────┬───────┘
+                                │ WSS
+                   ┌────────────┼────────────┐
+                   ▼            ▼            ▼
+              Node Agent   Node Agent   Browser Agent
+              (worker_     (worker_     (Web Workers)
+               threads)     threads)
 ```
 
 ---
 
-## Performance Targets
+## 16  Technology Stack
 
-| Metric | Target |
-|--------|--------|
-| API Response (p95) | < 200ms |
-| Deploy Cycle | < 60s |
-| Concurrent Nodes | 100 |
-| Packs | 1,000 |
-| Concurrent Users | 5 |
-| Heartbeat Timeout | 30s |
-
----
-
-## Security Considerations
-
-1. **Authentication**: All protected endpoints require valid JWT
-2. **Authorization**: RBAC enforced via CASL middleware
-3. **Input Validation**: All inputs validated at API boundary
-4. **Rate Limiting**: Protect against abuse
-5. **CORS**: Configurable origin whitelist
-6. **SQL Injection**: Parameterized queries via Supabase
-7. **Secrets**: Environment variables, never committed
+| Layer | Technology |
+|---|---|
+| Language | TypeScript 5.x (strict, ESM) |
+| Reactivity | `@vue/reactivity` (Vue 3 standalone) |
+| HTTP server | Express 4 |
+| WebSocket | `ws` |
+| Database | PostgreSQL (via Supabase) |
+| Auth | Supabase Auth (JWT) |
+| Realtime | Supabase Realtime (Postgres Changes) |
+| CLI framework | Commander.js |
+| Bundler | Vite / Rollup / tsup |
+| Testing | Vitest |
+| Monorepo | pnpm workspaces |
+| Linting | ESLint 9 + Prettier 3 |
 
 ---
 
-## Future Considerations
+## 17  What Stark Is Not
 
-1. **Horizontal Scaling**: Multiple server instances with shared state
-2. **Event Sourcing**: Full audit trail via events
-3. **Metrics**: Prometheus/Grafana integration
-4. **Service Mesh**: Istio/Linkerd for inter-service communication
-5. **Custom Schedulers**: Pluggable scheduling algorithms
+- **Not a Kubernetes replacement.** It orchestrates JavaScript workloads, not arbitrary containers.
+- **Not a serverless platform.** Nodes are persistent; packs are long-running or short-lived but explicitly managed.
+- **Not a build system.** Bundling is a CLI convenience — you can bring your own artifacts.
+- **Not a multi-cloud abstraction.** It operates within a single Stark cluster (one server, many nodes).
