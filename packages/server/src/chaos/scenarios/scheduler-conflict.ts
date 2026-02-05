@@ -9,7 +9,7 @@
 
 import { getChaosProxy } from '../../services/chaos-proxy';
 import { podQueries, nodeQueries, packQueries } from '@stark-o/core';
-import type { ChaosScenario, ScenarioResult } from './types';
+import type { ChaosScenario, ScenarioResult, OptionHelp } from './types';
 
 // Use the query modules that wrap the reactive stores
 
@@ -241,6 +241,54 @@ export const schedulerConflictScenario: ChaosScenario<SchedulerConflictOptions> 
       default:
         return [];
     }
+  },
+
+  getOptionsHelp(): OptionHelp[] {
+    return [
+      {
+        name: 'mode',
+        type: 'string',
+        required: true,
+        description: 'Scheduler conflict simulation mode',
+        choices: ['resource_exhaustion', 'affinity_conflict', 'race_condition'],
+        example: 'resource_exhaustion',
+      },
+      {
+        name: 'nodeId',
+        type: 'string',
+        required: false,
+        description: 'Target node for resource_exhaustion mode',
+        example: 'node-abc123',
+      },
+      {
+        name: 'packId',
+        type: 'string',
+        required: false,
+        description: 'Pack ID to use for creating test pods',
+        example: 'pack-xyz789',
+      },
+      {
+        name: 'podCount',
+        type: 'number',
+        required: false,
+        description: 'Number of pods to create',
+        example: '5',
+      },
+      {
+        name: 'cpuRequest',
+        type: 'number',
+        required: false,
+        description: 'CPU millicores requested per pod',
+        example: '2000',
+      },
+      {
+        name: 'memoryRequest',
+        type: 'number',
+        required: false,
+        description: 'Memory in MB requested per pod',
+        example: '2048',
+      },
+    ];
   },
 };
 

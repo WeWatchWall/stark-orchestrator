@@ -11,7 +11,7 @@
 import { getChaosProxy } from '../../services/chaos-proxy';
 import { getExternalChaosRunner } from '../external-chaos';
 import { nodeQueries } from '@stark-o/core';
-import type { ChaosScenario, ScenarioResult } from './types';
+import type { ChaosScenario, ScenarioResult, OptionHelp } from './types';
 
 // Use the query module that wraps the reactive store
 
@@ -180,6 +180,47 @@ export const nodeLossScenario: ChaosScenario<NodeLossOptions> = {
       default:
         return [];
     }
+  },
+
+  getOptionsHelp(): OptionHelp[] {
+    return [
+      {
+        name: 'mode',
+        type: 'string',
+        required: true,
+        description: 'Failure mode to simulate',
+        choices: ['single', 'flapping', 'multi'],
+        example: 'single',
+      },
+      {
+        name: 'nodeId',
+        type: 'string',
+        required: false,
+        description: 'Node ID to target (required for single/flapping mode)',
+        example: 'my-node-1',
+      },
+      {
+        name: 'nodeIds',
+        type: 'string[]',
+        required: false,
+        description: 'Node IDs to target (required for multi mode, comma-separated)',
+        example: 'node-1,node-2',
+      },
+      {
+        name: 'flapIntervalMs',
+        type: 'number',
+        required: false,
+        description: 'Interval between flaps in flapping mode (default: 5000)',
+        example: '5000',
+      },
+      {
+        name: 'flapCount',
+        type: 'number',
+        required: false,
+        description: 'Number of flaps in flapping mode (default: 3)',
+        example: '3',
+      },
+    ];
   },
 };
 

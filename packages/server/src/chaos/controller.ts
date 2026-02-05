@@ -12,6 +12,7 @@ import {
   listScenarios,
   describeScenarios,
   ScenarioResult,
+  OptionHelp,
 } from './scenarios';
 import { EventEmitter } from 'events';
 
@@ -141,6 +142,7 @@ export class ChaosController extends EventEmitter {
     name: string;
     description: string;
     expectedBehavior: string[];
+    options?: OptionHelp[];
   } | null {
     const scenario = getScenario(name);
     if (!scenario) return null;
@@ -149,6 +151,7 @@ export class ChaosController extends EventEmitter {
       name: scenario.name,
       description: scenario.description,
       expectedBehavior: scenario.getExpectedBehavior({}),
+      options: scenario.getOptionsHelp?.(),
     };
   }
 
@@ -175,7 +178,28 @@ export class ChaosController extends EventEmitter {
     // Validate options
     const validation = await scenario.validate(options.options);
     if (!validation.valid) {
-      throw new Error(`Invalid scenario options: ${validation.error}`);
+      const optionsHelp = scenario.getOptionsHelp?.();
+      let errorMsg = `Invalid scenario options: ${validation.error}`;
+      
+      if (optionsHelp && optionsHelp.length > 0) {
+        errorMsg += '\n\nRequired options:';
+        for (const opt of optionsHelp) {
+          const required = opt.required ? ' (required)' : '';
+          const choices = opt.choices ? ` [${opt.choices.join('|')}]` : '';
+          errorMsg += `\n  --option ${opt.name}=<${opt.type}>${required}${choices}`;
+          errorMsg += `\n      ${opt.description}`;
+          if (opt.example) {
+            errorMsg += `\n      Example: ${opt.example}`;
+          }
+        }
+        errorMsg += '\n\nUsage example:';
+        errorMsg += `\n  stark chaos run ${options.scenario}` + optionsHelp
+          .filter(o => o.required)
+          .map(o => ` --option ${o.name}=${o.example ?? `<${o.type}>`}`)
+          .join('');
+      }
+      
+      throw new Error(errorMsg);
     }
 
     this.isRunning = true;

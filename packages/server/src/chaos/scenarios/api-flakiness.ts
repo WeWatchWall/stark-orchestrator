@@ -9,7 +9,7 @@
 
 import { getChaosProxy } from '../../services/chaos-proxy';
 import { podQueries, nodeQueries } from '@stark-o/core';
-import type { ChaosScenario, ScenarioResult } from './types';
+import type { ChaosScenario, ScenarioResult, OptionHelp } from './types';
 
 // Use the query modules that wrap the reactive stores
 
@@ -216,6 +216,47 @@ export const apiFlakinesScenario: ChaosScenario<ApiFlakinesOptions> = {
       'Graceful degradation under high failure rates',
       'Recovery when failures stop',
       'Transactions rolled back on failure',
+    ];
+  },
+
+  getOptionsHelp(): OptionHelp[] {
+    return [
+      {
+        name: 'mode',
+        type: 'string',
+        required: true,
+        description: 'API flakiness simulation mode',
+        choices: ['timeout', 'errors', 'intermittent', 'progressive'],
+        example: 'intermittent',
+      },
+      {
+        name: 'errorRate',
+        type: 'number',
+        required: false,
+        description: 'Probability of API error (0-1)',
+        example: '0.5',
+      },
+      {
+        name: 'timeoutRate',
+        type: 'number',
+        required: false,
+        description: 'Probability of API timeout (0-1)',
+        example: '0.3',
+      },
+      {
+        name: 'timeoutMs',
+        type: 'number',
+        required: false,
+        description: 'Timeout delay in milliseconds',
+        example: '5000',
+      },
+      {
+        name: 'durationMs',
+        type: 'number',
+        required: false,
+        description: 'How long to run the scenario in milliseconds',
+        example: '30000',
+      },
     ];
   },
 };

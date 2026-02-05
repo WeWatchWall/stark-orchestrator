@@ -15,6 +15,18 @@ export interface ScenarioResult {
   data?: Record<string, unknown>;
 }
 
+/**
+ * Describes a scenario option for help text
+ */
+export interface OptionHelp {
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'string[]';
+  required: boolean;
+  description: string;
+  example?: string;
+  choices?: string[];
+}
+
 export interface ChaosScenario<T = unknown> {
   name: string;
   description: string;
@@ -33,6 +45,11 @@ export interface ChaosScenario<T = unknown> {
    * Get expected behavior for documentation/verification
    */
   getExpectedBehavior(options: T): string[];
+
+  /**
+   * Get help text for scenario options (optional)
+   */
+  getOptionsHelp?(): OptionHelp[];
 }
 
 export interface ScenarioRegistry {

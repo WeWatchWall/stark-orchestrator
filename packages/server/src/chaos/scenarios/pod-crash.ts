@@ -10,7 +10,7 @@
 import { getChaosProxy } from '../../services/chaos-proxy';
 import { getExternalChaosRunner } from '../external-chaos';
 import { podQueries } from '@stark-o/core';
-import type { ChaosScenario, ScenarioResult } from './types';
+import type { ChaosScenario, ScenarioResult, OptionHelp } from './types';
 
 // Use the query module that wraps the reactive store
 
@@ -195,6 +195,54 @@ export const podCrashScenario: ChaosScenario<PodCrashOptions> = {
       default:
         return [];
     }
+  },
+
+  getOptionsHelp(): OptionHelp[] {
+    return [
+      {
+        name: 'podId',
+        type: 'string',
+        required: false,
+        description: 'Single pod ID to target (use podId or podIds)',
+        example: 'pod-abc123',
+      },
+      {
+        name: 'podIds',
+        type: 'string[]',
+        required: false,
+        description: 'Array of pod IDs to target (use podId or podIds)',
+        example: '["pod-1", "pod-2"]',
+      },
+      {
+        name: 'mode',
+        type: 'string',
+        required: true,
+        description: 'Crash simulation mode',
+        choices: ['crash', 'slow_failure', 'crash_loop'],
+        example: 'crash',
+      },
+      {
+        name: 'crashLoopCount',
+        type: 'number',
+        required: false,
+        description: 'Number of crashes for crash_loop mode',
+        example: '5',
+      },
+      {
+        name: 'crashIntervalMs',
+        type: 'number',
+        required: false,
+        description: 'Time between crashes in milliseconds',
+        example: '5000',
+      },
+      {
+        name: 'useExternal',
+        type: 'boolean',
+        required: false,
+        description: 'Kill actual process vs internal simulation',
+        example: 'false',
+      },
+    ];
   },
 };
 

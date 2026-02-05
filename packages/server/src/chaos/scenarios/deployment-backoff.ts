@@ -9,7 +9,7 @@
 
 import { getChaosProxy } from '../../services/chaos-proxy';
 import { podQueries, deploymentQueries } from '@stark-o/core';
-import type { ChaosScenario, ScenarioResult } from './types';
+import type { ChaosScenario, ScenarioResult, OptionHelp } from './types';
 
 // Use the query modules that wrap the reactive stores
 
@@ -257,6 +257,47 @@ export const deploymentBackoffScenario: ChaosScenario<DeploymentBackoffOptions> 
       default:
         return [];
     }
+  },
+
+  getOptionsHelp(): OptionHelp[] {
+    return [
+      {
+        name: 'deploymentId',
+        type: 'string',
+        required: false,
+        description: 'Deployment ID to target for crash_loop mode',
+        example: 'deploy-abc123',
+      },
+      {
+        name: 'packIdV1',
+        type: 'string',
+        required: false,
+        description: 'Healthy pack version for rollback_test mode',
+        example: 'pack-v1',
+      },
+      {
+        name: 'packIdV2',
+        type: 'string',
+        required: false,
+        description: 'Failing pack version for rollback_test mode',
+        example: 'pack-v2',
+      },
+      {
+        name: 'mode',
+        type: 'string',
+        required: true,
+        description: 'Deployment backoff simulation mode',
+        choices: ['crash_loop', 'gradual_failure', 'rollback_test'],
+        example: 'crash_loop',
+      },
+      {
+        name: 'failAfterMs',
+        type: 'number',
+        required: false,
+        description: 'Time in ms before V2 starts failing (rollback_test)',
+        example: '5000',
+      },
+    ];
   },
 };
 

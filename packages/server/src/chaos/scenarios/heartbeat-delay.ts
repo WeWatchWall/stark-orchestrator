@@ -9,7 +9,7 @@
 
 import { getChaosProxy } from '../../services/chaos-proxy';
 import { nodeQueries } from '@stark-o/core';
-import type { ChaosScenario, ScenarioResult } from './types';
+import type { ChaosScenario, ScenarioResult, OptionHelp } from './types';
 
 // Use the query module that wraps the reactive store
 
@@ -197,6 +197,61 @@ export const heartbeatDelayScenario: ChaosScenario<HeartbeatDelayOptions> = {
       default:
         return [];
     }
+  },
+
+  getOptionsHelp(): OptionHelp[] {
+    return [
+      {
+        name: 'nodeId',
+        type: 'string',
+        required: false,
+        description: 'Single node ID to target (use nodeId or nodeIds)',
+        example: 'node-abc123',
+      },
+      {
+        name: 'nodeIds',
+        type: 'string[]',
+        required: false,
+        description: 'Array of node IDs to target (use nodeId or nodeIds)',
+        example: '["node-1", "node-2"]',
+      },
+      {
+        name: 'mode',
+        type: 'string',
+        required: true,
+        description: 'Heartbeat delay simulation mode',
+        choices: ['delay', 'intermittent', 'gradual_degradation'],
+        example: 'delay',
+      },
+      {
+        name: 'delayMs',
+        type: 'number',
+        required: false,
+        description: 'Base delay in milliseconds',
+        example: '3000',
+      },
+      {
+        name: 'delayJitterMs',
+        type: 'number',
+        required: false,
+        description: 'Random jitter added to delay in milliseconds',
+        example: '2000',
+      },
+      {
+        name: 'dropRate',
+        type: 'number',
+        required: false,
+        description: 'Probability of dropping heartbeat (0-1)',
+        example: '0.3',
+      },
+      {
+        name: 'durationMs',
+        type: 'number',
+        required: false,
+        description: 'How long to run the scenario in milliseconds',
+        example: '60000',
+      },
+    ];
   },
 };
 

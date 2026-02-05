@@ -308,6 +308,43 @@ async function promptForOptions(
       options.durationMs = parseInt(await prompt('Duration ms [30000]: ') || '30000', 10);
       break;
 
+    case 'node-ban-reconciliation':
+      options.nodeAId = await prompt('Node A ID (will be banned): ');
+      options.nodeBId = await prompt('Node B ID (reschedule target): ');
+      options.mode = await prompt('Mode (standard/fast_unban/late_unban) [standard]: ') || 'standard';
+      break;
+
+    case 'heartbeat-delay-convergence':
+      options.nodeId = await prompt('Node ID: ');
+      options.delayMs = parseInt(await prompt('Delay ms (<60000=ONLINE, 60000-120000=SUSPECT, >120000=OFFLINE) [45000]: ') || '45000', 10);
+      options.durationMs = parseInt(await prompt('Duration ms [120000]: ') || '120000', 10);
+      break;
+
+    case 'deployment-shape-change':
+      options.deploymentId = await prompt('Deployment ID: ');
+      options.changeType = await prompt('Change type (scale_down/daemonset_to_replica) [scale_down]: ') || 'scale_down';
+      options.newReplicas = parseInt(await prompt('New replica count [1]: ') || '1', 10);
+      break;
+
+    case 'scheduler-conflict':
+      options.mode = await prompt('Mode (resource_exhaustion/affinity_conflict/race_condition) [resource_exhaustion]: ') || 'resource_exhaustion';
+      if (options.mode === 'resource_exhaustion') {
+        options.nodeId = await prompt('Node ID: ');
+        options.podCount = parseInt(await prompt('Pod count [5]: ') || '5', 10);
+        options.cpuRequest = parseInt(await prompt('CPU request per pod [1000]: ') || '1000', 10);
+      }
+      break;
+
+    case 'deployment-backoff':
+      options.mode = await prompt('Mode (crash_loop/gradual_failure/rollback_test) [crash_loop]: ') || 'crash_loop';
+      options.deploymentId = await prompt('Deployment ID (optional, leave empty to create test deployment): ') || undefined;
+      break;
+
+    case 'orchestrator-restart':
+      options.mode = await prompt('Mode (graceful/abrupt/mid_reconciliation) [graceful]: ') || 'graceful';
+      options.verifyAfterMs = parseInt(await prompt('Verify after ms [5000]: ') || '5000', 10);
+      break;
+
     default:
       console.log('(Using default options for this scenario)');
   }

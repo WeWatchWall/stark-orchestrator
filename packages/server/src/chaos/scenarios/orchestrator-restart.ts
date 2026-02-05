@@ -9,7 +9,7 @@
 import { getChaosProxy } from '../../services/chaos-proxy';
 import { getExternalChaosRunner } from '../external-chaos';
 import { podQueries, nodeQueries } from '@stark-o/core';
-import type { ChaosScenario, ScenarioResult } from './types';
+import type { ChaosScenario, ScenarioResult, OptionHelp } from './types';
 
 // Use the query modules that wrap the reactive stores
 // Note: clusterQueries removed as it wasn't being used directly
@@ -181,6 +181,33 @@ export const orchestratorRestartScenario: ChaosScenario<OrchestratorRestartOptio
       'No duplicate scheduling',
       'No orphaned pods',
       'Node reconnections handled gracefully',
+    ];
+  },
+
+  getOptionsHelp(): OptionHelp[] {
+    return [
+      {
+        name: 'mode',
+        type: 'string',
+        required: true,
+        description: 'Orchestrator restart simulation mode',
+        choices: ['graceful', 'abrupt', 'mid_reconciliation'],
+        example: 'graceful',
+      },
+      {
+        name: 'restartDelayMs',
+        type: 'number',
+        required: false,
+        description: 'Time to wait before restart in milliseconds',
+        example: '5000',
+      },
+      {
+        name: 'verifyAfterMs',
+        type: 'number',
+        required: false,
+        description: 'Time to wait after restart before verification',
+        example: '5000',
+      },
     ];
   },
 };
