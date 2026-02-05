@@ -242,6 +242,16 @@
       fill: rgba(255, 255, 255, 0.9);
     }
 
+    .peak-flag {
+      transform-origin: 0px -5px;
+      animation: flagWave 2s ease-in-out infinite;
+    }
+
+    @keyframes flagWave {
+      0%, 100% { transform: rotate(-5deg); }
+      50% { transform: rotate(5deg); }
+    }
+
     .climber-marker {
       transition: all 2s cubic-bezier(0.4, 0, 0.2, 1);
     }
@@ -748,9 +758,11 @@
           <g class="climber-marker" id="climberMarker">
             <circle class="climber-glow" cx="0" cy="0" r="8"/>
             <circle cx="0" cy="0" r="5" fill="#fff"/>
-            <!-- Flag pole and pennant attached to climber -->
-            <line x1="0" y1="-5" x2="0" y2="-25" stroke="#fff" stroke-width="2"/>
-            <polygon points="0,-25 14,-20 0,-15" fill="#ec4899"/>
+            <!-- Flag with pole - both animate together -->
+            <g class="peak-flag">
+              <line x1="0" y1="-5" x2="0" y2="-22" stroke="#fff" stroke-width="1.5"/>
+              <path d="M 0 -22 L 12 -18 L 0 -14 Z" fill="#ec4899"/>
+            </g>
             <text x="15" y="5" font-family="JetBrains Mono, monospace" font-size="12" font-weight="700" fill="#8b5cf6" id="climberLabel">0%</text>
           </g>
 
