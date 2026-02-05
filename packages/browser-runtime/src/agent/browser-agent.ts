@@ -452,7 +452,8 @@ export class BrowserAgent {
           if (settled) return;
           settled = true;
           this.state = 'connected';
-          this.reconnectAttempts = 0;
+          // Don't reset reconnectAttempts here - only reset after successful registration/reconnection
+          // This ensures banned nodes (silently terminated) keep incrementing attempts
           this.emit('connected');
           this.logger.info('Connected to orchestrator');
           resolve();
@@ -658,9 +659,13 @@ export class BrowserAgent {
 
   /**
    * Handle WebSocket close
+   * 
+   * Connection closes are classified as transient network failures.
+   * We preserve nodeId and credentials, then retry connection.
+   * Only explicit auth errors (AUTH_FAILED) should clear credentials.
    */
   private handleClose(code: number, reason: string): void {
-    this.logger.info('WebSocket closed', { code, reason });
+    this.logger.info('WebSocket closed (transient)', { code, reason });
     this.stopHeartbeat();
     this.stopMetricsCollection();
     this.clearPendingRequests('Connection closed');
@@ -668,12 +673,14 @@ export class BrowserAgent {
     const wasRegistered = this.state === 'registered';
     this.state = 'disconnected';
     this.ws = null;
-    // Preserve nodeId for reconnection - don't reset it
+    // Preserve nodeId for reconnection - connection drops are transient
+    // Only explicit NOT_FOUND errors in reconnect should clear nodeId
     this.connectionId = null;
 
     this.emit('disconnected', { code, reason, wasRegistered });
 
     // Attempt reconnection if not shutting down
+    // This is a transient failure - keep credentials and nodeId intact
     if (!this.isShuttingDown) {
       this.scheduleReconnect();
     }
@@ -1012,7 +1019,7 @@ export class BrowserAgent {
         token: this.authToken,
       });
 
-      // Reset retry counter on successful auth
+      // Reset retry counters on successful auth
       this.authRetryCount = 0;
       this.state = 'authenticated';
       this.emit('authenticated');
@@ -1094,6 +1101,7 @@ export class BrowserAgent {
       }
 
       this.state = 'registered';
+      this.reconnectAttempts = 0; // Reset only after successful registration
       this.emit('registered', response.node);
       this.logger.info('Node registered', {
         nodeId: this.nodeId,
@@ -1194,6 +1202,7 @@ export class BrowserAgent {
       }
 
       this.state = 'registered';
+      this.reconnectAttempts = 0; // Reset only after successful reconnection
       this.emit('registered', response.node);
       this.logger.info('Node reconnected', {
         nodeId: this.nodeId,
@@ -1204,16 +1213,34 @@ export class BrowserAgent {
       this.startHeartbeat();
       this.startMetricsCollection();
     } catch (error) {
-      this.logger.error('Reconnection failed, falling back to registration', { error: String(error) });
-      // If reconnection fails (e.g., node was deleted), fall back to fresh registration
-      this.nodeId = null;
+      // Classify the error: only permanent failures should trigger re-registration
+      const errorObj = error as { code?: string; message?: string };
+      const errorMessage = error instanceof Error ? error.message : String(error);
       
-      // Remove the stale node registration from storage
-      if (this.config.persistState) {
-        this.stateStore.removeNode(this.config.nodeName);
+      // Permanent failures: node was deleted or doesn't belong to this user
+      const isPermanentFailure = 
+        errorObj.code === 'NOT_FOUND' ||
+        errorObj.code === 'FORBIDDEN' ||
+        errorMessage.includes('NOT_FOUND') ||
+        errorMessage.includes('does not belong');
+      
+      if (isPermanentFailure) {
+        this.logger.error('Reconnection failed (permanent), falling back to registration', { error: String(error) });
+        // Node was deleted or ownership changed - fall back to fresh registration
+        this.nodeId = null;
+        
+        // Remove the stale node registration from storage
+        if (this.config.persistState) {
+          this.stateStore.removeNode(this.config.nodeName);
+        }
+        
+        await this.register();
+      } else {
+        // Transient failure (connection dropped, timeout, etc.) - will retry via handleClose
+        this.logger.warn('Reconnection failed (transient), will retry on next connect', { error: String(error) });
+        // Don't clear nodeId - let the normal reconnect flow handle it
+        throw error;
       }
-      
-      await this.register();
     }
   }
 

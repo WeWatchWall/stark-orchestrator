@@ -515,6 +515,113 @@ async function resumeHandler(options: {
 }
 
 /**
+ * Ban a node (sever WebSocket and block reconnection)
+ */
+async function banHandler(options: {
+  node: string;
+  duration?: string;
+}): Promise<void> {
+  requireAuth();
+  
+  try {
+    const api = createApiClient();
+    
+    const body: Record<string, unknown> = { nodeId: options.node };
+    if (options.duration) body.durationMs = parseInt(options.duration, 10);
+    
+    info(`Banning node (severing connection and blocking reconnection)...`);
+    
+    const response = await api.post('/chaos/node/ban', body);
+    
+    if (!response.ok) {
+      const data = await response.json() as ApiResponse<never>;
+      error(`Failed to ban: ${data.error || response.statusText}`);
+      process.exit(1);
+    }
+    
+    const result = await response.json() as { success: boolean; message: string; durationMs?: number };
+    
+    if (result.success) {
+      success(`Node banned${result.durationMs ? ` for ${result.durationMs}ms` : ' indefinitely'}`);
+    } else {
+      warn(result.message);
+    }
+  } catch (err) {
+    error(`Failed to ban: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+}
+
+/**
+ * Unban a node (allow reconnection)
+ */
+async function unbanHandler(options: {
+  node: string;
+}): Promise<void> {
+  requireAuth();
+  
+  try {
+    const api = createApiClient();
+    
+    const response = await api.post('/chaos/node/unban', { nodeId: options.node });
+    
+    if (!response.ok) {
+      const data = await response.json() as ApiResponse<never>;
+      error(`Failed to unban: ${data.error || response.statusText}`);
+      process.exit(1);
+    }
+    
+    const result = await response.json() as { success: boolean; message: string };
+    
+    if (result.success) {
+      success('Node unbanned');
+    } else {
+      warn(result.message);
+    }
+  } catch (err) {
+    error(`Failed to unban: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+}
+
+/**
+ * List banned nodes
+ */
+async function bannedListHandler(): Promise<void> {
+  requireAuth();
+  
+  try {
+    const api = createApiClient();
+    
+    const response = await api.get('/chaos/nodes/banned');
+    
+    if (!response.ok) {
+      const data = await response.json() as ApiResponse<never>;
+      error(`Failed to get banned nodes: ${data.error || response.statusText}`);
+      process.exit(1);
+    }
+    
+    const bannedNodes = await response.json() as Array<{ nodeId: string; bannedAt: string; unbanAt?: string }>;
+    
+    if (bannedNodes.length === 0) {
+      info('No nodes currently banned');
+    } else {
+      console.log('\nBanned Nodes:');
+      for (const node of bannedNodes) {
+        const bannedAt = new Date(node.bannedAt).toLocaleString();
+        const unbanInfo = node.unbanAt 
+          ? `(auto-unban at ${new Date(node.unbanAt).toLocaleString()})`
+          : '(indefinite)';
+        console.log(`  ⛔ ${node.nodeId} - banned at ${bannedAt} ${unbanInfo}`);
+      }
+    }
+  } catch (err) {
+    error(`Failed to get banned nodes: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+}
+
+/**
  * Create a network partition
  */
 async function partitionCreateHandler(options: {
@@ -1062,6 +1169,25 @@ Examples:
     .option('-n, --node <nodeId>', 'Target node ID')
     .option('-c, --connection <connectionId>', 'Target connection ID')
     .action(resumeHandler);
+
+  // Ban/unban commands (sever connection and block reconnection)
+  chaos
+    .command('ban')
+    .description('Ban a node (sever WebSocket and block reconnection)')
+    .requiredOption('-n, --node <nodeId>', 'Target node ID')
+    .option('-d, --duration <ms>', 'Auto-unban after duration (ms)')
+    .action(banHandler);
+
+  chaos
+    .command('unban')
+    .description('Unban a node (allow reconnection)')
+    .requiredOption('-n, --node <nodeId>', 'Target node ID')
+    .action(unbanHandler);
+
+  chaos
+    .command('banned')
+    .description('List banned nodes')
+    .action(bannedListHandler);
 
   // Partition commands
   const partition = chaos.command('partition').description('Network partition management');

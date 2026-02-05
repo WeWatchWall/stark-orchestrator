@@ -564,6 +564,7 @@ export class ConnectionManager {
       id: conn.id,
       send: (data: string) => conn.ws.send(data),
       close: () => conn.ws.close(),
+      terminate: () => conn.ws.terminate(),
       userId: conn.userId,
       userRoles: conn.userRoles,
     };

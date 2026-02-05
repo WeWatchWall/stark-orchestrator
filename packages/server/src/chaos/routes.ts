@@ -219,6 +219,48 @@ export function createChaosRouter(): Router {
     res.json({ success, connectionId, nodeId, message: success ? 'Connection resumed' : 'Connection not found or not paused' });
   });
 
+  // POST /chaos/node/ban - Ban a node (sever WebSocket and block reconnection)
+  router.post('/node/ban', (req: Request, res: Response): void => {
+    const { nodeId, durationMs } = req.body;
+    if (!nodeId) {
+      res.status(400).json({ error: 'nodeId is required' });
+      return;
+    }
+
+    const proxy = getChaosProxy();
+    if (!proxy.isEnabled()) {
+      res.status(400).json({ error: 'Chaos proxy not enabled' });
+      return;
+    }
+
+    const success = proxy.banNode(nodeId, durationMs);
+    res.json({ success, nodeId, durationMs, message: success ? 'Node banned' : 'Failed to ban node' });
+  });
+
+  // POST /chaos/node/unban - Unban a node (allow reconnection)
+  router.post('/node/unban', (req: Request, res: Response): void => {
+    const { nodeId } = req.body;
+    if (!nodeId) {
+      res.status(400).json({ error: 'nodeId is required' });
+      return;
+    }
+
+    const proxy = getChaosProxy();
+    if (!proxy.isEnabled()) {
+      res.status(400).json({ error: 'Chaos proxy not enabled' });
+      return;
+    }
+
+    const success = proxy.unbanNode(nodeId);
+    res.json({ success, nodeId, message: success ? 'Node unbanned' : 'Node was not banned' });
+  });
+
+  // GET /chaos/nodes/banned - List banned nodes
+  router.get('/nodes/banned', (_req: Request, res: Response): void => {
+    const proxy = getChaosProxy();
+    res.json(proxy.getBannedNodes());
+  });
+
   // POST /chaos/partition - Create a network partition (isolate nodes/connections)
   router.post('/partition', (req: Request, res: Response): void => {
     const { nodeIds, connectionIds, durationMs } = req.body;

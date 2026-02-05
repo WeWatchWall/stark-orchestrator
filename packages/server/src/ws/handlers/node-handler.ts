@@ -9,8 +9,9 @@ import type { RegisterNodeInput, NodeHeartbeat, UserRole } from '@stark-o/shared
 import { validateRegisterNodeInput, createServiceLogger } from '@stark-o/shared';
 import { getNodeQueries } from '../../supabase/nodes.js';
 import { getPodQueriesAdmin } from '../../supabase/pods.js';
-import { getConnectionManager } from '../../services/connection-service.js';
+import { getConnectionManager, sendToNode } from '../../services/connection-service.js';
 import { getDeploymentController } from '../../services/deployment-controller.js';
+import { getChaosProxy } from '../../services/chaos-proxy.js';
 
 /**
  * Logger for node handler operations
@@ -72,6 +73,7 @@ export interface WsConnection {
   id: string;
   send: (data: string) => void;
   close: () => void;
+  terminate: () => void;
   userId?: string;
   userRoles?: UserRole[];
 }
@@ -331,6 +333,17 @@ export async function handleNodeReconnect(
     return;
   }
 
+  // Check if node is banned (chaos testing)
+  // Silently terminate - don't reveal ban status to client so it appears as network failure
+  const chaosProxy = getChaosProxy();
+  if (chaosProxy.isEnabled() && chaosProxy.isNodeBanned(payload.nodeId)) {
+    logger.info('Blocked reconnect attempt from banned node (silent terminate)', { nodeId: payload.nodeId });
+    // Just terminate the connection without sending any error
+    // Client will see this as a transient network failure and retry
+    ws.terminate();
+    return;
+  }
+
   // Validate nodeId is present
   if (!payload.nodeId) {
     sendResponse(
@@ -439,6 +452,55 @@ export async function handleNodeReconnect(
             nodeId: payload.nodeId,
           });
         });
+      }
+    }
+
+    // Handle stale pods: pods the node is running but shouldn't be.
+    // This happens when a node was banned/disconnected, another node took over,
+    // but the original node kept running the pod. On reconnect, we tell it to stop.
+    const staleResult = await podQueries.findStalePods(
+      payload.nodeId,
+      payload.runningPodIds
+    );
+
+    if (staleResult.error) {
+      logger.error('Failed to find stale pods on node reconnect', undefined, {
+        nodeId: payload.nodeId,
+        nodeName: reconnectResult.data.name,
+        error: staleResult.error.message || String(staleResult.error),
+      });
+    }
+
+    if (staleResult.data && staleResult.data.podIds.length > 0) {
+      logger.info('Found stale pods on reconnected node - sending stop commands', {
+        nodeId: payload.nodeId,
+        nodeName: reconnectResult.data.name,
+        stalePodCount: staleResult.data.podIds.length,
+        podIds: staleResult.data.podIds,
+      });
+
+      // Send stop commands to the node for each stale pod
+      for (const podId of staleResult.data.podIds) {
+        const sent = sendToNode(ws.id, {
+          type: 'pod:stop',
+          payload: {
+            podId,
+            reason: 'stale_pod',
+            message: 'Pod was taken over by another node during disconnect - stopping stale instance',
+          },
+        });
+
+        if (sent) {
+          logger.debug('Sent stop command for stale pod', {
+            podId,
+            nodeId: payload.nodeId,
+          });
+        } else {
+          logger.warn('Failed to send stop command for stale pod', {
+            podId,
+            nodeId: payload.nodeId,
+          });
+        }
       }
     }
   }

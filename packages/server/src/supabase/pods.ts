@@ -680,6 +680,69 @@ export class PodQueries {
   }
 
   /**
+   * Finds pods that a node reports as running but should not be running.
+   * This handles the case where a node was banned/disconnected during failover,
+   * another node took over the pod, but the original node kept running it.
+   * 
+   * Returns pods that:
+   * - Are in the runningPodIds list (node claims to be running them)
+   * - AND either:
+   *   - Are not assigned to this node (nodeId is different or null)
+   *   - Are in a terminal status (stopped, failed)
+   * 
+   * @param nodeId - The node ID that is reconnecting
+   * @param runningPodIds - Pod IDs that the node reports as actually running
+   * @returns List of pod IDs that should be stopped on the node
+   */
+  async findStalePods(
+    nodeId: string,
+    runningPodIds: string[],
+  ): Promise<PodResult<{ podIds: string[] }>> {
+    if (runningPodIds.length === 0) {
+      return { data: { podIds: [] }, error: null };
+    }
+
+    // Get all pods in the runningPodIds list
+    const { data: pods, error: listError } = await this.client
+      .from('pods')
+      .select('id, node_id, status')
+      .in('id', runningPodIds);
+
+    if (listError) {
+      return { data: null, error: listError };
+    }
+
+    if (!pods || pods.length === 0) {
+      // All pods the node claims to run don't exist in DB - they're all stale
+      return { data: { podIds: runningPodIds }, error: null };
+    }
+
+    const terminalStatuses: PodStatus[] = ['stopped', 'failed'];
+    const stalePodIds: string[] = [];
+
+    // Check each pod from DB
+    const dbPodIds = new Set(pods.map((p: { id: string }) => p.id));
+    
+    for (const pod of pods as Array<{ id: string; node_id: string | null; status: PodStatus }>) {
+      // Pod is stale if:
+      // 1. It's not assigned to this node (assigned to another or no node)
+      // 2. OR it's in a terminal status (stopped, failed)
+      if (pod.node_id !== nodeId || terminalStatuses.includes(pod.status)) {
+        stalePodIds.push(pod.id);
+      }
+    }
+
+    // Also add pods that the node claims to run but don't exist in DB at all
+    for (const podId of runningPodIds) {
+      if (!dbPodIds.has(podId) && !stalePodIds.includes(podId)) {
+        stalePodIds.push(podId);
+      }
+    }
+
+    return { data: { podIds: stalePodIds }, error: null };
+  }
+
+  /**
    * Gets the next incarnation number for a replacement pod
    * Called when creating a replacement for a failed pod in a deployment
    * @param deploymentId - The deployment ID
@@ -1110,6 +1173,9 @@ export const failPodsOnNode = (nodeId: string, reason: string, terminationReason
 
 export const stopOrphanedPodsOnNode = (nodeId: string, runningPodIds: string[]) =>
   getPodQueries().stopOrphanedPodsOnNode(nodeId, runningPodIds);
+
+export const findStalePods = (nodeId: string, runningPodIds: string[]) =>
+  getPodQueries().findStalePods(nodeId, runningPodIds);
 
 export const deletePod = (id: string) =>
   getPodQueries().deletePod(id);

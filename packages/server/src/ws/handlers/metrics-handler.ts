@@ -53,6 +53,7 @@ export interface WsConnection {
   id: string;
   send: (data: string) => void;
   close: () => void;
+  terminate: () => void;
   userId?: string;
   userRoles?: UserRole[];
 }

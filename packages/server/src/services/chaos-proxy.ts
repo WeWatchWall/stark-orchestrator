@@ -75,6 +75,13 @@ export interface PausedConnection {
   pendingMessages: Array<{ message: unknown; timestamp: Date }>;
 }
 
+/** Banned connection - WebSocket severed, tracked for unban */
+export interface BannedNode {
+  nodeId: string;
+  bannedAt: Date;
+  unbanAt?: Date;
+}
+
 export interface ChaosEvent {
   timestamp: Date;
   type:
@@ -85,6 +92,8 @@ export interface ChaosEvent {
     | 'connection_terminated'
     | 'connection_paused'
     | 'connection_resumed'
+    | 'connection_banned'
+    | 'connection_unbanned'
     | 'node_forced_offline'
     | 'scheduling_failed'
     | 'scheduling_delayed'
@@ -102,6 +111,7 @@ export interface ChaosStats {
   heartbeatsDelayed: number;
   connectionsTerminated: number;
   connectionsPaused: number;
+  connectionsBanned: number;
   nodesForceOffline: number;
   schedulingFailures: number;
   apiErrorsInjected: number;
@@ -126,6 +136,7 @@ export class ChaosProxyService extends EventEmitter {
   // Live connection manipulation state
   private partitions: Map<string, NetworkPartition> = new Map();
   private pausedConnections: Map<string, PausedConnection> = new Map();
+  private bannedNodes: Map<string, BannedNode> = new Map();
   private latencyRules: Map<string, LatencyRule> = new Map();
   private partitionCounter = 0;
   private latencyRuleCounter = 0;
@@ -137,6 +148,7 @@ export class ChaosProxyService extends EventEmitter {
     heartbeatsDelayed: 0,
     connectionsTerminated: 0,
     connectionsPaused: 0,
+    connectionsBanned: 0,
     nodesForceOffline: 0,
     schedulingFailures: 0,
     apiErrorsInjected: 0,
@@ -587,6 +599,7 @@ export class ChaosProxyService extends EventEmitter {
       heartbeatsDelayed: 0,
       connectionsTerminated: 0,
       connectionsPaused: 0,
+      connectionsBanned: 0,
       nodesForceOffline: 0,
       schedulingFailures: 0,
       apiErrorsInjected: 0,
@@ -717,6 +730,85 @@ export class ChaosProxyService extends EventEmitter {
     }
     paused.pendingMessages.push({ message, timestamp: new Date() });
     return true;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Ban/Unban (Connection Severing with Reconnect Block)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Ban a node - severs the WebSocket connection AND blocks reconnection
+   * Unlike pause (which queues messages), ban completely cuts off the node
+   */
+  banNode(nodeId: string, durationMs?: number): boolean {
+    if (!this.connectionManager) {
+      console.error('[ChaosProxy] No connection manager attached');
+      return false;
+    }
+
+    // Find and terminate the node's connection
+    const connections = this.connectionManager.getConnections();
+    let terminated = false;
+    for (const [connId, conn] of connections) {
+      if (conn.nodeIds.has(nodeId)) {
+        console.log(`[ChaosProxy] ⚡ Banning node ${nodeId} - terminating connection ${connId}`);
+        conn.ws.terminate();
+        terminated = true;
+        break;
+      }
+    }
+
+    // Track the ban (even if not currently connected, prevents future connections)
+    const banned: BannedNode = {
+      nodeId,
+      bannedAt: new Date(),
+      unbanAt: durationMs ? new Date(Date.now() + durationMs) : undefined,
+    };
+
+    this.bannedNodes.set(nodeId, banned);
+    this.stats.connectionsBanned++;
+    this.recordEvent('connection_banned', { nodeId, durationMs, wasConnected: terminated });
+
+    console.log(`[ChaosProxy] ⚡ Node banned: ${nodeId}${durationMs ? ` for ${durationMs}ms` : ' indefinitely'}`);
+
+    // Auto-unban after duration
+    if (durationMs) {
+      setTimeout(() => {
+        this.unbanNode(nodeId);
+      }, durationMs);
+    }
+
+    return true;
+  }
+
+  /**
+   * Unban a node - allows it to reconnect
+   */
+  unbanNode(nodeId: string): boolean {
+    const banned = this.bannedNodes.get(nodeId);
+    if (!banned) {
+      return false;
+    }
+
+    this.bannedNodes.delete(nodeId);
+    this.recordEvent('connection_unbanned', { nodeId, bannedDurationMs: Date.now() - banned.bannedAt.getTime() });
+
+    console.log(`[ChaosProxy] Node unbanned: ${nodeId}`);
+    return true;
+  }
+
+  /**
+   * Check if a node is banned
+   */
+  isNodeBanned(nodeId: string): boolean {
+    return this.bannedNodes.has(nodeId);
+  }
+
+  /**
+   * Get list of banned nodes
+   */
+  getBannedNodes(): BannedNode[] {
+    return Array.from(this.bannedNodes.values());
   }
 
   /**

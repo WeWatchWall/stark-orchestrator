@@ -200,6 +200,100 @@ class ChaosApiClient {
   }> {
     return this.request('GET', '/connections');
   }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Pause/Resume (Network Freeze)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  async pauseConnection(options: {
+    nodeId?: string;
+    connectionId?: string;
+    durationMs?: number;
+  }): Promise<{ success: boolean; message: string; durationMs?: number }> {
+    return this.request('POST', '/connection/pause', options);
+  }
+
+  async resumeConnection(options: {
+    nodeId?: string;
+    connectionId?: string;
+  }): Promise<{ success: boolean; message: string }> {
+    return this.request('POST', '/connection/resume', options);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Ban/Unban (Connection Severing with Reconnect Block)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  async banNode(options: {
+    nodeId: string;
+    durationMs?: number;
+  }): Promise<{ success: boolean; message: string; durationMs?: number }> {
+    return this.request('POST', '/node/ban', options);
+  }
+
+  async unbanNode(nodeId: string): Promise<{ success: boolean; message: string }> {
+    return this.request('POST', '/node/unban', { nodeId });
+  }
+
+  async getBannedNodes(): Promise<Array<{
+    nodeId: string;
+    bannedAt: string;
+    unbanAt?: string;
+  }>> {
+    return this.request('GET', '/nodes/banned');
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Network Partitions
+  // ─────────────────────────────────────────────────────────────────────────
+
+  async createPartition(options: {
+    nodeIds?: string[];
+    connectionIds?: string[];
+    durationMs?: number;
+  }): Promise<{ success: boolean; partitionId: string; message: string; durationMs?: number }> {
+    return this.request('POST', '/partition', options);
+  }
+
+  async listPartitions(): Promise<Array<{
+    id: string;
+    nodeIds: string[];
+    connectionIds: string[];
+    createdAt: string;
+    durationMs?: number;
+  }>> {
+    return this.request('GET', '/partitions');
+  }
+
+  async removePartition(partitionId: string): Promise<{ success: boolean; message: string }> {
+    return this.request('POST', `/partition/${partitionId}/remove`, {});
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Latency Injection
+  // ─────────────────────────────────────────────────────────────────────────
+
+  async addLatency(options: {
+    nodeId?: string;
+    connectionId?: string;
+    latencyMs: number;
+    jitterMs?: number;
+    durationMs?: number;
+  }): Promise<{ success: boolean; ruleId: string; latencyMs: number; jitterMs: number }> {
+    return this.request('POST', '/latency', options);
+  }
+
+  async removeLatency(ruleId: string): Promise<{ success: boolean; message: string }> {
+    return this.request('POST', `/latency/${ruleId}/remove`, {});
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Kill Connection
+  // ─────────────────────────────────────────────────────────────────────────
+
+  async killConnection(connectionId: string): Promise<{ success: boolean; message: string }> {
+    return this.request('POST', '/connection/kill', { connectionId });
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -264,6 +358,31 @@ ${chalk.bold('API CHAOS')}
     timeoutRate  Probability of timing out (0-1)
     timeoutMs    Timeout duration in ms
 
+${chalk.bold('PAUSE/RESUME (NETWORK FREEZE)')}
+  pause <nodeId> [durationMs]       Pause/freeze a node's connection
+  pause-conn <connId> [durationMs]  Pause by connection ID
+  resume <nodeId>                   Resume a paused node
+  resume-conn <connId>              Resume by connection ID
+
+${chalk.bold('NETWORK PARTITIONS')}
+  partition <nodeId> [nodeId2...] [-d durationMs]
+                                    Create partition isolating nodes
+  partition-conn <connId> [...] [-d durationMs]
+                                    Create partition by connection IDs
+  partitions                        List active partitions
+  heal <partitionId>                Remove partition (heal network)
+
+${chalk.bold('LATENCY INJECTION')}
+  latency <nodeId> <ms> [jitterMs] [durationMs]
+                                    Inject latency into a node's connection
+  latency-conn <connId> <ms> [jitterMs] [durationMs]
+                                    Inject latency by connection ID
+  rm-latency <ruleId>               Remove a latency rule
+
+${chalk.bold('CONNECTION KILL')}
+  connection kill <connId>          Kill a specific WebSocket connection
+  kill-conn <connId>                Alias for connection kill
+
 ${chalk.bold('SCENARIO RUNNER')}
   run <scenario> [--option value ...]
                                     Run a predefined chaos scenario
@@ -286,6 +405,15 @@ ${chalk.bold('EXAMPLES')}
 
   ${chalk.gray('# Make API 30% flaky')}
   pnpm dev:test -k api flaky 0.3
+
+  ${chalk.gray('# Pause a node for 10 seconds')}
+  pnpm dev:test -k pause my-node-1 10000
+
+  ${chalk.gray('# Create a network partition between nodes')}
+  pnpm dev:test -k partition node1 node2
+
+  ${chalk.gray('# Inject 200ms latency with 50ms jitter')}  
+  pnpm dev:test -k latency my-node-1 200 50
 
   ${chalk.gray('# Run node-loss scenario')}
   pnpm dev:test -k run node-loss --mode single --nodeId my-node-1
@@ -357,8 +485,16 @@ ${chalk.bold('DISCOVERY')}
   stats               Show detailed statistics
   events [n]          Show last n chaos events ${chalk.gray('(default: 20)')}
 
-${chalk.bold('NODE CHAOS')}
-  kill <nodeId>       Forcefully terminate node connection
+${chalk.bold('CONNECTION CHAOS')}
+  kill <nodeId>           Forcefully terminate node connection
+  kill-conn <connId>      Kill connection by connection ID
+  pause <nodeId> [ms]     Pause/freeze connection (optional auto-resume)
+  resume <nodeId>         Resume a paused connection
+  pause-conn <connId> [ms]  Pause by connection ID
+  resume-conn <connId>      Resume by connection ID
+  ban <nodeId> [ms]       Ban node - sever WebSocket AND block reconnection
+  unban <nodeId>          Unban node - allow reconnection
+  banned                  List banned nodes
 
 ${chalk.bold('HEARTBEAT CHAOS')}
   hb-delay <nodeId> <ms> [duration] [dropRate]
@@ -379,6 +515,20 @@ ${chalk.bold('MESSAGE CHAOS')} ${chalk.yellow('← supports direction!')}
   drop <nodeId> <rate>
                       ${chalk.gray('Legacy: Drop messages bidirectionally')}
 
+${chalk.bold('NETWORK PARTITIONS')}
+  partition <nodeId> [nodeId2...]  Create partition isolating nodes
+  partition-conn <connId> [...]    Create partition by connection IDs
+  partitions                       List active partitions
+  heal <partitionId>               Remove partition (heal network)
+
+${chalk.bold('LATENCY INJECTION')}
+  latency <nodeId> <ms> [jitter] [duration]
+                      Inject latency into a node's connection
+  latency-conn <connId> <ms> [jitter] [duration]
+                      Inject latency by connection ID
+  latencies           List active latency rules (in rules)
+  rm-latency <ruleId> Remove a latency rule
+
 ${chalk.bold('API CHAOS')}
   flaky <errorRate> [timeoutRate]
                       Make API calls flaky (rates 0-1)
@@ -395,6 +545,18 @@ ${chalk.bold('EXAMPLES')}
 
   ${chalk.gray('# Delay heartbeats by 3s')}
   hb-delay my-node 3000
+
+  ${chalk.gray('# Freeze a node connection for 10s')}
+  pause my-node 10000
+
+  ${chalk.gray('# Ban a node (sever connection and block reconnection) for 30s')}
+  ban my-node 30000
+
+  ${chalk.gray('# Create network partition between two nodes')}
+  partition node1 node2
+
+  ${chalk.gray('# Inject 200ms latency with 50ms jitter')}
+  latency my-node 200 50
 
 ${chalk.bold('OTHER')}
   exit, quit, q       Exit interactive mode
@@ -522,6 +684,322 @@ ${chalk.bold('OTHER')}
             console.log(await client.killNode(parts[1]));
           }
           break;
+
+        case 'kill-conn':
+        case 'kill-connection': {
+          if (!parts[1]) {
+            console.log('Usage: kill-conn <connectionId>');
+          } else {
+            const result = await client.killConnection(parts[1]);
+            if (result.success) {
+              console.log(chalk.green(`✓ Connection ${parts[1]} terminated`));
+            } else {
+              console.log(chalk.yellow(result.message));
+            }
+          }
+          break;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Pause/Resume (Network Freeze)
+        // ─────────────────────────────────────────────────────────────────────
+
+        case 'pause': {
+          if (!parts[1]) {
+            console.log('Usage: pause <nodeId> [durationMs]');
+            console.log('  Pauses/freezes a node connection (no messages flow)');
+            console.log('  durationMs: optional auto-resume after this time');
+          } else {
+            const result = await client.pauseConnection({
+              nodeId: parts[1],
+              durationMs: parts[2] ? parseInt(parts[2], 10) : undefined,
+            });
+            if (result.success) {
+              console.log(chalk.green(`✓ Connection paused for node ${parts[1]}`));
+              if (result.durationMs) {
+                console.log(`  Will auto-resume in ${result.durationMs}ms`);
+              }
+            } else {
+              console.log(chalk.yellow(result.message));
+            }
+          }
+          break;
+        }
+
+        case 'pause-conn': {
+          if (!parts[1]) {
+            console.log('Usage: pause-conn <connectionId> [durationMs]');
+          } else {
+            const result = await client.pauseConnection({
+              connectionId: parts[1],
+              durationMs: parts[2] ? parseInt(parts[2], 10) : undefined,
+            });
+            if (result.success) {
+              console.log(chalk.green(`✓ Connection ${parts[1]} paused`));
+              if (result.durationMs) {
+                console.log(`  Will auto-resume in ${result.durationMs}ms`);
+              }
+            } else {
+              console.log(chalk.yellow(result.message));
+            }
+          }
+          break;
+        }
+
+        case 'resume': {
+          if (!parts[1]) {
+            console.log('Usage: resume <nodeId>');
+          } else {
+            const result = await client.resumeConnection({ nodeId: parts[1] });
+            if (result.success) {
+              console.log(chalk.green(`✓ Connection resumed for node ${parts[1]}`));
+            } else {
+              console.log(chalk.yellow(result.message));
+            }
+          }
+          break;
+        }
+
+        case 'resume-conn': {
+          if (!parts[1]) {
+            console.log('Usage: resume-conn <connectionId>');
+          } else {
+            const result = await client.resumeConnection({ connectionId: parts[1] });
+            if (result.success) {
+              console.log(chalk.green(`✓ Connection ${parts[1]} resumed`));
+            } else {
+              console.log(chalk.yellow(result.message));
+            }
+          }
+          break;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Ban/Unban (Connection Severing with Reconnect Block)
+        // ─────────────────────────────────────────────────────────────────────
+
+        case 'ban': {
+          if (!parts[1]) {
+            console.log('Usage: ban <nodeId> [durationMs]');
+            console.log('  Bans a node - severs WebSocket AND blocks reconnection');
+            console.log('  durationMs: optional auto-unban after this time');
+          } else {
+            const result = await client.banNode({
+              nodeId: parts[1],
+              durationMs: parts[2] ? parseInt(parts[2], 10) : undefined,
+            });
+            if (result.success) {
+              console.log(chalk.green(`✓ Node ${parts[1]} banned`));
+              if (result.durationMs) {
+                console.log(`  Will auto-unban in ${result.durationMs}ms`);
+              }
+            } else {
+              console.log(chalk.yellow(result.message));
+            }
+          }
+          break;
+        }
+
+        case 'unban': {
+          if (!parts[1]) {
+            console.log('Usage: unban <nodeId>');
+          } else {
+            const result = await client.unbanNode(parts[1]);
+            if (result.success) {
+              console.log(chalk.green(`✓ Node ${parts[1]} unbanned`));
+            } else {
+              console.log(chalk.yellow(result.message));
+            }
+          }
+          break;
+        }
+
+        case 'banned': {
+          const bannedNodes = await client.getBannedNodes();
+          console.log();
+          console.log(chalk.bold('Banned Nodes'));
+          if (bannedNodes.length === 0) {
+            console.log(chalk.gray('  No nodes currently banned'));
+          } else {
+            for (const node of bannedNodes) {
+              const bannedAt = new Date(node.bannedAt).toLocaleTimeString();
+              const unbanInfo = node.unbanAt 
+                ? chalk.gray(` (auto-unban at ${new Date(node.unbanAt).toLocaleTimeString()})`)
+                : chalk.gray(' (indefinite)');
+              console.log(`  ${chalk.red('⛔')} ${node.nodeId} - banned at ${bannedAt}${unbanInfo}`);
+            }
+          }
+          console.log();
+          break;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Network Partitions
+        // ─────────────────────────────────────────────────────────────────────
+
+        case 'partition': {
+          if (!parts[1]) {
+            console.log('Usage: partition <nodeId> [nodeId2] [nodeId3] ...');
+            console.log('  Creates a network partition isolating specified nodes');
+            console.log('  Append duration with -d flag: partition node1 node2 -d 30000');
+          } else {
+            const nodeIds: string[] = [];
+            let durationMs: number | undefined;
+            
+            for (let i = 1; i < parts.length; i++) {
+              if (parts[i] === '-d' && parts[i + 1]) {
+                durationMs = parseInt(parts[i + 1]!, 10);
+                i++; // Skip next arg
+              } else if (parts[i]) {
+                nodeIds.push(parts[i]!);
+              }
+            }
+            
+            const result = await client.createPartition({ nodeIds, durationMs });
+            if (result.success) {
+              console.log(chalk.green(`✓ Partition created: ${result.partitionId}`));
+              console.log(`  Isolated nodes: ${nodeIds.join(', ')}`);
+              if (result.durationMs) {
+                console.log(`  Will auto-heal in ${result.durationMs}ms`);
+              }
+            } else {
+              console.log(chalk.yellow(result.message));
+            }
+          }
+          break;
+        }
+
+        case 'partition-conn': {
+          if (!parts[1]) {
+            console.log('Usage: partition-conn <connId> [connId2] ...');
+            console.log('  Creates a network partition by connection IDs');
+          } else {
+            const connectionIds: string[] = [];
+            let durationMs: number | undefined;
+            
+            for (let i = 1; i < parts.length; i++) {
+              if (parts[i] === '-d' && parts[i + 1]) {
+                durationMs = parseInt(parts[i + 1]!, 10);
+                i++;
+              } else if (parts[i]) {
+                connectionIds.push(parts[i]!);
+              }
+            }
+            
+            const result = await client.createPartition({ connectionIds, durationMs });
+            if (result.success) {
+              console.log(chalk.green(`✓ Partition created: ${result.partitionId}`));
+              console.log(`  Isolated connections: ${connectionIds.join(', ')}`);
+              if (result.durationMs) {
+                console.log(`  Will auto-heal in ${result.durationMs}ms`);
+              }
+            } else {
+              console.log(chalk.yellow(result.message));
+            }
+          }
+          break;
+        }
+
+        case 'partitions': {
+          const partitions = await client.listPartitions();
+          if (partitions.length === 0) {
+            console.log('No active network partitions.');
+          } else {
+            console.log(chalk.bold(`\nActive Partitions (${partitions.length})`));
+            for (const p of partitions) {
+              console.log(`\n  ${chalk.cyan(p.id)}`);
+              if (p.nodeIds.length > 0) {
+                console.log(`    Nodes: ${p.nodeIds.join(', ')}`);
+              }
+              if (p.connectionIds.length > 0) {
+                console.log(`    Connections: ${p.connectionIds.join(', ')}`);
+              }
+              if (p.durationMs) {
+                console.log(`    Duration: ${p.durationMs}ms`);
+              }
+              console.log(`    Created: ${p.createdAt}`);
+            }
+            console.log();
+          }
+          break;
+        }
+
+        case 'heal':
+        case 'rm-partition':
+        case 'remove-partition': {
+          if (!parts[1]) {
+            console.log('Usage: heal <partitionId>');
+            console.log('  Removes a partition (heals the network)');
+          } else {
+            const result = await client.removePartition(parts[1]);
+            if (result.success) {
+              console.log(chalk.green(`✓ Partition ${parts[1]} removed (network healed)`));
+            } else {
+              console.log(chalk.yellow(result.message));
+            }
+          }
+          break;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Latency Injection
+        // ─────────────────────────────────────────────────────────────────────
+
+        case 'latency': {
+          // latency <nodeId> <ms> [jitter] [duration]
+          if (!parts[1] || !parts[2]) {
+            console.log('Usage: latency <nodeId> <ms> [jitterMs] [durationMs]');
+            console.log('  Injects latency into all messages for a node');
+            console.log('  ms:         base latency in milliseconds');
+            console.log('  jitterMs:   random ± jitter (optional)');
+            console.log('  durationMs: auto-remove after this time (optional)');
+          } else {
+            const result = await client.addLatency({
+              nodeId: parts[1],
+              latencyMs: parseInt(parts[2], 10),
+              jitterMs: parts[3] ? parseInt(parts[3], 10) : undefined,
+              durationMs: parts[4] ? parseInt(parts[4], 10) : undefined,
+            });
+            if (result.success) {
+              console.log(chalk.green(`✓ Latency rule added: ${result.ruleId}`));
+              console.log(`  Latency: ${result.latencyMs}ms ±${result.jitterMs}ms jitter`);
+            }
+          }
+          break;
+        }
+
+        case 'latency-conn': {
+          if (!parts[1] || !parts[2]) {
+            console.log('Usage: latency-conn <connectionId> <ms> [jitterMs] [durationMs]');
+          } else {
+            const result = await client.addLatency({
+              connectionId: parts[1],
+              latencyMs: parseInt(parts[2], 10),
+              jitterMs: parts[3] ? parseInt(parts[3], 10) : undefined,
+              durationMs: parts[4] ? parseInt(parts[4], 10) : undefined,
+            });
+            if (result.success) {
+              console.log(chalk.green(`✓ Latency rule added: ${result.ruleId}`));
+              console.log(`  Latency: ${result.latencyMs}ms ±${result.jitterMs}ms jitter`);
+            }
+          }
+          break;
+        }
+
+        case 'rm-latency':
+        case 'remove-latency': {
+          if (!parts[1]) {
+            console.log('Usage: rm-latency <ruleId>');
+          } else {
+            const result = await client.removeLatency(parts[1]);
+            if (result.success) {
+              console.log(chalk.green(`✓ Latency rule ${parts[1]} removed`));
+            } else {
+              console.log(chalk.yellow(result.message));
+            }
+          }
+          break;
+        }
 
         case 'delay':
           // Legacy alias for hb-delay
@@ -844,6 +1322,223 @@ async function runCommand(client: ChaosApiClient, args: string[]): Promise<void>
           }
         }
         console.log(JSON.stringify(await client.runScenario(args[1], options), null, 2));
+      }
+      break;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Pause/Resume Commands
+    // ─────────────────────────────────────────────────────────────────────────
+
+    case 'pause':
+      // pause <nodeId> [durationMs]
+      if (args[1]) {
+        console.log(JSON.stringify(
+          await client.pauseConnection({
+            nodeId: args[1],
+            durationMs: args[2] ? parseInt(args[2], 10) : undefined,
+          }),
+          null,
+          2
+        ));
+      } else {
+        console.log('Usage: pause <nodeId> [durationMs]');
+      }
+      break;
+
+    case 'pause-conn':
+      // pause-conn <connectionId> [durationMs]
+      if (args[1]) {
+        console.log(JSON.stringify(
+          await client.pauseConnection({
+            connectionId: args[1],
+            durationMs: args[2] ? parseInt(args[2], 10) : undefined,
+          }),
+          null,
+          2
+        ));
+      } else {
+        console.log('Usage: pause-conn <connectionId> [durationMs]');
+      }
+      break;
+
+    case 'resume':
+      // resume <nodeId>
+      if (args[1]) {
+        console.log(JSON.stringify(await client.resumeConnection({ nodeId: args[1] }), null, 2));
+      } else {
+        console.log('Usage: resume <nodeId>');
+      }
+      break;
+
+    case 'resume-conn':
+      // resume-conn <connectionId>
+      if (args[1]) {
+        console.log(JSON.stringify(await client.resumeConnection({ connectionId: args[1] }), null, 2));
+      } else {
+        console.log('Usage: resume-conn <connectionId>');
+      }
+      break;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Ban/Unban Commands
+    // ─────────────────────────────────────────────────────────────────────────
+
+    case 'ban':
+      // ban <nodeId> [durationMs]
+      if (args[1]) {
+        console.log(JSON.stringify(
+          await client.banNode({
+            nodeId: args[1],
+            durationMs: args[2] ? parseInt(args[2], 10) : undefined,
+          }),
+          null,
+          2
+        ));
+      } else {
+        console.log('Usage: ban <nodeId> [durationMs]');
+      }
+      break;
+
+    case 'unban':
+      // unban <nodeId>
+      if (args[1]) {
+        console.log(JSON.stringify(await client.unbanNode(args[1]), null, 2));
+      } else {
+        console.log('Usage: unban <nodeId>');
+      }
+      break;
+
+    case 'banned':
+      // List banned nodes
+      console.log(JSON.stringify(await client.getBannedNodes(), null, 2));
+      break;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Network Partition Commands
+    // ─────────────────────────────────────────────────────────────────────────
+
+    case 'partition':
+      // partition <nodeId> [nodeId2...] [-d durationMs]
+      if (args[1]) {
+        const nodeIds: string[] = [];
+        let durationMs: number | undefined;
+        
+        for (let i = 1; i < args.length; i++) {
+          if (args[i] === '-d' && args[i + 1]) {
+            durationMs = parseInt(args[i + 1]!, 10);
+            i++;
+          } else if (args[i]) {
+            nodeIds.push(args[i]!);
+          }
+        }
+        
+        console.log(JSON.stringify(await client.createPartition({ nodeIds, durationMs }), null, 2));
+      } else {
+        console.log('Usage: partition <nodeId> [nodeId2...] [-d durationMs]');
+      }
+      break;
+
+    case 'partition-conn':
+      // partition-conn <connId> [connId2...] [-d durationMs]
+      if (args[1]) {
+        const connectionIds: string[] = [];
+        let durationMs: number | undefined;
+        
+        for (let i = 1; i < args.length; i++) {
+          if (args[i] === '-d' && args[i + 1]) {
+            durationMs = parseInt(args[i + 1]!, 10);
+            i++;
+          } else if (args[i]) {
+            connectionIds.push(args[i]!);
+          }
+        }
+        
+        console.log(JSON.stringify(await client.createPartition({ connectionIds, durationMs }), null, 2));
+      } else {
+        console.log('Usage: partition-conn <connId> [connId2...] [-d durationMs]');
+      }
+      break;
+
+    case 'partitions':
+      console.log(JSON.stringify(await client.listPartitions(), null, 2));
+      break;
+
+    case 'heal':
+    case 'rm-partition':
+      // heal <partitionId>
+      if (args[1]) {
+        console.log(JSON.stringify(await client.removePartition(args[1]), null, 2));
+      } else {
+        console.log('Usage: heal <partitionId>');
+      }
+      break;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Latency Injection Commands
+    // ─────────────────────────────────────────────────────────────────────────
+
+    case 'latency':
+      // latency <nodeId> <ms> [jitterMs] [durationMs]
+      if (args[1] && args[2]) {
+        console.log(JSON.stringify(
+          await client.addLatency({
+            nodeId: args[1],
+            latencyMs: parseInt(args[2], 10),
+            jitterMs: args[3] ? parseInt(args[3], 10) : undefined,
+            durationMs: args[4] ? parseInt(args[4], 10) : undefined,
+          }),
+          null,
+          2
+        ));
+      } else {
+        console.log('Usage: latency <nodeId> <ms> [jitterMs] [durationMs]');
+      }
+      break;
+
+    case 'latency-conn':
+      // latency-conn <connectionId> <ms> [jitterMs] [durationMs]
+      if (args[1] && args[2]) {
+        console.log(JSON.stringify(
+          await client.addLatency({
+            connectionId: args[1],
+            latencyMs: parseInt(args[2], 10),
+            jitterMs: args[3] ? parseInt(args[3], 10) : undefined,
+            durationMs: args[4] ? parseInt(args[4], 10) : undefined,
+          }),
+          null,
+          2
+        ));
+      } else {
+        console.log('Usage: latency-conn <connectionId> <ms> [jitterMs] [durationMs]');
+      }
+      break;
+
+    case 'rm-latency':
+      // rm-latency <ruleId>
+      if (args[1]) {
+        console.log(JSON.stringify(await client.removeLatency(args[1]), null, 2));
+      } else {
+        console.log('Usage: rm-latency <ruleId>');
+      }
+      break;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Connection Kill Command
+    // ─────────────────────────────────────────────────────────────────────────
+
+    case 'connection':
+      if (args[1] === 'kill' && args[2]) {
+        console.log(JSON.stringify(await client.killConnection(args[2]), null, 2));
+      } else {
+        console.log('Usage: connection kill <connectionId>');
+      }
+      break;
+
+    case 'kill-conn':
+      if (args[1]) {
+        console.log(JSON.stringify(await client.killConnection(args[1]), null, 2));
+      } else {
+        console.log('Usage: kill-conn <connectionId>');
       }
       break;
 
