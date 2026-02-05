@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stark Orchestrator Journey</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
     * {
       margin: 0;
@@ -14,19 +14,27 @@
     }
 
     :root {
-      --bg-primary: #0a0a0f;
-      --bg-secondary: #12121a;
-      --bg-card: #1a1a24;
+      --bg-primary: #07070d;
+      --bg-secondary: #0f0f18;
+      --bg-card: rgba(22, 22, 35, 0.6);
+      --bg-card-solid: #16162380;
       --accent-purple: #8b5cf6;
       --accent-blue: #3b82f6;
       --accent-cyan: #06b6d4;
       --accent-green: #10b981;
       --accent-amber: #f59e0b;
       --accent-pink: #ec4899;
+      --accent-red: #ef4444;
       --text-primary: #f1f5f9;
       --text-secondary: #94a3b8;
       --text-muted: #64748b;
-      --border-color: #2a2a3a;
+      --border-color: rgba(139, 92, 246, 0.15);
+      --glass-bg: rgba(15, 15, 25, 0.7);
+      --glass-border: rgba(139, 92, 246, 0.12);
+    }
+
+    html {
+      scroll-behavior: smooth;
     }
 
     body {
@@ -37,7 +45,31 @@
       overflow-x: hidden;
     }
 
-    /* Animated Background */
+    /* ===== Particle Canvas ===== */
+    #particles-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ===== Mouse Glow ===== */
+    .mouse-glow {
+      position: fixed;
+      width: 600px;
+      height: 600px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(139, 92, 246, 0.08) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+      transform: translate(-50%, -50%);
+      transition: opacity 0.3s;
+    }
+
+    /* ===== Animated Background Grid ===== */
     .bg-grid {
       position: fixed;
       top: 0;
@@ -45,63 +77,93 @@
       width: 100%;
       height: 100%;
       background-image: 
-        linear-gradient(rgba(139, 92, 246, 0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(139, 92, 246, 0.03) 1px, transparent 1px);
-      background-size: 50px 50px;
+        linear-gradient(rgba(139, 92, 246, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(139, 92, 246, 0.04) 1px, transparent 1px);
+      background-size: 60px 60px;
       pointer-events: none;
       z-index: 0;
+      mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, black 40%, transparent 100%);
+      -webkit-mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, black 40%, transparent 100%);
+    }
+
+    /* ===== Aurora Effect ===== */
+    .aurora {
+      position: fixed;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.3;
+      background: 
+        conic-gradient(from 180deg at 50% 50%, 
+          transparent 0deg, 
+          rgba(139, 92, 246, 0.15) 60deg, 
+          transparent 120deg,
+          rgba(6, 182, 212, 0.1) 180deg,
+          transparent 240deg,
+          rgba(59, 130, 246, 0.12) 300deg,
+          transparent 360deg
+        );
+      animation: auroraRotate 30s linear infinite;
+    }
+
+    @keyframes auroraRotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
     }
 
     .glow-orb {
       position: fixed;
       border-radius: 50%;
-      filter: blur(80px);
-      opacity: 0.4;
+      filter: blur(100px);
+      opacity: 0.3;
       pointer-events: none;
       z-index: 0;
     }
 
     .glow-orb-1 {
-      width: 400px;
-      height: 400px;
+      width: 500px;
+      height: 500px;
       background: var(--accent-purple);
-      top: -100px;
-      right: -100px;
+      top: -150px;
+      right: -150px;
       animation: float 20s ease-in-out infinite;
     }
 
     .glow-orb-2 {
-      width: 300px;
-      height: 300px;
+      width: 400px;
+      height: 400px;
       background: var(--accent-blue);
-      bottom: -50px;
-      left: -50px;
+      bottom: -100px;
+      left: -100px;
       animation: float 25s ease-in-out infinite reverse;
     }
 
     .glow-orb-3 {
-      width: 250px;
-      height: 250px;
+      width: 350px;
+      height: 350px;
       background: var(--accent-cyan);
-      top: 50%;
-      left: 50%;
+      top: 40%;
+      left: 40%;
       transform: translate(-50%, -50%);
       animation: pulse 15s ease-in-out infinite;
     }
 
     @keyframes float {
-      0%, 100% { transform: translate(0, 0); }
-      25% { transform: translate(-30px, 30px); }
-      50% { transform: translate(20px, -20px); }
-      75% { transform: translate(-20px, -30px); }
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      25% { transform: translate(-40px, 40px) scale(1.05); }
+      50% { transform: translate(30px, -25px) scale(0.95); }
+      75% { transform: translate(-25px, -40px) scale(1.02); }
     }
 
     @keyframes pulse {
-      0%, 100% { opacity: 0.2; transform: translate(-50%, -50%) scale(1); }
-      50% { opacity: 0.4; transform: translate(-50%, -50%) scale(1.1); }
+      0%, 100% { opacity: 0.15; transform: translate(-50%, -50%) scale(1); }
+      50% { opacity: 0.35; transform: translate(-50%, -50%) scale(1.15); }
     }
 
-    /* Main Container */
+    /* ===== Main Container ===== */
     .container {
       position: relative;
       z-index: 1;
@@ -110,10 +172,45 @@
       padding: 40px 24px;
     }
 
-    /* Header */
+    /* ===== Scroll Reveal ===== */
+    .reveal {
+      opacity: 0;
+      transform: translateY(40px);
+      transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .reveal-left {
+      opacity: 0;
+      transform: translateX(-60px);
+      transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .reveal-left.visible {
+      opacity: 1;
+      transform: translateX(0);
+    }
+
+    .reveal-scale {
+      opacity: 0;
+      transform: scale(0.9);
+      transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .reveal-scale.visible {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    /* ===== Header ===== */
     header {
       text-align: center;
-      margin-bottom: 60px;
+      margin-bottom: 80px;
+      position: relative;
     }
 
     .logo {
@@ -124,69 +221,234 @@
     }
 
     .logo-icon {
-      width: 56px;
-      height: 56px;
+      width: 64px;
+      height: 64px;
       background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
-      border-radius: 16px;
+      border-radius: 20px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 28px;
-      box-shadow: 0 4px 20px rgba(139, 92, 246, 0.4);
+      font-size: 32px;
+      box-shadow: 
+        0 4px 30px rgba(139, 92, 246, 0.4),
+        0 0 60px rgba(139, 92, 246, 0.15),
+        inset 0 1px 0 rgba(255,255,255,0.2);
+      animation: logoFloat 4s ease-in-out infinite;
+      position: relative;
+    }
+
+    .logo-icon::after {
+      content: '';
+      position: absolute;
+      inset: -3px;
+      border-radius: 22px;
+      background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan));
+      z-index: -1;
+      opacity: 0.5;
+      animation: logoPulse 2s ease-in-out infinite;
+    }
+
+    @keyframes logoFloat {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      50% { transform: translateY(-6px) rotate(2deg); }
+    }
+
+    @keyframes logoPulse {
+      0%, 100% { opacity: 0.3; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(1.05); }
     }
 
     h1 {
-      font-size: 48px;
-      font-weight: 800;
-      background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-purple) 50%, var(--accent-cyan) 100%);
+      font-size: 56px;
+      font-weight: 900;
+      background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-purple) 40%, var(--accent-cyan) 80%, var(--accent-green) 100%);
+      background-size: 200% 200%;
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
-      letter-spacing: -1px;
+      letter-spacing: -2px;
+      animation: gradientShift 6s ease-in-out infinite;
+      line-height: 1.1;
+    }
+
+    @keyframes gradientShift {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
     }
 
     .subtitle {
       font-size: 18px;
       color: var(--text-secondary);
-      margin-top: 8px;
+      margin-top: 12px;
+      height: 24px;
     }
 
-    .date-badge {
+    .subtitle .cursor {
+      display: inline-block;
+      width: 2px;
+      height: 18px;
+      background: var(--accent-purple);
+      margin-left: 2px;
+      vertical-align: text-bottom;
+      animation: blink 1s step-end infinite;
+    }
+
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
+
+    .header-badges {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 24px;
+      flex-wrap: wrap;
+    }
+
+    .date-badge, .live-badge {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      background: var(--bg-card);
-      padding: 8px 16px;
+      background: var(--glass-bg);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      padding: 8px 18px;
       border-radius: 100px;
       font-size: 14px;
       color: var(--text-secondary);
-      border: 1px solid var(--border-color);
-      margin-top: 20px;
+      border: 1px solid var(--glass-border);
     }
 
     .date-badge::before {
       content: '📅';
     }
 
-    /* Overall Progress - Mountain */
-    .overall-progress {
-      background: var(--bg-card);
-      border: 1px solid var(--border-color);
+    .live-badge {
+      color: var(--accent-green);
+      border-color: rgba(16, 185, 129, 0.3);
+    }
+
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--accent-green);
+      border-radius: 50%;
+      animation: livePulse 2s ease-in-out infinite;
+      box-shadow: 0 0 10px var(--accent-green);
+    }
+
+    @keyframes livePulse {
+      0%, 100% { opacity: 1; box-shadow: 0 0 10px var(--accent-green); }
+      50% { opacity: 0.5; box-shadow: 0 0 20px var(--accent-green); }
+    }
+
+    /* ===== Tech Marquee ===== */
+    .marquee-container {
+      overflow: hidden;
+      margin: 40px -24px 0;
+      padding: 16px 0;
+      position: relative;
+    }
+
+    .marquee-container::before,
+    .marquee-container::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      width: 120px;
+      height: 100%;
+      z-index: 2;
+    }
+
+    .marquee-container::before {
+      left: 0;
+      background: linear-gradient(to right, var(--bg-primary), transparent);
+    }
+
+    .marquee-container::after {
+      right: 0;
+      background: linear-gradient(to left, var(--bg-primary), transparent);
+    }
+
+    .marquee-track {
+      display: flex;
+      gap: 24px;
+      animation: marqueeScroll 35s linear infinite;
+      width: max-content;
+    }
+
+    .marquee-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 20px;
+      background: var(--glass-bg);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--glass-border);
+      border-radius: 100px;
+      font-size: 13px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      transition: all 0.3s;
+    }
+
+    .marquee-item:hover {
+      border-color: var(--accent-purple);
+      color: var(--text-primary);
+      transform: scale(1.05);
+    }
+
+    @keyframes marqueeScroll {
+      from { transform: translateX(0); }
+      to { transform: translateX(-50%); }
+    }
+
+    /* ===== Glass Card Base ===== */
+    .glass-card {
+      background: var(--glass-bg);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border);
       border-radius: 24px;
-      padding: 32px;
-      margin-bottom: 48px;
       position: relative;
       overflow: hidden;
     }
 
-    .overall-progress::before {
+    .glass-card::before {
       content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 24px;
+      padding: 1px;
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), transparent 40%, transparent 60%, rgba(6, 182, 212, 0.15));
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+    }
+
+    /* ===== Overall Progress - Mountain ===== */
+    .overall-progress {
+      padding: 40px;
+      margin-bottom: 60px;
+    }
+
+    .overall-progress > .card-shine {
       position: absolute;
       top: 0;
       left: 0;
       right: 0;
-      height: 3px;
-      background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue), var(--accent-cyan));
+      height: 4px;
+      background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue), var(--accent-cyan), var(--accent-green));
+      background-size: 300% 100%;
+      animation: shineSlide 4s ease-in-out infinite;
+    }
+
+    @keyframes shineSlide {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
     }
 
     .progress-header {
@@ -197,17 +459,32 @@
     }
 
     .progress-title {
-      font-size: 20px;
-      font-weight: 600;
+      font-size: 22px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .progress-title-glow {
+      display: inline-block;
+      animation: textGlow 3s ease-in-out infinite;
+    }
+
+    @keyframes textGlow {
+      0%, 100% { text-shadow: none; }
+      50% { text-shadow: 0 0 20px rgba(139, 92, 246, 0.3); }
     }
 
     .progress-percentage {
-      font-size: 48px;
-      font-weight: 800;
+      font-size: 56px;
+      font-weight: 900;
+      font-family: 'JetBrains Mono', monospace;
       background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
+      letter-spacing: -2px;
     }
 
     .mountain-container {
@@ -229,7 +506,6 @@
     .mountain-progress {
       fill: url(#mountainGradient);
       clip-path: url(#progressClip);
-      transition: clip-path 2s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
     .mountain-outline {
@@ -264,7 +540,7 @@
 
     @keyframes climberPulse {
       0%, 100% { opacity: 1; filter: drop-shadow(0 0 8px var(--accent-purple)); }
-      50% { opacity: 0.8; filter: drop-shadow(0 0 16px var(--accent-purple)); }
+      50% { opacity: 0.8; filter: drop-shadow(0 0 20px var(--accent-purple)); }
     }
 
     .mountain-label {
@@ -293,21 +569,23 @@
       display: flex;
       align-items: center;
       gap: 12px;
-      margin-top: 20px;
-      padding: 16px;
-      background: rgba(139, 92, 246, 0.1);
-      border: 1px solid rgba(139, 92, 246, 0.3);
-      border-radius: 12px;
+      margin-top: 24px;
+      padding: 18px 24px;
+      background: rgba(139, 92, 246, 0.08);
+      border: 1px solid rgba(139, 92, 246, 0.2);
+      border-radius: 16px;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
     }
 
     .current-stage-icon {
       font-size: 24px;
-      animation: bounce 1s ease-in-out infinite;
+      animation: bounce 1.5s ease-in-out infinite;
     }
 
     @keyframes bounce {
       0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-4px); }
+      50% { transform: translateY(-5px); }
     }
 
     .current-stage-text {
@@ -319,38 +597,39 @@
       font-weight: 700;
     }
 
-    /* Timeline */
+    /* ===== Timeline ===== */
     .timeline-section {
-      margin-bottom: 48px;
+      margin-bottom: 60px;
     }
 
     .section-title {
-      font-size: 24px;
-      font-weight: 700;
-      margin-bottom: 32px;
+      font-size: 28px;
+      font-weight: 800;
+      margin-bottom: 40px;
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 14px;
+      letter-spacing: -0.5px;
     }
 
     .timeline {
       position: relative;
-      padding-left: 40px;
+      padding-left: 44px;
     }
 
     .timeline::before {
       content: '';
       position: absolute;
-      left: 15px;
+      left: 16px;
       top: 0;
       bottom: 0;
       width: 3px;
       background: linear-gradient(to bottom, 
         var(--accent-green) 0%,
-        var(--accent-green) 75%,
-        var(--accent-purple) 75%,
-        var(--accent-purple) 80%,
-        var(--border-color) 80%,
+        var(--accent-green) 70%,
+        var(--accent-purple) 70%,
+        var(--accent-purple) 78%,
+        var(--border-color) 78%,
         var(--border-color) 100%
       );
       border-radius: 100px;
@@ -358,36 +637,62 @@
 
     .milestone {
       position: relative;
-      padding: 24px;
-      background: var(--bg-card);
-      border: 1px solid var(--border-color);
-      border-radius: 16px;
-      margin-bottom: 24px;
-      transition: all 0.3s ease;
+      padding: 28px;
+      background: var(--glass-bg);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border);
+      border-radius: 20px;
+      margin-bottom: 28px;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      cursor: default;
+    }
+
+    .milestone::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 20px;
+      opacity: 0;
+      transition: opacity 0.4s;
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), transparent);
     }
 
     .milestone:hover {
-      transform: translateX(8px);
-      border-color: var(--accent-purple);
-      box-shadow: 0 4px 30px rgba(139, 92, 246, 0.15);
+      transform: translateX(10px) translateY(-2px);
+      border-color: rgba(139, 92, 246, 0.3);
+      box-shadow: 
+        0 8px 40px rgba(139, 92, 246, 0.12),
+        0 0 80px rgba(139, 92, 246, 0.05);
+    }
+
+    .milestone:hover::after {
+      opacity: 1;
     }
 
     .milestone::before {
       content: '';
       position: absolute;
-      left: -33px;
-      top: 28px;
-      width: 20px;
-      height: 20px;
+      left: -36px;
+      top: 32px;
+      width: 22px;
+      height: 22px;
       border-radius: 50%;
       background: var(--bg-card);
       border: 3px solid var(--border-color);
+      z-index: 2;
+      transition: all 0.3s;
     }
 
     .milestone.completed::before {
       background: var(--accent-green);
       border-color: var(--accent-green);
       box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
+    }
+
+    .milestone.completed:hover::before {
+      box-shadow: 0 0 30px rgba(16, 185, 129, 0.7);
+      transform: scale(1.2);
     }
 
     .milestone.current::before {
@@ -399,55 +704,71 @@
 
     .milestone.upcoming::before {
       background: var(--bg-secondary);
-      border-color: var(--border-color);
+      border-color: rgba(100, 116, 139, 0.3);
     }
 
     @keyframes pulse-dot {
       0%, 100% { box-shadow: 0 0 20px rgba(139, 92, 246, 0.5); }
-      50% { box-shadow: 0 0 30px rgba(139, 92, 246, 0.8); }
+      50% { box-shadow: 0 0 35px rgba(139, 92, 246, 0.8); }
     }
 
     .milestone-header {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      margin-bottom: 12px;
+      margin-bottom: 14px;
+      position: relative;
+      z-index: 1;
     }
 
     .milestone-title {
       font-size: 18px;
-      font-weight: 600;
+      font-weight: 700;
       display: flex;
       align-items: center;
       gap: 10px;
+      flex-wrap: wrap;
     }
 
     .milestone-badge {
-      font-size: 12px;
-      padding: 4px 10px;
+      font-size: 11px;
+      padding: 4px 12px;
       border-radius: 100px;
-      font-weight: 600;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
 
     .badge-complete {
       background: rgba(16, 185, 129, 0.15);
       color: var(--accent-green);
+      border: 1px solid rgba(16, 185, 129, 0.3);
     }
 
     .badge-current {
       background: rgba(139, 92, 246, 0.15);
       color: var(--accent-purple);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      animation: badgePulse 2s ease-in-out infinite;
+    }
+
+    @keyframes badgePulse {
+      0%, 100% { box-shadow: none; }
+      50% { box-shadow: 0 0 15px rgba(139, 92, 246, 0.3); }
     }
 
     .badge-upcoming {
       background: rgba(100, 116, 139, 0.15);
       color: var(--text-muted);
+      border: 1px solid rgba(100, 116, 139, 0.2);
     }
 
     .milestone-percentage {
       font-family: 'JetBrains Mono', monospace;
-      font-size: 24px;
-      font-weight: 700;
+      font-size: 28px;
+      font-weight: 800;
+      position: relative;
+      z-index: 1;
     }
 
     .milestone-percentage.high { color: var(--accent-green); }
@@ -456,157 +777,423 @@
 
     .milestone-progress {
       height: 6px;
-      background: var(--bg-secondary);
+      background: rgba(255, 255, 255, 0.05);
       border-radius: 100px;
       margin: 16px 0;
       overflow: hidden;
+      position: relative;
+      z-index: 1;
     }
 
     .milestone-progress-bar {
       height: 100%;
       border-radius: 100px;
-      transition: width 1.5s ease;
+      transition: width 1.5s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
     }
 
-    .milestone-progress-bar.high { background: var(--accent-green); }
-    .milestone-progress-bar.medium { background: var(--accent-amber); }
-    .milestone-progress-bar.low { background: var(--accent-pink); }
+    .milestone-progress-bar::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+      animation: shimmer 2s ease-in-out infinite;
+    }
+
+    @keyframes shimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+
+    .milestone-progress-bar.high { background: linear-gradient(90deg, var(--accent-green), #34d399); }
+    .milestone-progress-bar.medium { background: linear-gradient(90deg, var(--accent-amber), #fbbf24); }
+    .milestone-progress-bar.low { background: linear-gradient(90deg, var(--accent-pink), #f472b6); }
+
+    .milestone-desc {
+      color: var(--text-secondary);
+      font-size: 14px;
+      line-height: 1.6;
+      position: relative;
+      z-index: 1;
+    }
 
     .milestone-details {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
       margin-top: 16px;
+      position: relative;
+      z-index: 1;
     }
 
     .detail-tag {
       font-size: 12px;
-      padding: 6px 12px;
-      background: var(--bg-secondary);
-      border-radius: 8px;
+      padding: 6px 14px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 10px;
       color: var(--text-secondary);
       font-family: 'JetBrains Mono', monospace;
+      transition: all 0.3s;
+    }
+
+    .detail-tag:hover {
+      background: rgba(139, 92, 246, 0.1);
+      border-color: rgba(139, 92, 246, 0.3);
+      color: var(--text-primary);
+      transform: translateY(-2px);
     }
 
     .detail-tag.highlight {
       background: rgba(139, 92, 246, 0.1);
       color: var(--accent-purple);
+      border-color: rgba(139, 92, 246, 0.2);
     }
 
-    /* Stats Grid */
+    /* ===== Stats Grid ===== */
     .stats-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       gap: 20px;
-      margin-top: 48px;
+      margin-top: 60px;
     }
 
     .stat-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border-color);
-      border-radius: 16px;
-      padding: 24px;
+      background: var(--glass-bg);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border);
+      border-radius: 20px;
+      padding: 28px;
       text-align: center;
-      transition: all 0.3s ease;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      cursor: default;
+      position: relative;
+      overflow: hidden;
+      transform-style: preserve-3d;
+      perspective: 800px;
+    }
+
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 20px;
+      padding: 1px;
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.3), transparent 50%, rgba(6, 182, 212, 0.2));
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      opacity: 0;
+      transition: opacity 0.4s;
+    }
+
+    .stat-card:hover::before {
+      opacity: 1;
     }
 
     .stat-card:hover {
-      transform: translateY(-4px);
-      border-color: var(--accent-purple);
+      transform: translateY(-8px) scale(1.02);
+      box-shadow: 0 20px 60px rgba(139, 92, 246, 0.1);
+    }
+
+    .stat-card-glow {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(139, 92, 246, 0.12), transparent);
+      transform: translate(-50%, -50%);
+      opacity: 0;
+      transition: opacity 0.4s;
+    }
+
+    .stat-card:hover .stat-card-glow {
+      opacity: 1;
     }
 
     .stat-icon {
-      font-size: 32px;
-      margin-bottom: 12px;
+      font-size: 36px;
+      margin-bottom: 14px;
+      display: block;
     }
 
     .stat-value {
-      font-size: 32px;
-      font-weight: 800;
+      font-size: 38px;
+      font-weight: 900;
       font-family: 'JetBrains Mono', monospace;
       background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
+      letter-spacing: -1px;
     }
 
     .stat-label {
-      font-size: 14px;
-      color: var(--text-secondary);
-      margin-top: 4px;
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 6px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 500;
     }
 
-    /* Footer */
+    /* ===== Quick Links ===== */
+    .quick-links {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-top: 60px;
+      flex-wrap: wrap;
+    }
+
+    .quick-link {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 24px;
+      background: var(--glass-bg);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border);
+      border-radius: 14px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .quick-link:hover {
+      border-color: rgba(139, 92, 246, 0.4);
+      color: var(--text-primary);
+      transform: translateY(-3px);
+      box-shadow: 0 10px 30px rgba(139, 92, 246, 0.1);
+    }
+
+    .quick-link-icon {
+      font-size: 18px;
+    }
+
+    .quick-link kbd {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      padding: 3px 8px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      color: var(--text-muted);
+    }
+
+    /* ===== Confetti Canvas ===== */
+    .confetti-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    /* ===== Footer ===== */
     footer {
       text-align: center;
-      padding: 40px;
+      padding: 60px 40px 40px;
       color: var(--text-muted);
       font-size: 14px;
+      position: relative;
+    }
+
+    footer::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 200px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent-purple), transparent);
+    }
+
+    footer p {
+      margin-bottom: 8px;
     }
 
     footer a {
       color: var(--accent-purple);
       text-decoration: none;
+      transition: color 0.3s;
     }
 
-    /* Responsive */
+    footer a:hover {
+      color: var(--accent-cyan);
+    }
+
+    .footer-version {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--text-muted);
+      opacity: 0.5;
+    }
+
+    /* ===== Scrollbar ===== */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg-primary);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(139, 92, 246, 0.3);
+      border-radius: 100px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(139, 92, 246, 0.5);
+    }
+
+    /* ===== Responsive ===== */
     @media (max-width: 768px) {
-      h1 { font-size: 32px; }
-      .progress-percentage { font-size: 36px; }
-      .timeline { padding-left: 32px; }
-      .timeline::before { left: 11px; }
-      .milestone::before { left: -29px; width: 16px; height: 16px; }
+      h1 { font-size: 36px; letter-spacing: -1px; }
+      .progress-percentage { font-size: 40px; }
+      .timeline { padding-left: 36px; }
+      .timeline::before { left: 12px; }
+      .milestone::before { left: -32px; width: 18px; height: 18px; }
+      .milestone { padding: 20px; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .marquee-container { margin: 24px -24px 0; }
+      .quick-links { gap: 10px; }
+      .quick-link { padding: 10px 16px; font-size: 13px; }
+    }
+
+    @media (max-width: 480px) {
+      h1 { font-size: 28px; }
+      .stats-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
+      .stat-card { padding: 20px; }
+      .stat-value { font-size: 28px; }
     }
   </style>
 </head>
 <body>
+  <!-- Particle Background -->
+  <canvas id="particles-canvas"></canvas>
+
+  <!-- Mouse-following Glow -->
+  <div class="mouse-glow" id="mouseGlow"></div>
+
+  <!-- Aurora Background -->
+  <div class="aurora"></div>
+
+  <!-- Ambient Orbs -->
   <div class="bg-grid"></div>
   <div class="glow-orb glow-orb-1"></div>
   <div class="glow-orb glow-orb-2"></div>
   <div class="glow-orb glow-orb-3"></div>
 
+  <!-- Confetti Layer -->
+  <canvas class="confetti-canvas" id="confettiCanvas"></canvas>
+
   <div class="container">
-    <header>
+    <!-- ===== Header ===== -->
+    <header class="reveal">
       <div class="logo">
         <div class="logo-icon">⚡</div>
         <h1>Stark Orchestrator</h1>
       </div>
-      <p class="subtitle">Development Journey & Progress Tracker</p>
-      <div class="date-badge">February 5, 2026</div>
+      <p class="subtitle" id="typewriterTarget"></p>
+      <div class="header-badges">
+        <div class="date-badge">February 5, 2026</div>
+        <div class="live-badge">
+          <div class="live-dot"></div>
+          Actively Developing
+        </div>
+      </div>
     </header>
 
-    <section class="overall-progress">
+    <!-- ===== Tech Marquee ===== -->
+    <div class="marquee-container reveal">
+      <div class="marquee-track" id="marqueeTrack">
+        <div class="marquee-item">⚡ Vue Reactivity</div>
+        <div class="marquee-item">🧠 Reactive Kernel</div>
+        <div class="marquee-item">📦 esbuild Bundling</div>
+        <div class="marquee-item">🌐 WebSocket Agents</div>
+        <div class="marquee-item">🔥 Chaos Testing</div>
+        <div class="marquee-item">🎯 5 Scheduling Policies</div>
+        <div class="marquee-item">🐳 Pod Lifecycle</div>
+        <div class="marquee-item">🖥️ Node.js Runtime</div>
+        <div class="marquee-item">🌍 Browser Runtime</div>
+        <div class="marquee-item">🔒 RBAC Auth</div>
+        <div class="marquee-item">📊 Pack System</div>
+        <div class="marquee-item">💜 TypeScript</div>
+        <div class="marquee-item">🧪 Vitest</div>
+        <div class="marquee-item">🚀 Nuxt.js UI</div>
+        <!-- Duplicated for seamless loop -->
+        <div class="marquee-item">⚡ Vue Reactivity</div>
+        <div class="marquee-item">🧠 Reactive Kernel</div>
+        <div class="marquee-item">📦 esbuild Bundling</div>
+        <div class="marquee-item">🌐 WebSocket Agents</div>
+        <div class="marquee-item">🔥 Chaos Testing</div>
+        <div class="marquee-item">🎯 5 Scheduling Policies</div>
+        <div class="marquee-item">🐳 Pod Lifecycle</div>
+        <div class="marquee-item">🖥️ Node.js Runtime</div>
+        <div class="marquee-item">🌍 Browser Runtime</div>
+        <div class="marquee-item">🔒 RBAC Auth</div>
+        <div class="marquee-item">📊 Pack System</div>
+        <div class="marquee-item">💜 TypeScript</div>
+        <div class="marquee-item">🧪 Vitest</div>
+        <div class="marquee-item">🚀 Nuxt.js UI</div>
+      </div>
+    </div>
+
+    <!-- ===== Overall Progress ===== -->
+    <section class="overall-progress glass-card reveal" style="margin-top: 48px;">
+      <div class="card-shine"></div>
       <div class="progress-header">
-        <span class="progress-title">Overall Implementation Progress</span>
+        <span class="progress-title">
+          <span class="progress-title-glow">📈 Overall Implementation</span>
+        </span>
         <span class="progress-percentage" id="overallPercent">0%</span>
       </div>
       
       <div class="mountain-container">
         <svg class="mountain-svg" viewBox="0 0 800 260" preserveAspectRatio="xMidYMid meet">
           <defs>
-            <!-- Gradient for filled progress -->
-            <linearGradient id="mountainGradient" x1="0%" y1="100%" x2="0%" y2="0%">
+            <linearGradient id="mountainGradient" x1="0%" y1="100%" x2="100%" y2="0%">
               <stop offset="0%" style="stop-color:#8b5cf6;stop-opacity:1" />
-              <stop offset="50%" style="stop-color:#3b82f6;stop-opacity:1" />
-              <stop offset="100%" style="stop-color:#06b6d4;stop-opacity:1" />
+              <stop offset="40%" style="stop-color:#3b82f6;stop-opacity:1" />
+              <stop offset="70%" style="stop-color:#06b6d4;stop-opacity:1" />
+              <stop offset="100%" style="stop-color:#10b981;stop-opacity:1" />
             </linearGradient>
             
-            <!-- Gradient for unfilled part -->
             <linearGradient id="mountainDark" x1="0%" y1="100%" x2="0%" y2="0%">
-              <stop offset="0%" style="stop-color:#1a1a24;stop-opacity:1" />
-              <stop offset="100%" style="stop-color:#12121a;stop-opacity:1" />
+              <stop offset="0%" style="stop-color:#0f0f18;stop-opacity:1" />
+              <stop offset="100%" style="stop-color:#07070d;stop-opacity:1" />
             </linearGradient>
 
-            <!-- Clip path for progress - will be animated -->
             <clipPath id="progressClip">
               <rect id="progressRect" x="0" y="260" width="800" height="260" />
             </clipPath>
 
-            <!-- Star filter -->
             <filter id="glow">
-              <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+              <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
               <feMerge>
                 <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+
+            <filter id="starGlow">
+              <feGaussianBlur stdDeviation="1.5" result="blur"/>
+              <feMerge>
+                <feMergeNode in="blur"/>
                 <feMergeNode in="SourceGraphic"/>
               </feMerge>
             </filter>
@@ -614,162 +1201,80 @@
 
           <!-- Stars in sky -->
           <g class="stars" style="animation-delay: 0s;">
-            <circle cx="50" cy="30" r="1.5" fill="#fff"/>
+            <circle cx="50" cy="30" r="1.5" fill="#fff" filter="url(#starGlow)"/>
             <circle cx="120" cy="45" r="1" fill="#fff"/>
-            <circle cx="200" cy="25" r="1.5" fill="#fff"/>
+            <circle cx="200" cy="25" r="1.5" fill="#fff" filter="url(#starGlow)"/>
             <circle cx="350" cy="35" r="1" fill="#fff"/>
-            <circle cx="500" cy="20" r="1.5" fill="#fff"/>
+            <circle cx="500" cy="20" r="1.5" fill="#fff" filter="url(#starGlow)"/>
             <circle cx="620" cy="40" r="1" fill="#fff"/>
-            <circle cx="720" cy="28" r="1.5" fill="#fff"/>
+            <circle cx="720" cy="28" r="1.5" fill="#fff" filter="url(#starGlow)"/>
             <circle cx="780" cy="50" r="1" fill="#fff"/>
           </g>
           <g class="stars" style="animation-delay: 1.5s;">
             <circle cx="80" cy="55" r="1" fill="#fff"/>
+            <circle cx="170" cy="15" r="1.2" fill="#fff" filter="url(#starGlow)"/>
             <circle cx="280" cy="40" r="1.5" fill="#fff"/>
+            <circle cx="420" cy="12" r="1" fill="#fff" filter="url(#starGlow)"/>
             <circle cx="450" cy="50" r="1" fill="#fff"/>
+            <circle cx="550" cy="18" r="1.3" fill="#fff" filter="url(#starGlow)"/>
             <circle cx="580" cy="25" r="1.5" fill="#fff"/>
+            <circle cx="660" cy="15" r="1" fill="#fff" filter="url(#starGlow)"/>
             <circle cx="680" cy="55" r="1" fill="#fff"/>
           </g>
 
-          <!-- Mountain silhouette (dark base) -->
+          <!-- Mountain silhouette -->
           <path class="mountain-base" d="
-            M 0 260
-            L 0 220
-            L 30 200
-            L 50 210
-            L 80 180
-            L 100 190
-            L 130 160
-            L 150 170
-            L 180 140
-            L 200 150
-            L 230 120
-            L 260 135
-            L 290 100
-            L 320 115
-            L 350 80
-            L 380 95
-            L 400 60
-            L 420 75
-            L 440 50
-            L 455 35
-            L 470 50
-            L 490 70
-            L 520 85
-            L 550 100
-            L 580 115
-            L 610 130
-            L 640 145
-            L 670 160
-            L 700 175
-            L 730 190
-            L 760 205
-            L 800 220
-            L 800 260
-            Z
+            M 0 260 L 0 220 L 30 200 L 50 210 L 80 180 L 100 190 L 130 160 L 150 170
+            L 180 140 L 200 150 L 230 120 L 260 135 L 290 100 L 320 115 L 350 80
+            L 380 95 L 400 60 L 420 75 L 440 50 L 455 35 L 470 50 L 490 70
+            L 520 85 L 550 100 L 580 115 L 610 130 L 640 145 L 670 160 L 700 175
+            L 730 190 L 760 205 L 800 220 L 800 260 Z
           " fill="url(#mountainDark)"/>
 
-          <!-- Mountain progress fill (colored) -->
+          <!-- Mountain progress fill -->
           <path class="mountain-progress" d="
-            M 0 260
-            L 0 220
-            L 30 200
-            L 50 210
-            L 80 180
-            L 100 190
-            L 130 160
-            L 150 170
-            L 180 140
-            L 200 150
-            L 230 120
-            L 260 135
-            L 290 100
-            L 320 115
-            L 350 80
-            L 380 95
-            L 400 60
-            L 420 75
-            L 440 50
-            L 455 35
-            L 470 50
-            L 490 70
-            L 520 85
-            L 550 100
-            L 580 115
-            L 610 130
-            L 640 145
-            L 670 160
-            L 700 175
-            L 730 190
-            L 760 205
-            L 800 220
-            L 800 260
-            Z
+            M 0 260 L 0 220 L 30 200 L 50 210 L 80 180 L 100 190 L 130 160 L 150 170
+            L 180 140 L 200 150 L 230 120 L 260 135 L 290 100 L 320 115 L 350 80
+            L 380 95 L 400 60 L 420 75 L 440 50 L 455 35 L 470 50 L 490 70
+            L 520 85 L 550 100 L 580 115 L 610 130 L 640 145 L 670 160 L 700 175
+            L 730 190 L 760 205 L 800 220 L 800 260 Z
           " fill="url(#mountainGradient)"/>
 
           <!-- Mountain outline -->
-          <path class="mountain-outline" d="
-            M 0 220
-            L 30 200
-            L 50 210
-            L 80 180
-            L 100 190
-            L 130 160
-            L 150 170
-            L 180 140
-            L 200 150
-            L 230 120
-            L 260 135
-            L 290 100
-            L 320 115
-            L 350 80
-            L 380 95
-            L 400 60
-            L 420 75
-            L 440 50
-            L 455 35
-            L 470 50
-            L 490 70
-            L 520 85
-            L 550 100
-            L 580 115
-            L 610 130
-            L 640 145
-            L 670 160
-            L 700 175
-            L 730 190
-            L 760 205
-            L 800 220
-          " stroke="rgba(139, 92, 246, 0.5)" stroke-width="2" fill="none"/>
+          <path d="
+            M 0 220 L 30 200 L 50 210 L 80 180 L 100 190 L 130 160 L 150 170
+            L 180 140 L 200 150 L 230 120 L 260 135 L 290 100 L 320 115 L 350 80
+            L 380 95 L 400 60 L 420 75 L 440 50 L 455 35 L 470 50 L 490 70
+            L 520 85 L 550 100 L 580 115 L 610 130 L 640 145 L 670 160 L 700 175
+            L 730 190 L 760 205 L 800 220
+          " stroke="rgba(139, 92, 246, 0.4)" stroke-width="2" fill="none"/>
 
           <!-- Snow caps -->
           <path class="mountain-snow" d="M 455 35 L 448 48 L 440 50 L 455 35 L 470 50 L 462 48 Z" opacity="0.9"/>
           <path class="mountain-snow" d="M 290 100 L 284 108 L 290 100 L 296 108 Z" opacity="0.7"/>
           <path class="mountain-snow" d="M 130 160 L 125 167 L 130 160 L 135 167 Z" opacity="0.6"/>
 
-          <!-- Percentage labels on left -->
+          <!-- Guide lines -->
           <text class="mountain-label" x="10" y="258">0%</text>
           <text class="mountain-label" x="10" y="205">25%</text>
           <text class="mountain-label" x="10" y="150">50%</text>
           <text class="mountain-label" x="10" y="95">75%</text>
-          <text class="peak-label" x="435" y="18" filter="url(#glow)">100%</text>
+          <text class="peak-label" x="435" y="18" filter="url(#glow)">🏔️ 100%</text>
 
-          <!-- Climber marker with flag (current position) -->
+          <line x1="35" y1="205" x2="800" y2="205" stroke="rgba(100, 116, 139, 0.15)" stroke-dasharray="4"/>
+          <line x1="35" y1="150" x2="800" y2="150" stroke="rgba(100, 116, 139, 0.15)" stroke-dasharray="4"/>
+          <line x1="35" y1="95" x2="800" y2="95" stroke="rgba(100, 116, 139, 0.15)" stroke-dasharray="4"/>
+
+          <!-- Climber marker -->
           <g class="climber-marker" id="climberMarker">
-            <circle class="climber-glow" cx="0" cy="0" r="8"/>
-            <circle cx="0" cy="0" r="5" fill="#fff"/>
-            <!-- Flag with pole - both animate together -->
+            <circle class="climber-glow" cx="0" cy="0" r="10"/>
+            <circle cx="0" cy="0" r="6" fill="#fff"/>
             <g class="peak-flag">
-              <line x1="0" y1="-5" x2="0" y2="-22" stroke="#fff" stroke-width="1.5"/>
-              <path d="M 0 -22 L 12 -18 L 0 -14 Z" fill="#ec4899"/>
+              <line x1="0" y1="-6" x2="0" y2="-26" stroke="#fff" stroke-width="1.5"/>
+              <path d="M 0 -26 L 14 -21 L 0 -16 Z" fill="var(--accent-pink)"/>
             </g>
-            <text x="15" y="5" font-family="JetBrains Mono, monospace" font-size="12" font-weight="700" fill="#8b5cf6" id="climberLabel">0%</text>
+            <text x="18" y="5" font-family="JetBrains Mono, monospace" font-size="13" font-weight="700" fill="#8b5cf6" filter="url(#glow)" id="climberLabel">0%</text>
           </g>
-
-          <!-- Horizontal guide lines -->
-          <line x1="35" y1="205" x2="800" y2="205" stroke="rgba(100, 116, 139, 0.2)" stroke-dasharray="4"/>
-          <line x1="35" y1="150" x2="800" y2="150" stroke="rgba(100, 116, 139, 0.2)" stroke-dasharray="4"/>
-          <line x1="35" y1="95" x2="800" y2="95" stroke="rgba(100, 116, 139, 0.2)" stroke-dasharray="4"/>
         </svg>
       </div>
 
@@ -779,23 +1284,24 @@
       </div>
     </section>
 
+    <!-- ===== Timeline ===== -->
     <section class="timeline-section">
-      <h2 class="section-title">🗺️ Implementation Timeline</h2>
+      <h2 class="section-title reveal">🗺️ Implementation Timeline</h2>
       
       <div class="timeline">
         <!-- Kernel Design -->
-        <div class="milestone completed" data-percent="90">
+        <div class="milestone completed reveal-left" data-percent="90" style="transition-delay: 0.05s">
           <div class="milestone-header">
             <div class="milestone-title">
               🧠 Kernel Design
-              <span class="milestone-badge badge-complete">COMPLETE</span>
+              <span class="milestone-badge badge-complete">Complete</span>
             </div>
             <span class="milestone-percentage high">90%</span>
           </div>
           <div class="milestone-progress">
             <div class="milestone-progress-bar high" style="width: 0%"></div>
           </div>
-          <p style="color: var(--text-secondary); font-size: 14px;">
+          <p class="milestone-desc">
             Reactive state management with Vue reactivity, complete Pack/Pod primitives with full lifecycle management,
             resource allocation tracking, and event history system.
           </p>
@@ -809,18 +1315,18 @@
         </div>
 
         <!-- Core Orchestrator -->
-        <div class="milestone completed" data-percent="85">
+        <div class="milestone completed reveal-left" data-percent="85" style="transition-delay: 0.1s">
           <div class="milestone-header">
             <div class="milestone-title">
               🎯 Core Orchestrator
-              <span class="milestone-badge badge-complete">COMPLETE</span>
+              <span class="milestone-badge badge-complete">Complete</span>
             </div>
             <span class="milestone-percentage high">85%</span>
           </div>
           <div class="milestone-progress">
             <div class="milestone-progress-bar high" style="width: 0%"></div>
           </div>
-          <p style="color: var(--text-secondary); font-size: 14px;">
+          <p class="milestone-desc">
             Multi-policy scheduling (spread, binpack, random, affinity, least_loaded), deployment reconciliation
             with crash loop detection, preemption support, and pack bundling via esbuild.
           </p>
@@ -833,18 +1339,18 @@
         </div>
 
         <!-- Node & Cluster Management -->
-        <div class="milestone completed" data-percent="85">
+        <div class="milestone completed reveal-left" data-percent="85" style="transition-delay: 0.15s">
           <div class="milestone-header">
             <div class="milestone-title">
               🌐 Node & Cluster Management
-              <span class="milestone-badge badge-complete">COMPLETE</span>
+              <span class="milestone-badge badge-complete">Complete</span>
             </div>
             <span class="milestone-percentage high">85%</span>
           </div>
           <div class="milestone-progress">
             <div class="milestone-progress-bar high" style="width: 0%"></div>
           </div>
-          <p style="color: var(--text-secondary); font-size: 14px;">
+          <p class="milestone-desc">
             Full agent lifecycle with reconnection, WebSocket connection management, heartbeat monitoring,
             draining/maintenance modes, and support for both Node.js and Browser runtimes.
           </p>
@@ -857,18 +1363,18 @@
         </div>
 
         <!-- Chaos Groundwork -->
-        <div class="milestone completed" data-percent="95">
+        <div class="milestone completed reveal-left" data-percent="95" style="transition-delay: 0.2s">
           <div class="milestone-header">
             <div class="milestone-title">
               💥 Chaos Groundwork
-              <span class="milestone-badge badge-complete">COMPLETE</span>
+              <span class="milestone-badge badge-complete">Complete</span>
             </div>
             <span class="milestone-percentage high">95%</span>
           </div>
           <div class="milestone-progress">
             <div class="milestone-progress-bar high" style="width: 0%"></div>
           </div>
-          <p style="color: var(--text-secondary); font-size: 14px;">
+          <p class="milestone-desc">
             Full chaos testing framework with scenario validation, execution, and result reporting.
             Production safety guards, CLI integration, and both internal and external chaos modes.
           </p>
@@ -881,18 +1387,18 @@
         </div>
 
         <!-- High-Impact Chaos -->
-        <div class="milestone completed" data-percent="90">
+        <div class="milestone completed reveal-left" data-percent="90" style="transition-delay: 0.25s">
           <div class="milestone-header">
             <div class="milestone-title">
               🔥 High-Impact Chaos
-              <span class="milestone-badge badge-complete">COMPLETE</span>
+              <span class="milestone-badge badge-complete">Complete</span>
             </div>
             <span class="milestone-percentage high">90%</span>
           </div>
           <div class="milestone-progress">
             <div class="milestone-progress-bar high" style="width: 0%"></div>
           </div>
-          <p style="color: var(--text-secondary); font-size: 14px;">
+          <p class="milestone-desc">
             Advanced chaos scenarios: node loss (single, multi, flapping), pod crashes, heartbeat delays,
             scheduler conflicts, deployment backoff, orchestrator restart, and API flakiness.
           </p>
@@ -906,18 +1412,18 @@
         </div>
 
         <!-- Automated Scenarios - CURRENT -->
-        <div class="milestone current" data-percent="75">
+        <div class="milestone current reveal-left" data-percent="75" style="transition-delay: 0.3s">
           <div class="milestone-header">
             <div class="milestone-title">
               🤖 Automated Scenarios
-              <span class="milestone-badge badge-current">IN PROGRESS</span>
+              <span class="milestone-badge badge-current">In Progress</span>
             </div>
             <span class="milestone-percentage high">75%</span>
           </div>
           <div class="milestone-progress">
             <div class="milestone-progress-bar high" style="width: 0%"></div>
           </div>
-          <p style="color: var(--text-secondary); font-size: 14px;">
+          <p class="milestone-desc">
             Comprehensive test suites for reconciliation, integration tests covering pod flow, node heartbeat,
             taints/tolerations, affinity, priority preemption, auth RBAC, and rollback scenarios.
           </p>
@@ -931,18 +1437,18 @@
         </div>
 
         <!-- UI / Observability -->
-        <div class="milestone upcoming" data-percent="15">
+        <div class="milestone upcoming reveal-left" data-percent="15" style="transition-delay: 0.35s">
           <div class="milestone-header">
             <div class="milestone-title">
               🖥️ UI / Observability
-              <span class="milestone-badge badge-upcoming">MINIMAL</span>
+              <span class="milestone-badge badge-upcoming">Minimal</span>
             </div>
             <span class="milestone-percentage low">15%</span>
           </div>
           <div class="milestone-progress">
             <div class="milestone-progress-bar low" style="width: 0%"></div>
           </div>
-          <p style="color: var(--text-secondary); font-size: 14px;">
+          <p class="milestone-desc">
             Currently a minimal stub showing connection state. Major gap — no dashboard, no observability views,
             no management UI. Only demonstrates browser agent connectivity.
           </p>
@@ -955,18 +1461,18 @@
         </div>
 
         <!-- Full Regression & Assertions -->
-        <div class="milestone upcoming" data-percent="60">
+        <div class="milestone upcoming reveal-left" data-percent="60" style="transition-delay: 0.4s">
           <div class="milestone-header">
             <div class="milestone-title">
               ✅ Full Regression & Assertions
-              <span class="milestone-badge badge-upcoming">UPCOMING</span>
+              <span class="milestone-badge badge-upcoming">Upcoming</span>
             </div>
             <span class="milestone-percentage medium">60%</span>
           </div>
           <div class="milestone-progress">
             <div class="milestone-progress-bar medium" style="width: 0%"></div>
           </div>
-          <p style="color: var(--text-secondary); font-size: 14px;">
+          <p class="milestone-desc">
             Solid unit and integration coverage in place. Needs expansion for full regression suite,
             edge case coverage, and production-readiness verification.
           </p>
@@ -980,57 +1486,253 @@
       </div>
     </section>
 
+    <!-- ===== Stats ===== -->
     <section class="stats-grid">
-      <div class="stat-card">
+      <div class="stat-card reveal-scale" style="transition-delay: 0s">
+        <div class="stat-card-glow"></div>
         <div class="stat-icon">📦</div>
-        <div class="stat-value">8</div>
+        <div class="stat-value" data-target="8">0</div>
         <div class="stat-label">Packages</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card reveal-scale" style="transition-delay: 0.08s">
+        <div class="stat-card-glow"></div>
         <div class="stat-icon">📄</div>
-        <div class="stat-value">100+</div>
+        <div class="stat-value" data-target="100" data-suffix="+">0</div>
         <div class="stat-label">Source Files</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card reveal-scale" style="transition-delay: 0.16s">
+        <div class="stat-card-glow"></div>
         <div class="stat-icon">🧪</div>
-        <div class="stat-value">10</div>
+        <div class="stat-value" data-target="10">0</div>
         <div class="stat-label">Chaos Scenarios</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card reveal-scale" style="transition-delay: 0.24s">
+        <div class="stat-card-glow"></div>
         <div class="stat-icon">✅</div>
-        <div class="stat-value">25+</div>
+        <div class="stat-value" data-target="25" data-suffix="+">0</div>
         <div class="stat-label">Test Files</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card reveal-scale" style="transition-delay: 0.32s">
+        <div class="stat-card-glow"></div>
         <div class="stat-icon">🔌</div>
-        <div class="stat-value">2</div>
+        <div class="stat-value" data-target="2">0</div>
         <div class="stat-label">Runtime Agents</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card reveal-scale" style="transition-delay: 0.4s">
+        <div class="stat-card-glow"></div>
         <div class="stat-icon">📊</div>
-        <div class="stat-value">5</div>
+        <div class="stat-value" data-target="5">0</div>
         <div class="stat-label">Scheduling Policies</div>
       </div>
     </section>
 
-    <footer>
+    <!-- ===== Quick Links ===== -->
+    <div class="quick-links reveal">
+      <a href="https://github.com/WeWatchWall/stark-orchestrator/wiki/CLI-Reference" class="quick-link">
+        <span class="quick-link-icon">🏗️</span>
+        CLI Reference
+      </a>
+      <a href="https://github.com/WeWatchWall/stark-orchestrator/wiki" class="quick-link">
+        <span class="quick-link-icon">📖</span>
+        Wiki
+      </a>
+      <a href="#" class="quick-link" onclick="triggerConfetti(); return false;">
+        <span class="quick-link-icon">🎉</span>
+        Celebrate
+        <kbd>click</kbd>
+      </a>
+    </div>
+
+    <!-- ===== Footer ===== -->
+    <footer class="reveal">
       <p>Built with 💜 for the Stark Orchestrator project</p>
+      <p class="footer-version">v0.1.0-alpha · the journey continues</p>
     </footer>
   </div>
 
   <script>
-    // Animate progress on load
+    // ========================================
+    // 1. PARTICLE SYSTEM
+    // ========================================
+    const canvas = document.getElementById('particles-canvas');
+    const ctx = canvas.getContext('2d');
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    const particles = [];
+    const PARTICLE_COUNT = 80;
+
+    class Particle {
+      constructor() {
+        this.reset();
+      }
+      reset() {
+        this.x = Math.random() * canvas.width;
+        this.y = Math.random() * canvas.height;
+        this.size = Math.random() * 2 + 0.5;
+        this.speedX = (Math.random() - 0.5) * 0.4;
+        this.speedY = (Math.random() - 0.5) * 0.4;
+        this.opacity = Math.random() * 0.5 + 0.1;
+        this.hue = Math.random() > 0.5 ? 260 : 200; // purple or blue
+      }
+      update() {
+        this.x += this.speedX;
+        this.y += this.speedY;
+        if (this.x < 0 || this.x > canvas.width) this.speedX *= -1;
+        if (this.y < 0 || this.y > canvas.height) this.speedY *= -1;
+      }
+      draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${this.hue}, 80%, 70%, ${this.opacity})`;
+        ctx.fill();
+      }
+    }
+
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      particles.push(new Particle());
+    }
+
+    function connectParticles() {
+      for (let i = 0; i < particles.length; i++) {
+        for (let j = i + 1; j < particles.length; j++) {
+          const dx = particles[i].x - particles[j].x;
+          const dy = particles[i].y - particles[j].y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 150) {
+            const opacity = (1 - dist / 150) * 0.15;
+            ctx.beginPath();
+            ctx.moveTo(particles[i].x, particles[i].y);
+            ctx.lineTo(particles[j].x, particles[j].y);
+            ctx.strokeStyle = `rgba(139, 92, 246, ${opacity})`;
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+          }
+        }
+      }
+    }
+
+    function animateParticles() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      particles.forEach(p => {
+        p.update();
+        p.draw();
+      });
+      connectParticles();
+      requestAnimationFrame(animateParticles);
+    }
+    animateParticles();
+
+    // ========================================
+    // 2. MOUSE GLOW FOLLOWER
+    // ========================================
+    const mouseGlow = document.getElementById('mouseGlow');
+    let mouseX = -600, mouseY = -600;
+    let glowX = -600, glowY = -600;
+
+    document.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    });
+
+    function updateGlow() {
+      glowX += (mouseX - glowX) * 0.08;
+      glowY += (mouseY - glowY) * 0.08;
+      mouseGlow.style.left = glowX + 'px';
+      mouseGlow.style.top = glowY + 'px';
+      requestAnimationFrame(updateGlow);
+    }
+    updateGlow();
+
+    // ========================================
+    // 3. TYPEWRITER EFFECT
+    // ========================================
+    const typewriterText = 'Development Journey & Progress Tracker';
+    const typewriterEl = document.getElementById('typewriterTarget');
+    let charIndex = 0;
+
+    function typewrite() {
+      if (charIndex <= typewriterText.length) {
+        typewriterEl.innerHTML = typewriterText.slice(0, charIndex) + '<span class="cursor"></span>';
+        charIndex++;
+        setTimeout(typewrite, 50 + Math.random() * 30);
+      } else {
+        // Keep cursor blinking
+        typewriterEl.innerHTML = typewriterText + '<span class="cursor"></span>';
+      }
+    }
+    setTimeout(typewrite, 800);
+
+    // ========================================
+    // 4. SCROLL REVEAL (IntersectionObserver)
+    // ========================================
+    const observerOptions = {
+      threshold: 0.1,
+      rootMargin: '0px 0px -50px 0px'
+    };
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          // Trigger counter animation for stat cards when visible
+          if (entry.target.classList.contains('stat-card')) {
+            animateCounter(entry.target.querySelector('.stat-value'));
+          }
+        }
+      });
+    }, observerOptions);
+
+    document.querySelectorAll('.reveal, .reveal-left, .reveal-scale').forEach(el => {
+      observer.observe(el);
+    });
+
+    // ========================================
+    // 5. STAT COUNTER ANIMATION
+    // ========================================
+    const animatedCounters = new Set();
+
+    function animateCounter(el) {
+      if (!el || animatedCounters.has(el)) return;
+      animatedCounters.add(el);
+
+      const target = parseInt(el.dataset.target);
+      const suffix = el.dataset.suffix || '';
+      const duration = 1500;
+      const startTime = performance.now();
+
+      function update(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        // Ease out cubic
+        const eased = 1 - Math.pow(1 - progress, 3);
+        const current = Math.round(target * eased);
+        el.textContent = current + suffix;
+        if (progress < 1) {
+          requestAnimationFrame(update);
+        }
+      }
+      requestAnimationFrame(update);
+    }
+
+    // ========================================
+    // 6. MOUNTAIN PROGRESS ANIMATION
+    // ========================================
     document.addEventListener('DOMContentLoaded', () => {
-      // Calculate overall progress (weighted average)
       const milestones = [
-        { percent: 90, weight: 1 },   // Kernel
-        { percent: 85, weight: 1 },   // Orchestrator
-        { percent: 85, weight: 1 },   // Node/Cluster
-        { percent: 95, weight: 0.8 }, // Chaos Groundwork
-        { percent: 90, weight: 0.8 }, // High-Impact Chaos
-        { percent: 75, weight: 1 },   // Automated Scenarios
-        { percent: 15, weight: 0.6 }, // UI (lower weight - it's a gap but backend is core)
-        { percent: 60, weight: 0.8 }, // Regression
+        { percent: 90, weight: 1 },
+        { percent: 85, weight: 1 },
+        { percent: 85, weight: 1 },
+        { percent: 95, weight: 0.8 },
+        { percent: 90, weight: 0.8 },
+        { percent: 75, weight: 1 },
+        { percent: 15, weight: 0.6 },
+        { percent: 60, weight: 0.8 },
       ];
 
       const totalWeight = milestones.reduce((sum, m) => sum + m.weight, 0);
@@ -1038,7 +1740,6 @@
         milestones.reduce((sum, m) => sum + (m.percent * m.weight), 0) / totalWeight
       );
 
-      // Mountain path points for climber position calculation
       const mountainPoints = [
         {x: 0, y: 220}, {x: 30, y: 200}, {x: 50, y: 210}, {x: 80, y: 180},
         {x: 100, y: 190}, {x: 130, y: 160}, {x: 150, y: 170}, {x: 180, y: 140},
@@ -1047,98 +1748,35 @@
         {x: 420, y: 75}, {x: 440, y: 50}, {x: 455, y: 35}
       ];
 
-      // Find position on mountain path based on percentage
       function getPositionOnMountain(percent) {
-        // Map percent to y-value (260 = 0%, 35 = 100%)
         const targetY = 260 - (percent / 100) * (260 - 35);
-        
-        // Find the two points we're between
         for (let i = 0; i < mountainPoints.length - 1; i++) {
           const p1 = mountainPoints[i];
           const p2 = mountainPoints[i + 1];
-          
           if (targetY <= p1.y && targetY >= p2.y) {
-            // Interpolate between points
             const ratio = (p1.y - targetY) / (p1.y - p2.y);
-            return {
-              x: p1.x + ratio * (p2.x - p1.x),
-              y: targetY
-            };
+            return { x: p1.x + ratio * (p2.x - p1.x), y: targetY };
           }
         }
-        
-        // Default to peak if we're at 100%
         return { x: 455, y: 35 };
       }
 
-      setTimeout(() => {
-        // Animate overall progress text
-        document.getElementById('overallPercent').textContent = overall + '%';
-        
-        // Animate mountain fill using clip-path
-        const progressRect = document.getElementById('progressRect');
-        const mountainProgress = document.querySelector('.mountain-progress');
-        const targetY = 260 - (overall / 100) * (260 - 35);
-        
-        // Animate the clip rect from bottom to the target height
-        progressRect.setAttribute('y', targetY);
-        progressRect.setAttribute('height', 260 - targetY);
-        
-        // Position the climber marker
-        const climberMarker = document.getElementById('climberMarker');
-        const climberLabel = document.getElementById('climberLabel');
-        const pos = getPositionOnMountain(overall);
-        
-        climberMarker.setAttribute('transform', `translate(${pos.x}, ${pos.y})`);
-        climberLabel.textContent = overall + '%';
-
-        // Animate individual milestone progress bars
-        document.querySelectorAll('.milestone').forEach(milestone => {
-          const percent = milestone.dataset.percent;
-          const bar = milestone.querySelector('.milestone-progress-bar');
-          if (bar) {
-            bar.style.width = percent + '%';
-          }
-        });
-      }, 300);
-
-      // Add counter animation for stats
-      document.querySelectorAll('.stat-value').forEach(stat => {
-        const value = stat.textContent;
-        const numericPart = parseInt(value);
-        const suffix = value.replace(/[0-9]/g, '');
-        
-        let current = 0;
-        const increment = Math.max(1, Math.floor(numericPart / 30));
-        const interval = setInterval(() => {
-          current += increment;
-          if (current >= numericPart) {
-            current = numericPart;
-            clearInterval(interval);
-          }
-          stat.textContent = current + suffix;
-        }, 30);
-      });
-
-      // Smooth animation for clip path
+      // Animate mountain fill
       const clipRect = document.getElementById('progressRect');
-      let startY = 260;
       const endY = 260 - (overall / 100) * (260 - 35);
-      const duration = 2000;
-      const startTime = performance.now();
+      const duration = 2500;
+      let startTime = null;
 
-      function animateClip(currentTime) {
+      function animateMountain(currentTime) {
+        if (!startTime) startTime = currentTime;
         const elapsed = currentTime - startTime;
         const progress = Math.min(elapsed / duration, 1);
-        
-        // Easing function (ease-out cubic)
-        const eased = 1 - Math.pow(1 - progress, 3);
-        
-        const currentY = startY - (startY - endY) * eased;
+        const eased = 1 - Math.pow(1 - progress, 4); // quartic ease-out
+
+        const currentY = 260 - (260 - endY) * eased;
         clipRect.setAttribute('y', currentY);
         clipRect.setAttribute('height', 260 - currentY);
 
-        // Also animate climber
         const currentPercent = overall * eased;
         const pos = getPositionOnMountain(currentPercent);
         const climberMarker = document.getElementById('climberMarker');
@@ -1146,12 +1784,153 @@
         climberMarker.setAttribute('transform', `translate(${pos.x}, ${pos.y})`);
         climberLabel.textContent = Math.round(currentPercent) + '%';
 
+        document.getElementById('overallPercent').textContent = Math.round(currentPercent) + '%';
+
         if (progress < 1) {
-          requestAnimationFrame(animateClip);
+          requestAnimationFrame(animateMountain);
         }
       }
 
-      setTimeout(() => requestAnimationFrame(animateClip), 300);
+      setTimeout(() => requestAnimationFrame(animateMountain), 600);
+
+      // Animate milestone progress bars  
+      setTimeout(() => {
+        document.querySelectorAll('.milestone').forEach(milestone => {
+          const percent = milestone.dataset.percent;
+          const bar = milestone.querySelector('.milestone-progress-bar');
+          if (bar) bar.style.width = percent + '%';
+        });
+      }, 400);
+    });
+
+    // ========================================
+    // 7. 3D TILT ON STAT CARDS
+    // ========================================
+    document.querySelectorAll('.stat-card').forEach(card => {
+      card.addEventListener('mousemove', (e) => {
+        const rect = card.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+        const rotateX = (y - centerY) / centerY * -8;
+        const rotateY = (x - centerX) / centerX * 8;
+        card.style.transform = `translateY(-8px) scale(1.02) perspective(800px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+      });
+      card.addEventListener('mouseleave', () => {
+        card.style.transform = '';
+      });
+    });
+
+    // ========================================
+    // 8. CONFETTI
+    // ========================================
+    const confettiCanvas = document.getElementById('confettiCanvas');
+    const confettiCtx = confettiCanvas.getContext('2d');
+    let confettiPieces = [];
+    let confettiRunning = false;
+
+    function resizeConfettiCanvas() {
+      confettiCanvas.width = window.innerWidth;
+      confettiCanvas.height = window.innerHeight;
+    }
+    resizeConfettiCanvas();
+    window.addEventListener('resize', resizeConfettiCanvas);
+
+    const CONFETTI_COLORS = ['#8b5cf6', '#3b82f6', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#ef4444', '#fff'];
+
+    class ConfettiPiece {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.size = Math.random() * 8 + 4;
+        this.speedX = (Math.random() - 0.5) * 12;
+        this.speedY = Math.random() * -16 - 4;
+        this.gravity = 0.4;
+        this.rotation = Math.random() * 360;
+        this.rotationSpeed = (Math.random() - 0.5) * 15;
+        this.color = CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)];
+        this.opacity = 1;
+        this.shape = Math.random() > 0.5 ? 'rect' : 'circle';
+      }
+      update() {
+        this.speedY += this.gravity;
+        this.x += this.speedX;
+        this.y += this.speedY;
+        this.rotation += this.rotationSpeed;
+        this.opacity -= 0.008;
+        this.speedX *= 0.99;
+      }
+      draw() {
+        confettiCtx.save();
+        confettiCtx.translate(this.x, this.y);
+        confettiCtx.rotate(this.rotation * Math.PI / 180);
+        confettiCtx.globalAlpha = Math.max(0, this.opacity);
+        confettiCtx.fillStyle = this.color;
+        if (this.shape === 'rect') {
+          confettiCtx.fillRect(-this.size / 2, -this.size / 4, this.size, this.size / 2);
+        } else {
+          confettiCtx.beginPath();
+          confettiCtx.arc(0, 0, this.size / 2, 0, Math.PI * 2);
+          confettiCtx.fill();
+        }
+        confettiCtx.restore();
+      }
+    }
+
+    function triggerConfetti() {
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+      for (let i = 0; i < 120; i++) {
+        confettiPieces.push(new ConfettiPiece(
+          centerX + (Math.random() - 0.5) * 200,
+          centerY + (Math.random() - 0.5) * 100
+        ));
+      }
+      if (!confettiRunning) {
+        confettiRunning = true;
+        animateConfetti();
+      }
+    }
+
+    function animateConfetti() {
+      confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+      confettiPieces = confettiPieces.filter(p => p.opacity > 0 && p.y < confettiCanvas.height + 50);
+      confettiPieces.forEach(p => {
+        p.update();
+        p.draw();
+      });
+      if (confettiPieces.length > 0) {
+        requestAnimationFrame(animateConfetti);
+      } else {
+        confettiRunning = false;
+      }
+    }
+
+    // Click completed milestones for confetti
+    document.querySelectorAll('.milestone.completed').forEach(ms => {
+      ms.style.cursor = 'pointer';
+      ms.addEventListener('click', (e) => {
+        const rect = ms.getBoundingClientRect();
+        const x = rect.left + rect.width / 2;
+        const y = rect.top + rect.height / 2;
+        for (let i = 0; i < 60; i++) {
+          confettiPieces.push(new ConfettiPiece(x, y));
+        }
+        if (!confettiRunning) {
+          confettiRunning = true;
+          animateConfetti();
+        }
+      });
+    });
+
+    // ========================================
+    // 9. KEYBOARD SHORTCUT - 'c' for confetti
+    // ========================================
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'c' && !e.ctrlKey && !e.metaKey && document.activeElement === document.body) {
+        triggerConfetti();
+      }
     });
   </script>
 </body>
