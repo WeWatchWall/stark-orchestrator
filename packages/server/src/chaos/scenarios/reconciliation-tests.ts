@@ -179,7 +179,7 @@ export const nodeBanReconciliationScenario: ChaosScenario<NodeBanReconciliationO
       switch (options.mode) {
         case 'standard':
           // Unban after reschedule but before reconnection exhaustion
-          unbanDelayMs = 200_000; // T+200s
+          unbanDelayMs = 160_000; // T+160s
           break;
         case 'fast_unban':
           // Unban before SUSPECT - should NOT trigger reschedule
