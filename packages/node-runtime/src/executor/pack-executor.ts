@@ -20,6 +20,9 @@ import {
   createServiceLogger,
   PodError,
   requiresMainThread,
+  createPodLogSink,
+  createPodConsole,
+  getPodConsolePatchCode,
   type Logger,
   type Pack,
   type Pod,
@@ -29,6 +32,7 @@ import {
   type PodLifecycleFacts,
   type PodLifecyclePhase,
   type ShutdownHandler,
+  type PodLogSink,
 } from '@stark-o/shared';
 
 // Re-export for convenience
@@ -83,6 +87,8 @@ interface ExecutionState {
   setLifecyclePhase: (phase: PodLifecyclePhase) => void;
   /** Function to request shutdown */
   requestShutdown: (reason?: string) => void;
+  /** Log sink for stdout/stderr */
+  logSink: PodLogSink;
 }
 
 /**
@@ -306,6 +312,14 @@ export class PackExecutor {
       timeout,
     });
 
+    // Create log sink for stdout/stderr capture
+    const logSink = createPodLogSink({
+      podId: pod.id,
+      packId: pack.id,
+      packVersion: pack.version,
+      executionId,
+    });
+
     // Create execution state with lifecycle control functions
     const state: ExecutionState = {
       executionId,
@@ -314,6 +328,7 @@ export class PackExecutor {
       status: 'pending',
       startedAt,
       shutdownHandlers,
+      logSink,
       setLifecyclePhase: (phase: PodLifecyclePhase) => {
         lifecyclePhase = phase;
       },
@@ -338,6 +353,7 @@ export class PackExecutor {
         state.status = result.success ? 'completed' : 'failed';
         state.completedAt = new Date();
         state.result = result;
+        state.logSink.close();
         this.config.logger.info('Pack execution completed', {
           executionId,
           podId: pod.id,
@@ -360,6 +376,7 @@ export class PackExecutor {
         state.status = state.status === 'cancelled' ? 'cancelled' : 'failed';
         state.completedAt = new Date();
         state.result = result;
+        state.logSink.close();
         this.config.logger.error(
           'Pack execution failed',
           error instanceof Error ? error : new Error(String(error)),
@@ -432,6 +449,7 @@ export class PackExecutor {
       }
       state.setLifecyclePhase('terminated');
       state.status = 'cancelled';
+      state.logSink.close();
     };
 
     // Create force terminate function (immediate termination)
@@ -445,6 +463,7 @@ export class PackExecutor {
         state.setLifecyclePhase('terminated');
         await state.handle.forceTerminate();
         state.status = 'cancelled';
+        state.logSink.close();
       }
     };
 
@@ -512,7 +531,7 @@ export class PackExecutor {
           // Use setImmediate to yield control back to the event loop
           // This allows the caller to receive the ExecutionHandle before execution starts
           setImmediate(() => {
-            this.executeOnMainThread(bundleCode, context, args)
+            this.executeOnMainThread(bundleCode, context, args, state.logSink)
               .then((result) => {
                 resolve({
                   executionId: context.executionId,
@@ -535,10 +554,13 @@ export class PackExecutor {
       // because the function is serialized when sent to the worker thread
       const workerFn = this.createWorkerFunction();
 
-      // Execute in worker thread - pass bundleCode, context, and args as arguments
-      const taskHandle = this.workerAdapter.execCancellable<unknown, [string, PackExecutionContext, unknown[]]>(
+      // Generate console patch code - this is code from PodLogSink that will be eval'd in worker
+      const consolePatchCode = getPodConsolePatchCode(context.podId);
+
+      // Execute in worker thread - pass bundleCode, context, args, and console patch code
+      const taskHandle = this.workerAdapter.execCancellable<unknown, [string, PackExecutionContext, unknown[], string]>(
         workerFn,
-        [bundleCode, context, args],
+        [bundleCode, context, args, consolePatchCode],
         { timeout: context.timeout }
       );
 
@@ -709,16 +731,21 @@ export class PackExecutor {
    * IMPORTANT: bundleCode and context must be passed as arguments, not captured via closure,
    * because workerpool serializes functions and closures are lost in the worker thread.
    */
-  private createWorkerFunction(): (bundleCode: string, context: PackExecutionContext, args: unknown[]) => Promise<unknown> {
+  private createWorkerFunction(): (bundleCode: string, context: PackExecutionContext, args: unknown[], consolePatchCode: string) => Promise<unknown> {
     // Create a serializable function that will run in the worker
     // The function constructs and executes the pack in isolation
     // All data needed is passed as arguments to avoid closure issues
-    return async (bundleCode: string, context: PackExecutionContext, args: unknown[]) => {
+    return async (bundleCode: string, context: PackExecutionContext, args: unknown[], consolePatchCode: string) => {
       // Set up environment variables
       const env = context.env;
       for (const [key, value] of Object.entries(env)) {
         process.env[key] = value;
       }
+
+      // Patch console using code generated by getPodConsolePatchCode from @stark-o/shared
+      // This ensures log format consistency with PodLogSink - change format there, not here
+      // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-eval
+      const restoreConsole = eval(consolePatchCode) as () => void;
 
       try {
         // Create a sandboxed module context
@@ -779,6 +806,9 @@ export class PackExecutor {
         );
         return result;
       } finally {
+        // Restore original console methods
+        restoreConsole();
+        
         // Clean up environment variables
         for (const key of Object.keys(env)) {
           delete process.env[key];
@@ -808,7 +838,8 @@ export class PackExecutor {
   private async executeOnMainThread(
     bundleCode: string,
     context: PackExecutionContext,
-    args: unknown[]
+    args: unknown[],
+    logSink: PodLogSink
   ): Promise<unknown> {
     // Set up environment variables
     const env = context.env;
@@ -818,6 +849,23 @@ export class PackExecutor {
       originalEnv[key] = process.env[key];
       process.env[key] = value;
     }
+
+    // Patch console to route through pod log sink using createPodConsole
+    // This ensures format changes only need to happen in PodLogSink
+    const originalConsole = {
+      log: console.log.bind(console),
+      info: console.info.bind(console),
+      warn: console.warn.bind(console),
+      error: console.error.bind(console),
+      debug: console.debug.bind(console),
+    };
+    
+    const podConsole = createPodConsole(logSink);
+    console.log = podConsole.log;
+    console.info = podConsole.info;
+    console.debug = podConsole.debug;
+    console.warn = podConsole.warn;
+    console.error = podConsole.error;
 
     try {
       // Create a sandboxed module context
@@ -879,6 +927,13 @@ export class PackExecutor {
       );
       return result;
     } finally {
+      // Restore original console methods
+      console.log = originalConsole.log;
+      console.info = originalConsole.info;
+      console.warn = originalConsole.warn;
+      console.error = originalConsole.error;
+      console.debug = originalConsole.debug;
+      
       // Restore original environment variables
       for (const [key, originalValue] of Object.entries(originalEnv)) {
         if (originalValue === undefined) {

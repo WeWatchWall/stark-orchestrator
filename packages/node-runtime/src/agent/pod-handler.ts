@@ -180,6 +180,18 @@ export class PodHandler {
 
     state.stoppedAt = new Date();
 
+    // If pod is already stopping (graceful shutdown in progress), treat as successful stop
+    // This prevents a race condition where the execution completes with cancelled status
+    // before handleStop can update the status to stopped
+    if (state.status === 'stopping') {
+      this.config.logger.info('Pod execution stopped gracefully', {
+        podId,
+        durationMs: result.durationMs,
+      });
+      this.updateStatus(podId, 'stopped');
+      return;
+    }
+
     if (result.success) {
       this.config.logger.info('Pod execution completed successfully', {
         podId,

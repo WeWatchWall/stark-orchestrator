@@ -18,6 +18,7 @@ import {
   createServiceLogger,
   PodError,
   requiresMainThread,
+  createPodLogSink,
   type Logger,
   type Pack,
   type Pod,
@@ -28,6 +29,7 @@ import {
   type PodLifecycleFacts,
   type PodLifecyclePhase,
   type ShutdownHandler,
+  type PodLogSink,
 } from '@stark-o/shared';
 
 // Re-export for convenience
@@ -95,6 +97,8 @@ interface ExecutionState {
   setLifecyclePhase: (phase: PodLifecyclePhase) => void;
   /** Function to request shutdown */
   requestShutdown: (reason?: string) => void;
+  /** Log sink for stdout/stderr */
+  logSink: PodLogSink;
 }
 
 /**
@@ -317,6 +321,14 @@ export class PackExecutor {
       timeout,
     });
 
+    // Create log sink for stdout/stderr capture
+    const logSink = createPodLogSink({
+      podId: pod.id,
+      packId: pack.id,
+      packVersion: pack.version,
+      executionId,
+    });
+
     // Create execution state with lifecycle control functions
     const state: ExecutionState = {
       executionId,
@@ -325,6 +337,7 @@ export class PackExecutor {
       status: 'pending',
       startedAt,
       shutdownHandlers,
+      logSink,
       setLifecyclePhase: (phase: PodLifecyclePhase) => {
         lifecyclePhase = phase;
       },
@@ -349,6 +362,7 @@ export class PackExecutor {
         state.status = result.success ? 'completed' : 'failed';
         state.completedAt = new Date();
         state.result = result;
+        state.logSink.close();
         this.config.logger.info('Pack execution completed', {
           executionId,
           podId: pod.id,
@@ -371,6 +385,7 @@ export class PackExecutor {
         state.status = state.status === 'cancelled' ? 'cancelled' : 'failed';
         state.completedAt = new Date();
         state.result = result;
+        state.logSink.close();
         this.config.logger.error(
           'Pack execution failed',
           error instanceof Error ? error : new Error(String(error)),
@@ -443,6 +458,7 @@ export class PackExecutor {
       }
       state.setLifecyclePhase('terminated');
       state.status = 'cancelled';
+      state.logSink.close();
     };
 
     // Create force terminate function (immediate termination)
@@ -456,6 +472,7 @@ export class PackExecutor {
         state.setLifecyclePhase('terminated');
         await state.handle.forceTerminate();
         state.status = 'cancelled';
+        state.logSink.close();
       }
     };
 
@@ -776,12 +793,41 @@ export class PackExecutor {
         const context = ${serializedContext};
         const bundleCode = ${serializedBundleCode};
         const env = context.env;
+        const podId = context.podId;
 
         // Make environment variables available via a global object
         // (since browser workers don't have process.env)
         const globalScope = typeof self !== 'undefined' ? self : globalThis;
         globalScope.__STARK_ENV__ = env;
         globalScope.__STARK_CONTEXT__ = context;
+
+        // Patch console to route through pod log sink (prepend podId)
+        const originalConsole = {
+          log: console.log.bind(console),
+          info: console.info.bind(console),
+          warn: console.warn.bind(console),
+          error: console.error.bind(console),
+          debug: console.debug.bind(console),
+        };
+
+        const formatArgs = (argsArray) => {
+          return argsArray.map(arg => {
+            if (typeof arg === 'string') return arg;
+            if (arg instanceof Error) return arg.name + ': ' + arg.message;
+            try {
+              return JSON.stringify(arg);
+            } catch (e) {
+              return String(arg);
+            }
+          }).join(' ');
+        };
+
+        // Override console methods to prepend timestamp, pod ID and stream type
+        console.log = (...logArgs) => originalConsole.log('[' + new Date().toISOString() + '][' + podId + ':out]', formatArgs(logArgs));
+        console.info = (...logArgs) => originalConsole.log('[' + new Date().toISOString() + '][' + podId + ':out]', formatArgs(logArgs));
+        console.debug = (...logArgs) => originalConsole.log('[' + new Date().toISOString() + '][' + podId + ':out]', formatArgs(logArgs));
+        console.warn = (...logArgs) => originalConsole.error('[' + new Date().toISOString() + '][' + podId + ':err]', formatArgs(logArgs));
+        console.error = (...logArgs) => originalConsole.error('[' + new Date().toISOString() + '][' + podId + ':err]', formatArgs(logArgs));
 
         try {
           // Create a sandboxed module context for browser
@@ -825,6 +871,13 @@ export class PackExecutor {
           const result = await Promise.resolve(entrypointFn(context, ...args));
           return result;
         } finally {
+          // Restore original console methods
+          console.log = originalConsole.log;
+          console.info = originalConsole.info;
+          console.warn = originalConsole.warn;
+          console.error = originalConsole.error;
+          console.debug = originalConsole.debug;
+
           // Clean up globals
           delete globalScope.__STARK_ENV__;
           delete globalScope.__STARK_CONTEXT__;
@@ -861,11 +914,40 @@ export class PackExecutor {
     args: unknown[]
   ): Promise<unknown> {
     const env = context.env;
+    const podId = context.podId;
 
     // Make environment variables available via a global object
     const globalScope = typeof self !== 'undefined' ? self : globalThis;
     (globalScope as Record<string, unknown>).__STARK_ENV__ = env;
     (globalScope as Record<string, unknown>).__STARK_CONTEXT__ = context;
+
+    // Patch console to route through pod log sink (prepend podId)
+    const originalConsole = {
+      log: console.log.bind(console),
+      info: console.info.bind(console),
+      warn: console.warn.bind(console),
+      error: console.error.bind(console),
+      debug: console.debug.bind(console),
+    };
+    
+    const formatArgs = (argsArray: unknown[]): string => {
+      return argsArray.map(arg => {
+        if (typeof arg === 'string') return arg;
+        if (arg instanceof Error) return `${arg.name}: ${arg.message}`;
+        try {
+          return JSON.stringify(arg);
+        } catch {
+          return String(arg);
+        }
+      }).join(' ');
+    };
+
+    // Override console methods to prepend timestamp, pod ID and stream type
+    console.log = (...logArgs: unknown[]) => originalConsole.log(`[${new Date().toISOString()}][${podId}:out]`, formatArgs(logArgs));
+    console.info = (...logArgs: unknown[]) => originalConsole.log(`[${new Date().toISOString()}][${podId}:out]`, formatArgs(logArgs));
+    console.debug = (...logArgs: unknown[]) => originalConsole.log(`[${new Date().toISOString()}][${podId}:out]`, formatArgs(logArgs));
+    console.warn = (...logArgs: unknown[]) => originalConsole.error(`[${new Date().toISOString()}][${podId}:err]`, formatArgs(logArgs));
+    console.error = (...logArgs: unknown[]) => originalConsole.error(`[${new Date().toISOString()}][${podId}:err]`, formatArgs(logArgs));
 
     try {
       // Create a sandboxed module context for browser
@@ -912,6 +994,13 @@ export class PackExecutor {
       );
       return result;
     } finally {
+      // Restore original console methods
+      console.log = originalConsole.log;
+      console.info = originalConsole.info;
+      console.warn = originalConsole.warn;
+      console.error = originalConsole.error;
+      console.debug = originalConsole.debug;
+
       // Clean up globals
       delete (globalScope as Record<string, unknown>).__STARK_ENV__;
       delete (globalScope as Record<string, unknown>).__STARK_CONTEXT__;

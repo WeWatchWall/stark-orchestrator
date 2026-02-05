@@ -105,6 +105,17 @@ export {
   type LoggerConfig,
 } from './logging/logger.js';
 
+export {
+  PodLogSink,
+  createPodLogSink,
+  createPodConsole,
+  formatLogArgs,
+  getPodConsolePatchCode,
+  type LogStream,
+  type PodLogSinkMeta,
+  type PodConsole,
+} from './logging/pod-log-sink.js';
+
 // Utilities
 export {
   generateUUID,

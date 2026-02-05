@@ -16,7 +16,7 @@ import { getDeploymentQueriesAdmin } from '../supabase/deployments.js';
 import { getPodQueriesAdmin } from '../supabase/pods.js';
 import { getNodeQueries } from '../supabase/nodes.js';
 import { getPackQueriesAdmin } from '../supabase/packs.js';
-import { getConnectionManager } from './connection-service.js';
+import { getConnectionManager, sendToNode } from './connection-service.js';
 
 /**
  * Logger for deployment controller
@@ -622,12 +622,46 @@ export class DeploymentController {
       });
 
       const podQueries = getPodQueriesAdmin();
+      const nodeQueries = getNodeQueries();
       const podsToRemove = currentPods.slice(0, toRemove);
       
       for (const pod of podsToRemove) {
         await podQueries.updatePod(pod.id, { 
           status: 'stopping' 
         });
+
+        // Send pod:stop message to the node so it actually terminates the pod
+        if (pod.nodeId) {
+          const nodeResult = await nodeQueries.getNodeById(pod.nodeId);
+          if (nodeResult.data?.connectionId) {
+            const sent = sendToNode(nodeResult.data.connectionId, {
+              type: 'pod:stop',
+              payload: {
+                podId: pod.id,
+                reason: 'deployment_scale_down',
+                message: `Pod stopped due to deployment ${deployment.name} scale down`,
+              },
+            });
+
+            if (sent) {
+              logger.info('Pod stop message sent to node', {
+                podId: pod.id,
+                nodeId: pod.nodeId,
+                connectionId: nodeResult.data.connectionId,
+              });
+            } else {
+              logger.warn('Failed to send pod stop message - node connection not found', {
+                podId: pod.id,
+                nodeId: pod.nodeId,
+              });
+            }
+          } else {
+            logger.debug('Node has no active connection, skipping WebSocket notification', {
+              podId: pod.id,
+              nodeId: pod.nodeId,
+            });
+          }
+        }
       }
     }
   }
