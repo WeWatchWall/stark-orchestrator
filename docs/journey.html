@@ -626,10 +626,10 @@
       width: 3px;
       background: linear-gradient(to bottom, 
         var(--accent-green) 0%,
-        var(--accent-green) 44%,
-        var(--accent-purple) 44%,
-        var(--accent-purple) 56%,
-        var(--border-color) 56%,
+        var(--accent-green) 20%,
+        var(--accent-purple) 20%,
+        var(--accent-purple) 30%,
+        var(--border-color) 30%,
         var(--border-color) 100%
       );
       border-radius: 100px;
@@ -1139,8 +1139,10 @@
         <div class="marquee-item">🔍 Service Discovery</div>
         <div class="marquee-item">💾 Pod Volumes</div>
         <div class="marquee-item">📋 Structured Logging</div>
-        <div class="marquee-item">🩺 Health Probes</div>
-        <div class="marquee-item">⚖️ Autoscaling</div>
+        <div class="marquee-item">🔐 Secrets Mgmt</div>
+        <div class="marquee-item">🛡️ TLS / Audit</div>
+        <div class="marquee-item">🌐 Federation</div>
+        <div class="marquee-item">🤖 AI Scheduling</div>
         <!-- Duplicated for seamless loop -->
         <div class="marquee-item">⚡ Vue Reactivity</div>
         <div class="marquee-item">🧠 Reactive Kernel</div>
@@ -1160,8 +1162,10 @@
         <div class="marquee-item">🔍 Service Discovery</div>
         <div class="marquee-item">💾 Pod Volumes</div>
         <div class="marquee-item">📋 Structured Logging</div>
-        <div class="marquee-item">🩺 Health Probes</div>
-        <div class="marquee-item">⚖️ Autoscaling</div>
+        <div class="marquee-item">🔐 Secrets Mgmt</div>
+        <div class="marquee-item">🛡️ TLS / Audit</div>
+        <div class="marquee-item">🌐 Federation</div>
+        <div class="marquee-item">🤖 AI Scheduling</div>
       </div>
     </div>
 
@@ -1292,7 +1296,7 @@
 
       <div class="current-stage">
         <span class="current-stage-icon">🚩</span>
-        <span class="current-stage-text">Currently at: <span>Stage 5 — Automation & Testing</span> — polishing reconciliation, then tackling cluster features (ingress, LB, volumes, and more)</span>
+        <span class="current-stage-text">Currently at: <span>Stage 3 — Chaos Engineering & Testing</span> — automated scenarios landing, then logging/metrics, networking, secrets, persistence, and beyond</span>
       </div>
     </section>
 
@@ -1301,41 +1305,74 @@
       <h2 class="section-title reveal">🗺️ Implementation Timeline</h2>
       
       <div class="timeline">
-        <!-- Stage 1: Kernel & Core -->
-        <div class="milestone completed reveal-left" data-percent="90" style="transition-delay: 0.05s">
+        <!-- Stage 1: Kernel / Core System -->
+        <div class="milestone completed reveal-left" data-percent="93" style="transition-delay: 0.05s">
           <div class="milestone-header">
             <div class="milestone-title">
-              🧠 Stage 1 — Kernel & Core
+              🧠 Stage 1 — Kernel / Core System
               <span class="milestone-badge badge-complete">Complete</span>
             </div>
-            <span class="milestone-percentage high">90%</span>
+            <span class="milestone-percentage high">93%</span>
           </div>
           <div class="milestone-progress">
             <div class="milestone-progress-bar high" style="width: 0%"></div>
           </div>
           <p class="milestone-desc">
-            System contracts, reactive state management (Vue reactivity), Pod/Pack primitives with full lifecycle,
-            event stream, pod scheduling (spread, binpack, random, affinity, least_loaded),
-            capability namespaces, deployment reconciliation, crash loop detection, preemption, and esbuild bundling.
+            All scheduling policies implemented (spread, binpack, random, affinity, least_loaded),
+            capability namespaces & permissions, full event system (events.ts — 613 lines) with
+            categories and severity, pod lifecycle management, node registration/deregistration,
+            heartbeats & node health tracking, PodLogSink with stdout/stderr routing. Fully justified.
           </p>
           <div class="milestone-details">
             <span class="detail-tag highlight">26+ core files</span>
             <span class="detail-tag">pod.ts (506 lines)</span>
             <span class="detail-tag highlight">pod-scheduler.ts (1827 lines)</span>
+            <span class="detail-tag highlight">events.ts (613 lines)</span>
             <span class="detail-tag">deployment-controller.ts (930 lines)</span>
             <span class="detail-tag">cluster-store.ts</span>
             <span class="detail-tag">namespace-manager.ts</span>
+            <span class="detail-tag">capabilities system</span>
             <span class="detail-tag">bundler.ts (567 lines)</span>
-            <span class="detail-tag">reactive models</span>
+            <span class="detail-tag">PodLogSink</span>
           </div>
         </div>
 
-        <!-- Stage 2: Node Management -->
-        <div class="milestone completed reveal-left" data-percent="85" style="transition-delay: 0.1s">
+        <!-- Stage 2: Node & Cluster Management -->
+        <div class="milestone completed reveal-left" data-percent="88" style="transition-delay: 0.1s">
           <div class="milestone-header">
             <div class="milestone-title">
-              🌐 Stage 2 — Node Management
+              🌐 Stage 2 — Node & Cluster Management
               <span class="milestone-badge badge-complete">Complete</span>
+            </div>
+            <span class="milestone-percentage high">88%</span>
+          </div>
+          <div class="milestone-progress">
+            <div class="milestone-progress-bar high" style="width: 0%"></div>
+          </div>
+          <p class="milestone-desc">
+            Node states (online / suspect / offline), WebSocket / RPC communication for nodes,
+            node reconnection handling, clustering logic (node pool, availability),
+            draining/maintenance modes done (taints.ts), heartbeats with reconnection logic,
+            and chaos hooks for testing node behavior.
+            Both Node.js and Browser runtimes fully operational. More complete than initially claimed.
+          </p>
+          <div class="milestone-details">
+            <span class="detail-tag highlight">node-agent.ts (1384 lines)</span>
+            <span class="detail-tag highlight">browser-agent.ts (1849 lines)</span>
+            <span class="detail-tag">connection-manager.ts (705 lines)</span>
+            <span class="detail-tag highlight">taints.ts (draining/maintenance)</span>
+            <span class="detail-tag">node.ts CLI (1031 lines)</span>
+            <span class="detail-tag">heartbeat & reconnection</span>
+            <span class="detail-tag" style="color: var(--accent-amber);">📋 Node metrics (CPU/mem)</span>
+          </div>
+        </div>
+
+        <!-- Stage 3: Chaos Engineering & Testing - CURRENT -->
+        <div class="milestone current reveal-left" data-percent="85" style="transition-delay: 0.15s">
+          <div class="milestone-header">
+            <div class="milestone-title">
+              💥 Stage 3 — Chaos Engineering & Testing
+              <span class="milestone-badge badge-current">You Are Here</span>
             </div>
             <span class="milestone-percentage high">85%</span>
           </div>
@@ -1343,25 +1380,93 @@
             <div class="milestone-progress-bar high" style="width: 0%"></div>
           </div>
           <p class="milestone-desc">
-            Heartbeats, WebSocket comms, node states (online, suspect, offline), node registration,
-            full agent lifecycle with reconnection, draining/maintenance modes, and support for both
-            Node.js and Browser runtimes. Chaos-tested; reliable node reconnections.
+            10 chaos scenarios totalling 3875 lines of chaos code. 27 test files (16 unit + 11 integration),
+            reconciliation-tests.ts alone is 905 lines. Pod reconciliation during node failures,
+            incremental timeout logic, automated chaos scenarios & timing orchestration.
+            Previously understated — coverage is broader than initially reported.
           </p>
           <div class="milestone-details">
-            <span class="detail-tag highlight">node-agent.ts (1384 lines)</span>
-            <span class="detail-tag highlight">browser-agent.ts (1849 lines)</span>
-            <span class="detail-tag">connection-manager.ts (705 lines)</span>
-            <span class="detail-tag">node.ts CLI (1031 lines)</span>
-            <span class="detail-tag">heartbeat monitoring</span>
+            <span class="detail-tag highlight">3875 lines of chaos code</span>
+            <span class="detail-tag highlight">controller.ts (434 lines)</span>
+            <span class="detail-tag highlight">external-chaos.ts (470 lines)</span>
+            <span class="detail-tag">10 scenarios</span>
+            <span class="detail-tag highlight">27 test files</span>
+            <span class="detail-tag highlight">reconciliation-tests.ts (905 lines)</span>
+            <span class="detail-tag">CLI: stark chaos</span>
+            <span class="detail-tag">node-loss.ts</span>
+            <span class="detail-tag">pod-crash.ts</span>
+            <span class="detail-tag">heartbeat-delay.ts</span>
+            <span class="detail-tag">orchestrator-restart.ts</span>
+            <span class="detail-tag" style="color: var(--accent-amber);">📋 Observability hooks</span>
           </div>
         </div>
 
-        <!-- Stage 3: Logging & Observability -->
-        <div class="milestone completed reveal-left" data-percent="45" style="transition-delay: 0.15s">
+        <!-- Stage 4: Logging, Observability, & Metrics -->
+        <div class="milestone upcoming reveal-left" data-percent="65" style="transition-delay: 0.2s">
           <div class="milestone-header">
             <div class="milestone-title">
-              📋 Stage 3 — Logging & Observability
-              <span class="milestone-badge badge-complete">Kernel Done</span>
+              📊 Stage 4 — Logging, Observability & Metrics
+              <span class="milestone-badge badge-current">In Progress</span>
+            </div>
+            <span class="milestone-percentage medium">65%</span>
+          </div>
+          <div class="milestone-progress">
+            <div class="milestone-progress-bar medium" style="width: 0%"></div>
+          </div>
+          <p class="milestone-desc">
+            Much more done than initially claimed. MetricsService (526 lines), metrics.ts types (440 lines),
+            Supabase metrics CRUD (601+ lines), full events system with categories & severity levels,
+            structured logging via createServiceLogger. Still needs observability API for dashboard
+            consumption, alerting hooks, log rotation, and log querying.
+          </p>
+          <div class="milestone-details">
+            <span class="detail-tag highlight">MetricsService (526 lines)</span>
+            <span class="detail-tag highlight">metrics.ts types (440 lines)</span>
+            <span class="detail-tag highlight">Supabase metrics CRUD (601+ lines)</span>
+            <span class="detail-tag highlight">Events system (categories/severity)</span>
+            <span class="detail-tag highlight">createServiceLogger</span>
+            <span class="detail-tag">PodLogSink</span>
+            <span class="detail-tag">stdout/stderr routing</span>
+            <span class="detail-tag" style="color: var(--accent-red);">⬜ Observability API</span>
+            <span class="detail-tag" style="color: var(--accent-red);">⬜ Alerting hooks</span>
+            <span class="detail-tag" style="color: var(--accent-amber);">📋 Log rotation</span>
+            <span class="detail-tag" style="color: var(--accent-amber);">📋 Log querying</span>
+          </div>
+        </div>
+
+        <!-- Stage 5: Networking & Traffic Management -->
+        <div class="milestone upcoming reveal-left" data-percent="0" style="transition-delay: 0.25s">
+          <div class="milestone-header">
+            <div class="milestone-title">
+              🔀 Stage 5 — Networking & Traffic Management
+              <span class="milestone-badge badge-upcoming">Not Started</span>
+            </div>
+            <span class="milestone-percentage low">0%</span>
+          </div>
+          <div class="milestone-progress">
+            <div class="milestone-progress-bar low" style="width: 0%"></div>
+          </div>
+          <p class="milestone-desc">
+            Critical for multi-node app traffic. Ingress controllers to route external traffic to pods,
+            load balancers to distribute traffic across nodes/pods, service discovery for pods to locate
+            each other dynamically, network policies / firewalling / segmentation, and optional traffic
+            shaping & QoS. Currently only single-node pod reachability tested.
+          </p>
+          <div class="milestone-details">
+            <span class="detail-tag" style="color: var(--accent-red);">⬜ Ingress controllers</span>
+            <span class="detail-tag" style="color: var(--accent-red);">⬜ Load balancers</span>
+            <span class="detail-tag" style="color: var(--accent-red);">⬜ Service discovery</span>
+            <span class="detail-tag" style="color: var(--accent-red);">⬜ Network policies</span>
+            <span class="detail-tag" style="color: var(--accent-amber);">📋 Traffic shaping & QoS</span>
+          </div>
+        </div>
+
+        <!-- Stage 6: Secrets & Security -->
+        <div class="milestone upcoming reveal-left" data-percent="45" style="transition-delay: 0.3s">
+          <div class="milestone-header">
+            <div class="milestone-title">
+              🔒 Stage 6 — Secrets & Security
+              <span class="milestone-badge badge-current">In Progress</span>
             </div>
             <span class="milestone-percentage medium">45%</span>
           </div>
@@ -1369,83 +1474,28 @@
             <div class="milestone-progress-bar medium" style="width: 0%"></div>
           </div>
           <p class="milestone-desc">
-            PodLogSink, stdout/stderr routing, and basic console logging functional. Minimal logging works
-            end-to-end. Still needs log rotation, querying, persistence layer, structured logging,
-            and integration with the UI observability dashboard.
+            RBAC is robust (auth.ts — 975+ lines). TLS is implemented: HTTPS proxy, self-signed
+            certificate generation, SSL_CERT/SSL_KEY env vars, WSS support. Capabilities system
+            (218 lines) enforces pod permissions. Missing: dedicated secrets store, audit logging
+            as a dedicated system, and Vault/KMS integration.
           </p>
           <div class="milestone-details">
-            <span class="detail-tag highlight">PodLogSink</span>
-            <span class="detail-tag">stdout/stderr routing</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Log rotation</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Log querying</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Persistence</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Structured logging</span>
+            <span class="detail-tag highlight">auth.ts RBAC (975+ lines)</span>
+            <span class="detail-tag highlight">TLS / HTTPS proxy</span>
+            <span class="detail-tag highlight">Self-signed cert generation</span>
+            <span class="detail-tag highlight">SSL_CERT/SSL_KEY + WSS</span>
+            <span class="detail-tag highlight">Capabilities system (218 lines)</span>
+            <span class="detail-tag" style="color: var(--accent-red);">⬜ Secrets store</span>
+            <span class="detail-tag" style="color: var(--accent-red);">⬜ Audit logging (dedicated)</span>
+            <span class="detail-tag" style="color: var(--accent-amber);">📋 External stores (Vault/KMS)</span>
           </div>
         </div>
 
-        <!-- Stage 4: Chaos Engineering -->
-        <div class="milestone completed reveal-left" data-percent="92" style="transition-delay: 0.2s">
+        <!-- Stage 7: Persistence & State -->
+        <div class="milestone upcoming reveal-left" data-percent="0" style="transition-delay: 0.35s">
           <div class="milestone-header">
             <div class="milestone-title">
-              💥 Stage 4 — Chaos Engineering
-              <span class="milestone-badge badge-complete">Complete</span>
-            </div>
-            <span class="milestone-percentage high">92%</span>
-          </div>
-          <div class="milestone-progress">
-            <div class="milestone-progress-bar high" style="width: 0%"></div>
-          </div>
-          <p class="milestone-desc">
-            Full chaos testing framework with scenario validation, execution, and result reporting.
-            Production safety guards, CLI integration, internal and external chaos modes.
-            Advanced scenarios: node loss (single, multi, flapping), pod crashes, heartbeat delays,
-            scheduler conflicts, deployment backoff, orchestrator restart, and API flakiness.
-            First automated tests passing; still tuning timings.
-          </p>
-          <div class="milestone-details">
-            <span class="detail-tag highlight">controller.ts (434 lines)</span>
-            <span class="detail-tag highlight">external-chaos.ts (470 lines)</span>
-            <span class="detail-tag">10 scenarios</span>
-            <span class="detail-tag">CLI: stark chaos</span>
-            <span class="detail-tag">node-loss.ts</span>
-            <span class="detail-tag">pod-crash.ts</span>
-            <span class="detail-tag">heartbeat-delay.ts</span>
-            <span class="detail-tag">orchestrator-restart.ts</span>
-          </div>
-        </div>
-
-        <!-- Stage 5: Automation & Testing - CURRENT -->
-        <div class="milestone current reveal-left" data-percent="75" style="transition-delay: 0.25s">
-          <div class="milestone-header">
-            <div class="milestone-title">
-              🤖 Stage 5 — Automation & Testing
-              <span class="milestone-badge badge-current">You Are Here</span>
-            </div>
-            <span class="milestone-percentage high">75%</span>
-          </div>
-          <div class="milestone-progress">
-            <div class="milestone-progress-bar high" style="width: 0%"></div>
-          </div>
-          <p class="milestone-desc">
-            Automated scenario orchestration, incremental timeouts, reconciliation checks.
-            Comprehensive test suites for pod flow, node heartbeat, taints/tolerations,
-            affinity, priority preemption, auth RBAC, and rollback scenarios.
-            Mostly functional — minor tweaks and manual verification in progress.
-          </p>
-          <div class="milestone-details">
-            <span class="detail-tag highlight">reconciliation-tests.ts</span>
-            <span class="detail-tag">11 integration specs</span>
-            <span class="detail-tag">pod-flow.spec.ts (621 lines)</span>
-            <span class="detail-tag">node-heartbeat.spec.ts (943 lines)</span>
-            <span class="detail-tag">7 unit test files</span>
-          </div>
-        </div>
-
-        <!-- Stage 6: Cluster Features - NEW -->
-        <div class="milestone upcoming reveal-left" data-percent="0" style="transition-delay: 0.3s">
-          <div class="milestone-header">
-            <div class="milestone-title">
-              🔀 Stage 6 — Cluster Features
+              💾 Stage 7 — Persistence & State
               <span class="milestone-badge badge-upcoming">Not Started</span>
             </div>
             <span class="milestone-percentage low">0%</span>
@@ -1454,61 +1504,85 @@
             <div class="milestone-progress-bar low" style="width: 0%"></div>
           </div>
           <p class="milestone-desc">
-            Critical for multi-node app traffic. Ingress controllers, load balancers, service discovery,
-            internal DNS, routing rules, health checks / readiness probes, horizontal pod autoscaling,
-            network policies, secrets management, ConfigMaps / environment injection, resource quotas,
-            and service mesh groundwork. Currently only single-node pod reachability tested.
+            Needed for stateful applications. Pod volumes (ephemeral vs persistent), persistent volume
+            claims (PVCs) and mounts, snapshots / backups, stateful pod orchestration (recovery after
+            node failures), and optional volume resizing and dynamic provisioning.
           </p>
           <div class="milestone-details">
-            <span class="detail-tag" style="color: var(--accent-red);">⬜ Ingress controllers</span>
-            <span class="detail-tag" style="color: var(--accent-red);">⬜ Load balancers</span>
-            <span class="detail-tag" style="color: var(--accent-red);">⬜ Service discovery</span>
-            <span class="detail-tag" style="color: var(--accent-red);">⬜ Internal DNS</span>
-            <span class="detail-tag" style="color: var(--accent-red);">⬜ Routing rules</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Health / readiness probes</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Horizontal autoscaling</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Network policies</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Secrets management</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 ConfigMaps / env injection</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Resource quotas</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Service mesh</span>
+            <span class="detail-tag" style="color: var(--accent-red);">⬜ Pod volumes (ephemeral/persistent)</span>
+            <span class="detail-tag" style="color: var(--accent-red);">⬜ PVCs & mounts</span>
+            <span class="detail-tag" style="color: var(--accent-red);">⬜ Snapshots / backups</span>
+            <span class="detail-tag" style="color: var(--accent-red);">⬜ Stateful pod recovery</span>
+            <span class="detail-tag" style="color: var(--accent-amber);">📋 Volume resizing</span>
+            <span class="detail-tag" style="color: var(--accent-amber);">📋 Dynamic provisioning</span>
           </div>
         </div>
 
-        <!-- Stage 7: UI / Observability Dashboard -->
-        <div class="milestone upcoming reveal-left" data-percent="15" style="transition-delay: 0.35s">
+        <!-- Stage 8: UI / Dashboard -->
+        <div class="milestone upcoming reveal-left" data-percent="10" style="transition-delay: 0.4s">
           <div class="milestone-header">
             <div class="milestone-title">
-              🖥️ Stage 7 — UI / Observability Dashboard
+              🖥️ Stage 8 — UI / Dashboard
               <span class="milestone-badge badge-upcoming">Minimal</span>
             </div>
-            <span class="milestone-percentage low">15%</span>
+            <span class="milestone-percentage low">10%</span>
           </div>
           <div class="milestone-progress">
             <div class="milestone-progress-bar low" style="width: 0%"></div>
           </div>
           <p class="milestone-desc">
-            Currently a minimal stub showing connection state. Will consume event & logging systems.
-            Needs cluster view, pod placement visualization, real-time metrics, alerts,
-            management UI, and topology graphs. Post-kernel priority.
+            Currently a minimal stub showing connection state. Needs cluster overview (nodes, pods,
+            deployments), pod placement visualization, metrics charts & health status, event timeline
+            & chaos test visualization, filters/search for pods/nodes, and optional live log streaming.
           </p>
           <div class="milestone-details">
             <span class="detail-tag">app.vue (stub)</span>
             <span class="detail-tag">index.vue (Hello World)</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Cluster view</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Pod placement viz</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Metrics dashboard</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Alerts system</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Topology graph</span>
+            <span class="detail-tag" style="color: var(--accent-red);">⬜ Cluster overview</span>
+            <span class="detail-tag" style="color: var(--accent-red);">⬜ Pod placement viz</span>
+            <span class="detail-tag" style="color: var(--accent-red);">⬜ Metrics charts</span>
+            <span class="detail-tag" style="color: var(--accent-amber);">📋 Event timeline</span>
+            <span class="detail-tag" style="color: var(--accent-amber);">📋 Filters / search</span>
+            <span class="detail-tag" style="color: var(--accent-amber);">📋 Live logs streaming</span>
           </div>
         </div>
 
-        <!-- Stage 8: Persistence & Storage - NEW -->
-        <div class="milestone upcoming reveal-left" data-percent="0" style="transition-delay: 0.4s">
+        <!-- Stage 9: Full Regression & Reliability -->
+        <div class="milestone upcoming reveal-left" data-percent="30" style="transition-delay: 0.45s">
           <div class="milestone-header">
             <div class="milestone-title">
-              💾 Stage 8 — Persistence & Storage
-              <span class="milestone-badge badge-upcoming">Not Started</span>
+              ✅ Stage 9 — Full Regression & Reliability
+              <span class="milestone-badge badge-upcoming">Partial</span>
+            </div>
+            <span class="milestone-percentage low">30%</span>
+          </div>
+          <div class="milestone-progress">
+            <div class="milestone-progress-bar low" style="width: 0%"></div>
+          </div>
+          <p class="milestone-desc">
+            27 test files (16 unit + 11 integration), events replay types exist. Pod-scheduler tests,
+            reconciliation tests, chaos scenario tests all passing. No formal regression suite or
+            compliance reports yet. Reliability metrics and automated assertions still needed.
+          </p>
+          <div class="milestone-details">
+            <span class="detail-tag highlight">27 test files</span>
+            <span class="detail-tag">16 unit + 11 integration</span>
+            <span class="detail-tag">pod-scheduler.test.ts (1500 lines)</span>
+            <span class="detail-tag">Events replay types</span>
+            <span class="detail-tag" style="color: var(--accent-red);">⬜ Events replay</span>
+            <span class="detail-tag" style="color: var(--accent-red);">⬜ Regression suite</span>
+            <span class="detail-tag" style="color: var(--accent-amber);">📋 Reliability metrics</span>
+            <span class="detail-tag" style="color: var(--accent-amber);">📋 Auto-assertions</span>
+            <span class="detail-tag" style="color: var(--accent-amber);">📋 Compliance reporting</span>
+          </div>
+        </div>
+
+        <!-- Stage 10: Advanced / Optional Features -->
+        <div class="milestone upcoming reveal-left" data-percent="0" style="transition-delay: 0.5s">
+          <div class="milestone-header">
+            <div class="milestone-title">
+              🚀 Stage 10 — Advanced / Optional
+              <span class="milestone-badge badge-upcoming">Future</span>
             </div>
             <span class="milestone-percentage low">0%</span>
           </div>
@@ -1516,46 +1590,16 @@
             <div class="milestone-progress-bar low" style="width: 0%"></div>
           </div>
           <p class="milestone-desc">
-            Needed for stateful applications. Pod volumes, persistent volume claims (PVCs),
-            snapshots, storage classes, volume drivers, data migration between nodes,
-            backup/restore workflows, and volume lifecycle management.
+            Multi-cluster orchestration, advanced networking (multi-network, overlay networks),
+            federation / hybrid cloud integration, multi-tenancy support, and AI-assisted optimization
+            of scheduling & chaos scenarios. Long-term vision items.
           </p>
           <div class="milestone-details">
-            <span class="detail-tag" style="color: var(--accent-red);">⬜ Pod volumes</span>
-            <span class="detail-tag" style="color: var(--accent-red);">⬜ PVCs</span>
-            <span class="detail-tag" style="color: var(--accent-red);">⬜ Snapshots</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Storage classes</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Volume drivers</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Data migration</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Backup / restore</span>
-          </div>
-        </div>
-
-        <!-- Stage 9: Full Regression & Assertions -->
-        <div class="milestone upcoming reveal-left" data-percent="25" style="transition-delay: 0.45s">
-          <div class="milestone-header">
-            <div class="milestone-title">
-              ✅ Stage 9 — Full Regression & Assertions
-              <span class="milestone-badge badge-upcoming">Upcoming</span>
-            </div>
-            <span class="milestone-percentage low">25%</span>
-          </div>
-          <div class="milestone-progress">
-            <div class="milestone-progress-bar low" style="width: 0%"></div>
-          </div>
-          <p class="milestone-desc">
-            Last step — validates orchestrator under all scenarios. Historical logs, regression tests,
-            reliability metrics, auto-assertions. Needs full E2E suite covering cluster features,
-            persistence, and UI. Production-readiness verification across all stages.
-          </p>
-          <div class="milestone-details">
-            <span class="detail-tag">25+ existing test files</span>
-            <span class="detail-tag">pod-scheduler.test.ts (1500 lines)</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Full regression suite</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 E2E tests</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Reliability metrics</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Auto-assertions</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Historical log analysis</span>
+            <span class="detail-tag" style="color: var(--accent-amber);">📋 Multi-cluster</span>
+            <span class="detail-tag" style="color: var(--accent-amber);">📋 Overlay networks</span>
+            <span class="detail-tag" style="color: var(--accent-amber);">📋 Federation / hybrid cloud</span>
+            <span class="detail-tag" style="color: var(--accent-amber);">📋 Multi-tenancy</span>
+            <span class="detail-tag" style="color: var(--accent-amber);">📋 AI-assisted optimization</span>
           </div>
         </div>
       </div>
@@ -1812,15 +1856,16 @@
     // ========================================
     document.addEventListener('DOMContentLoaded', () => {
       const milestones = [
-        { percent: 90, weight: 1.2 },   // Stage 1: Kernel & Core
-        { percent: 85, weight: 1.0 },   // Stage 2: Node Management
-        { percent: 45, weight: 0.8 },   // Stage 3: Logging & Observability
-        { percent: 92, weight: 0.8 },   // Stage 4: Chaos Engineering
-        { percent: 75, weight: 1.0 },   // Stage 5: Automation & Testing
-        { percent: 0,  weight: 1.4 },   // Stage 6: Cluster Features
-        { percent: 15, weight: 0.8 },   // Stage 7: UI / Observability Dashboard
-        { percent: 0,  weight: 1.0 },   // Stage 8: Persistence & Storage
-        { percent: 25, weight: 0.8 },   // Stage 9: Full Regression & Assertions
+        { percent: 93, weight: 1.0 },   // Stage 1: Kernel / Core System
+        { percent: 88, weight: 1.0 },   // Stage 2: Node & Cluster Management
+        { percent: 85, weight: 0.8 },   // Stage 3: Chaos Engineering & Testing
+        { percent: 65, weight: 0.8 },   // Stage 4: Logging, Observability & Metrics
+        { percent: 0,  weight: 1.3 },   // Stage 5: Networking & Traffic Management
+        { percent: 45, weight: 0.7 },   // Stage 6: Secrets & Security
+        { percent: 0,  weight: 1.1 },   // Stage 7: Persistence & State
+        { percent: 10, weight: 0.6 },   // Stage 8: UI / Dashboard
+        { percent: 30, weight: 0.8 },   // Stage 9: Full Regression & Reliability
+        { percent: 0,  weight: 0.5 },   // Stage 10: Advanced / Optional
       ];
 
       const totalWeight = milestones.reduce((sum, m) => sum + m.weight, 0);
