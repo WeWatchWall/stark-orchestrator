@@ -134,7 +134,7 @@
 - [x] T066 [US1] Unit tests for pack-registry service in `packages/core/tests/unit/pack-registry.test.ts`
 - [x] T067 [US1] Unit tests for pod-scheduler service in `packages/core/tests/unit/pod-scheduler.test.ts`
 
-**Checkpoint**: Pack registration and pod deployment works end-to-end
+**Checkpoint**: Pack registration and pod service works end-to-end
 
 ---
 
@@ -196,7 +196,7 @@
 
 ---
 
-## Phase 6: Runtime Adapters (Required for Deployment Execution)
+## Phase 6: Runtime Adapters (Required for Service Execution)
 
 **Goal**: Enable pack execution on Node.js and browser runtimes
 
@@ -246,7 +246,7 @@
 
 ---
 
-## Phase 8: User Story 5 - Runtime-Targeted Pack Deployment (Priority: P2)
+## Phase 8: User Story 5 - Runtime-Targeted Pack Service (Priority: P2)
 
 **Goal**: Enforce runtime compatibility between packs and nodes
 

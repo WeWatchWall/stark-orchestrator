@@ -9,7 +9,7 @@ export { createAuthCommand } from './auth.js';
 export { createPackCommand } from './pack.js';
 export { createNodeCommand } from './node.js';
 export { createPodCommand } from './pod.js';
-export { createDeploymentCommand } from './deployment.js';
+export { createServiceCommand } from './service.js';
 export { createNamespaceCommand } from './namespace.js';
 export { createServerConfigCommand } from './server-config.js';
 export { createChaosCommand } from './chaos.js';

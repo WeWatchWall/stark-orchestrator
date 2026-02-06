@@ -47,7 +47,7 @@ export type PodTerminationReason =
   | 'user_stopped'        // Manual stop by user/operator
   | 'rolling_update'      // Replaced during rolling update
   | 'scaled_down'         // Removed due to scale down
-  | 'deployment_deleted'  // Parent deployment was deleted
+  | 'service_deleted'  // Parent service was deleted
   // Lifecycle reasons
   | 'completed'           // Normal completion (for job-like pods)
   | 'deadline_exceeded'   // Execution deadline exceeded
@@ -76,7 +76,7 @@ export const OPERATOR_TERMINATION_REASONS: readonly PodTerminationReason[] = [
   'user_stopped',
   'rolling_update',
   'scaled_down',
-  'deployment_deleted',
+  'service_deleted',
 ] as const;
 
 /**
@@ -107,7 +107,7 @@ export const ALL_TERMINATION_REASONS: readonly PodTerminationReason[] = [
   'node_lost', 'node_restart', 'node_unhealthy', 'node_draining', 'node_maintenance',
   'oom_killed', 'evicted_resources', 'preempted', 'quota_exceeded',
   'error', 'init_error', 'config_error', 'pack_load_error',
-  'user_stopped', 'rolling_update', 'scaled_down', 'deployment_deleted',
+  'user_stopped', 'rolling_update', 'scaled_down', 'service_deleted',
   'completed', 'deadline_exceeded', 'unknown',
 ] as const;
 
@@ -136,7 +136,7 @@ export interface PodSchedulingConfig {
 }
 
 /**
- * Pod entity - a pack deployment to a node
+ * Pod entity - a pack service to a node
  */
 export interface Pod {
   /** Unique identifier (UUID) */

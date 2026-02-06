@@ -1,31 +1,31 @@
 /**
- * Deployment REST API Endpoints
+ * Service REST API Endpoints
  *
- * Provides REST endpoints for deployment creation, management, and status retrieval.
- * @module @stark-o/server/api/deployments
+ * Provides REST endpoints for service creation, management, and status retrieval.
+ * @module @stark-o/server/api/services
  */
 
 import { Router, Request, Response } from 'express';
-import type { DeploymentStatus, CreateDeploymentInput } from '@stark-o/shared';
-import { validateCreateDeploymentInput, validateUpdateDeploymentInput, createServiceLogger, generateCorrelationId } from '@stark-o/shared';
-import { getDeploymentQueriesAdmin, getDeploymentQueries } from '../supabase/deployments.js';
+import type { ServiceStatus, CreateServiceInput } from '@stark-o/shared';
+import { validateCreateServiceInput, validateUpdateServiceInput, createServiceLogger, generateCorrelationId } from '@stark-o/shared';
+import { getServiceQueriesAdmin, getServiceQueries } from '../supabase/services.js';
 import { getPackQueries } from '../supabase/packs.js';
 import {
   authMiddleware,
   abilityMiddleware,
-  canCreatePod, // Reuse pod permissions for deployments
+  canCreatePod, // Reuse pod permissions for services
   canReadPod,
   canDeletePod,
   type AuthenticatedRequest,
 } from '../middleware/index.js';
 
 /**
- * Logger for deployment API operations
+ * Logger for service API operations
  */
 const logger = createServiceLogger({
   level: 'debug',
   service: 'stark-orchestrator',
-}, { component: 'api-deployments' });
+}, { component: 'api-services' });
 
 /**
  * UUID v4 validation pattern
@@ -78,9 +78,9 @@ function sendError(
 }
 
 /**
- * Create deployment handler
+ * Create service handler
  */
-async function createDeployment(req: Request, res: Response): Promise<void> {
+async function createService(req: Request, res: Response): Promise<void> {
   const correlationId = generateCorrelationId();
   const requestLogger = logger;
 
@@ -92,15 +92,15 @@ async function createDeployment(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  requestLogger.info('Creating deployment', { correlationId, userId });
+  requestLogger.info('Creating service', { correlationId, userId });
 
   try {
-    const input = req.body as CreateDeploymentInput;
+    const input = req.body as CreateServiceInput;
 
     // Validate input
-    const validation = validateCreateDeploymentInput(input);
+    const validation = validateCreateServiceInput(input);
     if (!validation.valid) {
-      sendError(res, 'VALIDATION_ERROR', 'Invalid deployment input', 400, {
+      sendError(res, 'VALIDATION_ERROR', 'Invalid service input', 400, {
         errors: validation.errors,
       });
       return;
@@ -133,9 +133,9 @@ async function createDeployment(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    // Create deployment
-    const deploymentQueries = getDeploymentQueriesAdmin();
-    const result = await deploymentQueries.createDeployment(
+    // Create service
+    const serviceQueries = getServiceQueriesAdmin();
+    const result = await serviceQueries.createService(
       input,
       packId,
       packVersion ?? 'latest',
@@ -145,113 +145,113 @@ async function createDeployment(req: Request, res: Response): Promise<void> {
     if (result.error) {
       if (result.error.code === '23505') {
         // Unique constraint violation
-        sendError(res, 'CONFLICT', `Deployment '${input.name}' already exists in namespace '${input.namespace ?? 'default'}'`, 409);
+        sendError(res, 'CONFLICT', `Service '${input.name}' already exists in namespace '${input.namespace ?? 'default'}'`, 409);
         return;
       }
-      requestLogger.error('Failed to create deployment', undefined, {
+      requestLogger.error('Failed to create service', undefined, {
         error: result.error,
         correlationId,
       });
-      sendError(res, 'INTERNAL_ERROR', 'Failed to create deployment', 500);
+      sendError(res, 'INTERNAL_ERROR', 'Failed to create service', 500);
       return;
     }
 
-    requestLogger.info('Deployment created', {
-      deploymentId: result.data?.id,
+    requestLogger.info('Service created', {
+      serviceId: result.data?.id,
       name: input.name,
       replicas: input.replicas ?? 1,
       correlationId,
     });
 
-    sendSuccess(res, { deployment: result.data }, 201);
+    sendSuccess(res, { service: result.data }, 201);
   } catch (error) {
-    requestLogger.error('Unexpected error creating deployment', error instanceof Error ? error : undefined);
+    requestLogger.error('Unexpected error creating service', error instanceof Error ? error : undefined);
     sendError(res, 'INTERNAL_ERROR', 'Internal server error', 500);
   }
 }
 
 /**
- * List deployments handler
+ * List services handler
  */
-async function listDeployments(req: Request, res: Response): Promise<void> {
+async function listServices(req: Request, res: Response): Promise<void> {
   const correlationId = generateCorrelationId();
   const requestLogger = logger;
 
   try {
     const { namespace, status, packId, page, pageSize } = req.query;
 
-    const deploymentQueries = getDeploymentQueries();
-    const result = await deploymentQueries.listDeployments({
+    const serviceQueries = getServiceQueries();
+    const result = await serviceQueries.listServices({
       namespace: namespace as string | undefined,
-      status: status as DeploymentStatus | undefined,
+      status: status as ServiceStatus | undefined,
       packId: packId as string | undefined,
       page: page ? parseInt(page as string, 10) : undefined,
       pageSize: pageSize ? parseInt(pageSize as string, 10) : undefined,
     });
 
     if (result.error) {
-      requestLogger.error('Failed to list deployments', undefined, {
+      requestLogger.error('Failed to list services', undefined, {
         error: result.error,
         correlationId,
       });
-      sendError(res, 'INTERNAL_ERROR', 'Failed to list deployments', 500);
+      sendError(res, 'INTERNAL_ERROR', 'Failed to list services', 500);
       return;
     }
 
-    sendSuccess(res, { deployments: result.data });
+    sendSuccess(res, { services: result.data });
   } catch (error) {
-    requestLogger.error('Unexpected error listing deployments', error instanceof Error ? error : undefined);
+    requestLogger.error('Unexpected error listing services', error instanceof Error ? error : undefined);
     sendError(res, 'INTERNAL_ERROR', 'Internal server error', 500);
   }
 }
 
 /**
- * Get deployment by ID handler
+ * Get service by ID handler
  */
-async function getDeploymentById(req: Request, res: Response): Promise<void> {
+async function getServiceById(req: Request, res: Response): Promise<void> {
   const correlationId = generateCorrelationId();
   const requestLogger = logger;
 
   const { id } = req.params;
 
   if (!id || !UUID_PATTERN.test(id)) {
-    sendError(res, 'INVALID_ID', 'Invalid deployment ID', 400);
+    sendError(res, 'INVALID_ID', 'Invalid service ID', 400);
     return;
   }
 
   try {
-    const deploymentQueries = getDeploymentQueries();
-    const result = await deploymentQueries.getDeploymentById(id);
+    const serviceQueries = getServiceQueries();
+    const result = await serviceQueries.getServiceById(id);
 
     if (result.error) {
       if (result.error.code === 'PGRST116') {
-        sendError(res, 'NOT_FOUND', 'Deployment not found', 404);
+        sendError(res, 'NOT_FOUND', 'Service not found', 404);
         return;
       }
-      requestLogger.error('Failed to get deployment', undefined, {
+      requestLogger.error('Failed to get service', undefined, {
         error: result.error,
         correlationId,
       });
-      sendError(res, 'INTERNAL_ERROR', 'Failed to get deployment', 500);
+      sendError(res, 'INTERNAL_ERROR', 'Failed to get service', 500);
       return;
     }
 
     if (!result.data) {
-      sendError(res, 'NOT_FOUND', 'Deployment not found', 404);
+      sendError(res, 'NOT_FOUND', 'Service not found', 404);
       return;
     }
 
-    sendSuccess(res, { deployment: result.data });
+    sendSuccess(res, { service: result.data });
   } catch (error) {
-    requestLogger.error('Unexpected error getting deployment', error instanceof Error ? error : undefined);
+    requestLogger.error('Unexpected error getting service', error instanceof Error ? error : undefined);
     sendError(res, 'INTERNAL_ERROR', 'Internal server error', 500);
   }
 }
 
 /**
- * Get deployment by name handler
+ * Get service by name handler
  */
-async function getDeploymentByName(req: Request, res: Response): Promise<void> {
+async function getServiceByName(req: Request, res: Response): Promise<void> {
   const correlationId = generateCorrelationId();
   const requestLogger = logger;
 
@@ -259,43 +259,43 @@ async function getDeploymentByName(req: Request, res: Response): Promise<void> {
   const namespace = (req.query.namespace as string) ?? 'default';
 
   if (!name) {
-    sendError(res, 'INVALID_NAME', 'Deployment name is required', 400);
+    sendError(res, 'INVALID_NAME', 'Service name is required', 400);
     return;
   }
 
   try {
-    const deploymentQueries = getDeploymentQueries();
-    const result = await deploymentQueries.getDeploymentByName(name, namespace);
+    const serviceQueries = getServiceQueries();
+    const result = await serviceQueries.getServiceByName(name, namespace);
 
     if (result.error) {
       if (result.error.code === 'PGRST116') {
-        sendError(res, 'NOT_FOUND', 'Deployment not found', 404);
+        sendError(res, 'NOT_FOUND', 'Service not found', 404);
         return;
       }
-      requestLogger.error('Failed to get deployment', undefined, {
+      requestLogger.error('Failed to get service', undefined, {
         error: result.error,
         correlationId,
       });
-      sendError(res, 'INTERNAL_ERROR', 'Failed to get deployment', 500);
+      sendError(res, 'INTERNAL_ERROR', 'Failed to get service', 500);
       return;
     }
 
     if (!result.data) {
-      sendError(res, 'NOT_FOUND', 'Deployment not found', 404);
+      sendError(res, 'NOT_FOUND', 'Service not found', 404);
       return;
     }
 
-    sendSuccess(res, { deployment: result.data });
+    sendSuccess(res, { service: result.data });
   } catch (error) {
-    requestLogger.error('Unexpected error getting deployment', error instanceof Error ? error : undefined);
+    requestLogger.error('Unexpected error getting service', error instanceof Error ? error : undefined);
     sendError(res, 'INTERNAL_ERROR', 'Internal server error', 500);
   }
 }
 
 /**
- * Update deployment handler
+ * Update service handler
  */
-async function updateDeployment(req: Request, res: Response): Promise<void> {
+async function updateService(req: Request, res: Response): Promise<void> {
   const correlationId = generateCorrelationId();
   const requestLogger = logger;
 
@@ -310,7 +310,7 @@ async function updateDeployment(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
 
   if (!id || !UUID_PATTERN.test(id)) {
-    sendError(res, 'INVALID_ID', 'Invalid deployment ID', 400);
+    sendError(res, 'INVALID_ID', 'Invalid service ID', 400);
     return;
   }
 
@@ -318,7 +318,7 @@ async function updateDeployment(req: Request, res: Response): Promise<void> {
     const input = req.body;
 
     // Validate input
-    const validation = validateUpdateDeploymentInput(input);
+    const validation = validateUpdateServiceInput(input);
     if (!validation.valid) {
       sendError(res, 'VALIDATION_ERROR', 'Invalid update input', 400, {
         errors: validation.errors,
@@ -326,38 +326,38 @@ async function updateDeployment(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const deploymentQueries = getDeploymentQueriesAdmin();
-    const result = await deploymentQueries.updateDeployment(id, input);
+    const serviceQueries = getServiceQueriesAdmin();
+    const result = await serviceQueries.updateService(id, input);
 
     if (result.error) {
       if (result.error.code === 'PGRST116') {
-        sendError(res, 'NOT_FOUND', 'Deployment not found', 404);
+        sendError(res, 'NOT_FOUND', 'Service not found', 404);
         return;
       }
-      requestLogger.error('Failed to update deployment', undefined, {
+      requestLogger.error('Failed to update service', undefined, {
         error: result.error,
         correlationId,
       });
-      sendError(res, 'INTERNAL_ERROR', 'Failed to update deployment', 500);
+      sendError(res, 'INTERNAL_ERROR', 'Failed to update service', 500);
       return;
     }
 
-    requestLogger.info('Deployment updated', {
-      deploymentId: id,
+    requestLogger.info('Service updated', {
+      serviceId: id,
       correlationId,
     });
 
-    sendSuccess(res, { deployment: result.data });
+    sendSuccess(res, { service: result.data });
   } catch (error) {
-    requestLogger.error('Unexpected error updating deployment', error instanceof Error ? error : undefined);
+    requestLogger.error('Unexpected error updating service', error instanceof Error ? error : undefined);
     sendError(res, 'INTERNAL_ERROR', 'Internal server error', 500);
   }
 }
 
 /**
- * Scale deployment handler
+ * Scale service handler
  */
-async function scaleDeployment(req: Request, res: Response): Promise<void> {
+async function scaleService(req: Request, res: Response): Promise<void> {
   const correlationId = generateCorrelationId();
   const requestLogger = logger;
 
@@ -373,7 +373,7 @@ async function scaleDeployment(req: Request, res: Response): Promise<void> {
   const { replicas } = req.body;
 
   if (!id || !UUID_PATTERN.test(id)) {
-    sendError(res, 'INVALID_ID', 'Invalid deployment ID', 400);
+    sendError(res, 'INVALID_ID', 'Invalid service ID', 400);
     return;
   }
 
@@ -383,39 +383,39 @@ async function scaleDeployment(req: Request, res: Response): Promise<void> {
   }
 
   try {
-    const deploymentQueries = getDeploymentQueriesAdmin();
-    const result = await deploymentQueries.updateDeployment(id, { replicas });
+    const serviceQueries = getServiceQueriesAdmin();
+    const result = await serviceQueries.updateService(id, { replicas });
 
     if (result.error) {
       if (result.error.code === 'PGRST116') {
-        sendError(res, 'NOT_FOUND', 'Deployment not found', 404);
+        sendError(res, 'NOT_FOUND', 'Service not found', 404);
         return;
       }
-      requestLogger.error('Failed to scale deployment', undefined, {
+      requestLogger.error('Failed to scale service', undefined, {
         error: result.error,
         correlationId,
       });
-      sendError(res, 'INTERNAL_ERROR', 'Failed to scale deployment', 500);
+      sendError(res, 'INTERNAL_ERROR', 'Failed to scale service', 500);
       return;
     }
 
-    requestLogger.info('Deployment scaled', {
-      deploymentId: id,
+    requestLogger.info('Service scaled', {
+      serviceId: id,
       replicas,
       correlationId,
     });
 
-    sendSuccess(res, { deployment: result.data });
+    sendSuccess(res, { service: result.data });
   } catch (error) {
-    requestLogger.error('Unexpected error scaling deployment', error instanceof Error ? error : undefined);
+    requestLogger.error('Unexpected error scaling service', error instanceof Error ? error : undefined);
     sendError(res, 'INTERNAL_ERROR', 'Internal server error', 500);
   }
 }
 
 /**
- * Delete deployment handler
+ * Delete service handler
  */
-async function deleteDeployment(req: Request, res: Response): Promise<void> {
+async function deleteService(req: Request, res: Response): Promise<void> {
   const correlationId = generateCorrelationId();
   const requestLogger = logger;
 
@@ -430,70 +430,70 @@ async function deleteDeployment(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
 
   if (!id || !UUID_PATTERN.test(id)) {
-    sendError(res, 'INVALID_ID', 'Invalid deployment ID', 400);
+    sendError(res, 'INVALID_ID', 'Invalid service ID', 400);
     return;
   }
 
   try {
-    const deploymentQueries = getDeploymentQueriesAdmin();
+    const serviceQueries = getServiceQueriesAdmin();
 
     // First mark as deleting
-    await deploymentQueries.updateDeployment(id, { status: 'deleting' });
+    await serviceQueries.updateService(id, { status: 'deleting' });
 
     // Then delete
-    const result = await deploymentQueries.deleteDeployment(id);
+    const result = await serviceQueries.deleteService(id);
 
     if (result.error) {
-      requestLogger.error('Failed to delete deployment', undefined, {
+      requestLogger.error('Failed to delete service', undefined, {
         error: result.error,
         correlationId,
       });
-      sendError(res, 'INTERNAL_ERROR', 'Failed to delete deployment', 500);
+      sendError(res, 'INTERNAL_ERROR', 'Failed to delete service', 500);
       return;
     }
 
-    requestLogger.info('Deployment deleted', {
-      deploymentId: id,
+    requestLogger.info('Service deleted', {
+      serviceId: id,
       correlationId,
     });
 
     sendSuccess(res, { deleted: true });
   } catch (error) {
-    requestLogger.error('Unexpected error deleting deployment', error instanceof Error ? error : undefined);
+    requestLogger.error('Unexpected error deleting service', error instanceof Error ? error : undefined);
     sendError(res, 'INTERNAL_ERROR', 'Internal server error', 500);
   }
 }
 
 /**
- * Create and configure the deployments router
+ * Create and configure the services router
  */
-export function createDeploymentsRouter(): Router {
+export function createServicesRouter(): Router {
   const router = Router();
 
   // All routes require authentication
   router.use(authMiddleware);
   router.use(abilityMiddleware);
 
-  // Create deployment (POST /api/deployments)
-  router.post('/', canCreatePod, createDeployment);
+  // Create service (POST /api/services)
+  router.post('/', canCreatePod, createService);
 
-  // List deployments (GET /api/deployments)
-  router.get('/', canReadPod, listDeployments);
+  // List services (GET /api/services)
+  router.get('/', canReadPod, listServices);
 
-  // Get deployment by ID (GET /api/deployments/:id)
-  router.get('/:id', canReadPod, getDeploymentById);
+  // Get service by ID (GET /api/services/:id)
+  router.get('/:id', canReadPod, getServiceById);
 
-  // Get deployment by name (GET /api/deployments/name/:name)
-  router.get('/name/:name', canReadPod, getDeploymentByName);
+  // Get service by name (GET /api/services/name/:name)
+  router.get('/name/:name', canReadPod, getServiceByName);
 
-  // Update deployment (PATCH /api/deployments/:id)
-  router.patch('/:id', canCreatePod, updateDeployment);
+  // Update service (PATCH /api/services/:id)
+  router.patch('/:id', canCreatePod, updateService);
 
-  // Scale deployment (POST /api/deployments/:id/scale)
-  router.post('/:id/scale', canCreatePod, scaleDeployment);
+  // Scale service (POST /api/services/:id/scale)
+  router.post('/:id/scale', canCreatePod, scaleService);
 
-  // Delete deployment (DELETE /api/deployments/:id)
-  router.delete('/:id', canDeletePod, deleteDeployment);
+  // Delete service (DELETE /api/services/:id)
+  router.delete('/:id', canDeletePod, deleteService);
 
   return router;
 }
@@ -501,4 +501,4 @@ export function createDeploymentsRouter(): Router {
 /**
  * Default router instance
  */
-export const deploymentsRouter = createDeploymentsRouter();
+export const servicesRouter = createServicesRouter();

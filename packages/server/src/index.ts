@@ -19,7 +19,7 @@ import { createServiceLogger } from '@stark-o/shared';
 import { createApiRouter } from './api/router.js';
 import { createConnectionManager, type ConnectionManagerOptions } from './ws/connection-manager.js';
 import { createSchedulerService } from './services/scheduler-service.js';
-import { getDeploymentController } from './services/deployment-controller.js';
+import { getServiceController } from './services/service-controller.js';
 import { createNodeHealthService } from './services/node-health-service.js';
 import { setConnectionManager } from './services/connection-service.js';
 import { bootstrapChaosMode } from './chaos/bootstrap.js';
@@ -155,8 +155,8 @@ export interface ServerInstance {
   connectionManager: ReturnType<typeof createConnectionManager>;
   /** Scheduler service for pod scheduling */
   schedulerService: ReturnType<typeof createSchedulerService>;
-  /** Deployment controller for reconciling deployments */
-  deploymentController: ReturnType<typeof getDeploymentController>;
+  /** Service controller for reconciling services */
+  serviceController: ReturnType<typeof getServiceController>;
   /** Node health service for stale node detection */
   nodeHealthService: ReturnType<typeof createNodeHealthService>;
   /** Server configuration */
@@ -237,7 +237,7 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
   let wss: WebSocketServer;
   let connectionManager: ReturnType<typeof createConnectionManager>;
   let schedulerService: ReturnType<typeof createSchedulerService>;
-  let deploymentController: ReturnType<typeof getDeploymentController>;
+  let serviceController: ReturnType<typeof getServiceController>;
   let nodeHealthService: ReturnType<typeof createNodeHealthService>;
 
   // Server instance
@@ -248,7 +248,7 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
     get wss() { return wss; },
     get connectionManager() { return connectionManager; },
     get schedulerService() { return schedulerService; },
-    get deploymentController() { return deploymentController; },
+    get serviceController() { return serviceController; },
     get nodeHealthService() { return nodeHealthService; },
     config: finalConfig,
 
@@ -426,8 +426,8 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
       // Attach scheduler to connection manager
       schedulerService.attach(connectionManager);
 
-      // Create deployment controller for reconciling deployments
-      deploymentController = getDeploymentController({
+      // Create service controller for reconciling services
+      serviceController = getServiceController({
         reconcileInterval: 10000,
         autoStart: false, // We'll start it after the server is listening
       });
@@ -464,9 +464,9 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
               schedulerService.start();
               logger.info('Scheduler service started');
 
-              // Start the deployment controller after server is running
-              deploymentController.start();
-              logger.info('Deployment controller started');
+              // Start the service controller after server is running
+              serviceController.start();
+              logger.info('Service controller started');
 
               // Start the node health service for stale node detection
               nodeHealthService.start();
@@ -499,9 +499,9 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
         nodeHealthService.stop();
         logger.info('Node health service stopped');
 
-        // Stop the deployment controller
-        deploymentController.stop();
-        logger.info('Deployment controller stopped');
+        // Stop the service controller
+        serviceController.stop();
+        logger.info('Service controller stopped');
 
         // Stop the scheduler service
         schedulerService.stop();

@@ -18,7 +18,7 @@ As a developer, I want to register a JavaScript package (pack) to the central re
 **Acceptance Scenarios**:
 
 1. **Given** I am an authenticated user with a valid pack, **When** I submit the pack to the registry, **Then** the pack is stored in the central database with metadata (name, version, runtime compatibility)
-2. **Given** a registered pack exists, **When** I select a target node and trigger pod deployment, **Then** the pack is transferred to the node and starts executing
+2. **Given** a registered pack exists, **When** I select a target node and trigger pod service, **Then** the pack is transferred to the node and starts executing
 3. **Given** a pack is deployed to a node, **When** I query the pod status, **Then** I receive the current state (pending, running, stopped, error)
 4. **Given** a pack with Node.js runtime requirement, **When** I attempt to deploy to a browser-only node, **Then** the system rejects with a compatibility error
 
@@ -194,9 +194,9 @@ As an operator, I want a web dashboard to view nodes, packs, and pods, so that I
 - **SC-005**: System supports at least 100 concurrent nodes without performance degradation
 - **SC-006**: Dashboard reflects real-time state with < 2 second latency
 - **SC-007**: Packs tagged `isomorphic` run identically on Node.js and browser nodes (verified by test suite)
-- **SC-010**: 100% of pod deployment attempts to incompatible nodes are rejected before transfer begins
+- **SC-010**: 100% of pod service attempts to incompatible nodes are rejected before transfer begins
 - **SC-008**: API response times remain < 200ms at p95 under normal load
-- **SC-009**: 90% of users successfully complete their first pod deployment without support intervention
+- **SC-009**: 90% of users successfully complete their first pod service without support intervention
 
 ## Technical Considerations
 

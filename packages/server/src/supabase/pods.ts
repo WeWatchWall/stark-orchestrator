@@ -32,7 +32,7 @@ interface PodRow {
   pack_id: string;
   pack_version: string;
   node_id: string | null;
-  deployment_id: string | null;
+  service_id: string | null;
   status: PodStatus;
   status_message: string | null;
   termination_reason: PodTerminationReason | null;
@@ -186,7 +186,7 @@ export class PodQueries {
   async createPod(
     input: CreatePodInput,
     createdBy: string,
-    deploymentId?: string
+    serviceId?: string
   ): Promise<PodResult<Pod>> {
     const defaultResourceRequests = { cpu: 100, memory: 128 };
     const defaultResourceLimits = { cpu: 500, memory: 512 };
@@ -215,8 +215,8 @@ export class PodQueries {
       metadata: input.metadata ?? {},
     };
 
-    if (deploymentId) {
-      insertData.deployment_id = deploymentId;
+    if (serviceId) {
+      insertData.service_id = serviceId;
     }
 
     const { data, error } = await this.client
@@ -346,13 +346,13 @@ export class PodQueries {
   }
 
   /**
-   * Lists pods belonging to a deployment
+   * Lists pods belonging to a service
    */
-  async listPodsByDeployment(deploymentId: string): Promise<PodResult<PodListItem[]>> {
+  async listPodsByService(serviceId: string): Promise<PodResult<PodListItem[]>> {
     const { data, error } = await this.client
       .from('pods')
       .select('*')
-      .eq('deployment_id', deploymentId)
+      .eq('service_id', serviceId)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -744,16 +744,16 @@ export class PodQueries {
 
   /**
    * Gets the next incarnation number for a replacement pod
-   * Called when creating a replacement for a failed pod in a deployment
-   * @param deploymentId - The deployment ID
+   * Called when creating a replacement for a failed pod in a service
+   * @param serviceId - The service ID
    * @returns The next incarnation number to use
    */
-  async getNextIncarnation(deploymentId: string): Promise<PodResult<number>> {
-    // Get the maximum incarnation from all pods in this deployment
+  async getNextIncarnation(serviceId: string): Promise<PodResult<number>> {
+    // Get the maximum incarnation from all pods in this service
     const { data, error } = await this.client
       .from('pods')
       .select('incarnation')
-      .eq('deployment_id', deploymentId)
+      .eq('service_id', serviceId)
       .order('incarnation', { ascending: false })
       .limit(1);
 
@@ -776,7 +776,7 @@ export class PodQueries {
   async createPodWithIncarnation(
     input: CreatePodInput,
     createdBy: string,
-    deploymentId: string,
+    serviceId: string,
     incarnation: number,
     targetNodeId?: string
   ): Promise<PodResult<Pod>> {
@@ -805,7 +805,7 @@ export class PodQueries {
       },
       created_by: createdBy,
       metadata: input.metadata ?? {},
-      deployment_id: deploymentId,
+      service_id: serviceId,
       incarnation: incarnation,
     };
 
@@ -1129,8 +1129,8 @@ export function resetPodQueries(): void {
 export const createPod = (
   input: CreatePodInput,
   createdBy: string,
-  deploymentId?: string
-) => getPodQueries().createPod(input, createdBy, deploymentId);
+  serviceId?: string
+) => getPodQueries().createPod(input, createdBy, serviceId);
 
 export const getPodById = (id: string) =>
   getPodQueries().getPodById(id);

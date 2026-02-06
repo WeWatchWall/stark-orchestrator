@@ -2,7 +2,7 @@
  * Pod Handler
  * @module @stark-o/node-runtime/agent/pod-handler
  *
- * Handles pod deployment and lifecycle events received from the orchestrator.
+ * Handles pod service and lifecycle events received from the orchestrator.
  */
 
 import {

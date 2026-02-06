@@ -1,6 +1,6 @@
 /**
- * Deployment type definitions
- * @module @stark-o/shared/types/deployment
+ * Service type definitions
+ * @module @stark-o/shared/types/service
  */
 
 import type { Labels, Annotations } from './labels';
@@ -8,18 +8,18 @@ import type { Toleration } from './taints';
 import type { PodSchedulingConfig, ResourceRequirements } from './pod';
 
 /**
- * Deployment status values
+ * Service status values
  */
-export type DeploymentStatus =
+export type ServiceStatus =
   | 'active'    // Actively reconciling pods
   | 'paused'    // Reconciliation paused
   | 'scaling'   // Currently scaling up/down
   | 'deleting'; // Being deleted
 
 /**
- * Deployment entity - persistent pod scheduling configuration
+ * Service entity - persistent pod scheduling configuration
  * 
- * A Deployment maintains a desired number of pod replicas:
+ * A Service maintains a desired number of pod replicas:
  * - replicas = 0: Deploy to ALL matching nodes (DaemonSet-like behavior)
  * - replicas > 0: Maintain exactly N pods across eligible nodes
  * 
@@ -39,10 +39,10 @@ export type DeploymentStatus =
  *   replicas: 3
  * }
  */
-export interface Deployment {
+export interface Service {
   /** Unique identifier (UUID) */
   id: string;
-  /** Deployment name (unique within namespace) */
+  /** Service name (unique within namespace) */
   name: string;
   /** Pack ID to deploy */
   packId: string;
@@ -62,12 +62,12 @@ export interface Deployment {
    */
   replicas: number;
   /** Current status */
-  status: DeploymentStatus;
+  status: ServiceStatus;
   /** Status message */
   statusMessage?: string;
-  /** Labels on the deployment itself */
+  /** Labels on the service itself */
   labels: Labels;
-  /** Annotations on the deployment itself */
+  /** Annotations on the service itself */
   annotations: Annotations;
   /** Labels applied to created pods */
   podLabels: Labels;
@@ -115,7 +115,7 @@ export interface Deployment {
   failureBackoffUntil?: Date;
   /** Additional metadata */
   metadata: Record<string, unknown>;
-  /** User who created the deployment */
+  /** User who created the service */
   createdBy: string;
   /** Creation timestamp */
   createdAt: Date;
@@ -124,10 +124,10 @@ export interface Deployment {
 }
 
 /**
- * Deployment creation input
+ * Service creation input
  */
-export interface CreateDeploymentInput {
-  /** Deployment name */
+export interface CreateServiceInput {
+  /** Service name */
   name: string;
   /** Pack ID or pack name */
   packId?: string;
@@ -150,9 +150,9 @@ export interface CreateDeploymentInput {
    * @default 1
    */
   replicas?: number;
-  /** Labels on the deployment */
+  /** Labels on the service */
   labels?: Labels;
-  /** Annotations on the deployment */
+  /** Annotations on the service */
   annotations?: Annotations;
   /** Labels applied to created pods */
   podLabels?: Labels;
@@ -173,9 +173,9 @@ export interface CreateDeploymentInput {
 }
 
 /**
- * Deployment update input
+ * Service update input
  */
-export interface UpdateDeploymentInput {
+export interface UpdateServiceInput {
   /** New pack version */
   packVersion?: string;
   /** Enable or disable follow latest */
@@ -183,7 +183,7 @@ export interface UpdateDeploymentInput {
   /** New replica count */
   replicas?: number;
   /** New status */
-  status?: DeploymentStatus;
+  status?: ServiceStatus;
   /** Status message */
   statusMessage?: string;
   /** Labels update */
@@ -217,9 +217,9 @@ export interface UpdateDeploymentInput {
 }
 
 /**
- * Deployment list item (summary)
+ * Service list item (summary)
  */
-export interface DeploymentListItem {
+export interface ServiceListItem {
   id: string;
   name: string;
   packId: string;
@@ -229,49 +229,49 @@ export interface DeploymentListItem {
   replicas: number;
   readyReplicas: number;
   availableReplicas: number;
-  status: DeploymentStatus;
+  status: ServiceStatus;
   createdAt: Date;
   updatedAt: Date;
 }
 
 /**
- * Check if deployment is active
+ * Check if service is active
  */
-export function isDeploymentActive(deployment: Deployment): boolean {
-  return deployment.status === 'active';
+export function isServiceActive(service: Service): boolean {
+  return service.status === 'active';
 }
 
 /**
- * Check if deployment is a DaemonSet (replicas = 0)
+ * Check if service is a DaemonSet (replicas = 0)
  */
-export function isDeploymentDaemonSet(deployment: Deployment): boolean {
-  return deployment.replicas === 0;
+export function isServiceDaemonSet(service: Service): boolean {
+  return service.replicas === 0;
 }
 
 /**
- * Check if deployment has reached desired state
+ * Check if service has reached desired state
  */
-export function isDeploymentReady(deployment: Deployment): boolean {
-  if (deployment.replicas === 0) {
+export function isServiceReady(service: Service): boolean {
+  if (service.replicas === 0) {
     // DaemonSet: check if availableReplicas > 0
-    return deployment.availableReplicas > 0 && deployment.status === 'active';
+    return service.availableReplicas > 0 && service.status === 'active';
   }
-  // Regular deployment: check if readyReplicas matches desired
-  return deployment.readyReplicas >= deployment.replicas && deployment.status === 'active';
+  // Regular service: check if readyReplicas matches desired
+  return service.readyReplicas >= service.replicas && service.status === 'active';
 }
 
 /**
- * Default resource requests for deployment pods
+ * Default resource requests for service pods
  */
-export const DEFAULT_DEPLOYMENT_RESOURCE_REQUESTS: ResourceRequirements = {
+export const DEFAULT_SERVICE_RESOURCE_REQUESTS: ResourceRequirements = {
   cpu: 100,
   memory: 128,
 };
 
 /**
- * Default resource limits for deployment pods
+ * Default resource limits for service pods
  */
-export const DEFAULT_DEPLOYMENT_RESOURCE_LIMITS: ResourceRequirements = {
+export const DEFAULT_SERVICE_RESOURCE_LIMITS: ResourceRequirements = {
   cpu: 500,
   memory: 512,
 };

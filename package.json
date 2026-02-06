@@ -1,6 +1,6 @@
 {
   "name": "stark-orchestrator",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "description": "Isomorphic JavaScript orchestration platform for Node.js and browser runtimes",
    "keywords": [
     "cloud",

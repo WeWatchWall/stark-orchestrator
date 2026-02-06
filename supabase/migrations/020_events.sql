@@ -10,7 +10,7 @@ CREATE TYPE event_category AS ENUM (
     'pod',          -- Pod lifecycle events
     'node',         -- Node lifecycle events
     'pack',         -- Pack lifecycle events
-    'deployment',   -- Deployment events
+    'service',   -- Service events
     'system',       -- System-level events
     'auth',         -- Authentication events
     'scheduler'     -- Scheduler events
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS public.events (
     
     -- Resource identification (polymorphic)
     resource_id UUID,                    -- ID of the affected resource (pod, node, pack, etc.)
-    resource_type TEXT,                  -- 'pod', 'node', 'pack', 'deployment', etc.
+    resource_type TEXT,                  -- 'pod', 'node', 'pack', 'service', etc.
     resource_name TEXT,                  -- Human-readable name of the resource
     namespace TEXT DEFAULT 'default',    -- Namespace context
     

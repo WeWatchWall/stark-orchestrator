@@ -312,11 +312,11 @@ export class SchedulerService {
       return;
     }
 
-    // Get full pod details for deployment
+    // Get full pod details for service
     const podQueries = getPodQueriesAdmin();
     const podResult = await podQueries.getPodById(podId);
     if (podResult.error || !podResult.data) {
-      logger.error('Failed to get pod for deployment', undefined, {
+      logger.error('Failed to get pod for service', undefined, {
         podId,
         error: podResult.error,
       });

@@ -2,7 +2,7 @@
  * Pod Handler (Browser Runtime)
  * @module @stark-o/browser-runtime/agent/pod-handler
  *
- * Handles pod deployment and lifecycle events received from the orchestrator.
+ * Handles pod service and lifecycle events received from the orchestrator.
  * Browser-compatible implementation using Web Workers for pack execution.
  */
 

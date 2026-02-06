@@ -3,7 +3,7 @@
  * @module @stark-o/browser-runtime/agent/browser-agent
  *
  * Agent that runs in browsers to register with the orchestrator,
- * send heartbeats, and receive pod deployment commands.
+ * send heartbeats, and receive pod service commands.
  */
 
 import {
@@ -189,7 +189,7 @@ function createBrowserLogger(component: string, debug: boolean): BrowserLogger {
  * - Node registration and reconnection
  * - Periodic heartbeats
  * - Resource reporting
- * - Pod deployment and lifecycle
+ * - Pod service and lifecycle
  * - Persistent storage of node state for resumption
  */
 export class BrowserAgent {
@@ -565,7 +565,7 @@ export class BrowserAgent {
         break;
 
       case 'pod:deploy': {
-        // Handle pod deployment request from orchestrator
+        // Handle pod service request from orchestrator
         const deployPayload = message.payload as PodDeployPayload;
         this.logger.info('Received pod deploy command', {
           podId: deployPayload.podId,

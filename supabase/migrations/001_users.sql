@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS public.users (
 
 -- Valid roles: 'admin', 'operator', 'developer', 'viewer'
 -- admin: Full access to all resources
--- operator: Manage nodes and deployments
+-- operator: Manage nodes and services
 -- developer: Register packs and deploy to nodes
 -- viewer: Read-only access
 

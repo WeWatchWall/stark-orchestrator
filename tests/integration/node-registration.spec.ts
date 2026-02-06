@@ -294,7 +294,7 @@ describe('Node Registration Integration Tests', () => {
             region: 'us-west-2',
           },
           annotations: {
-            'deployment/version': 'v2.3.0',
+            'service/version': 'v2.3.0',
           },
           taints: [
             { key: 'dedicated', value: 'high-priority', effect: 'NoSchedule' },
@@ -314,7 +314,7 @@ describe('Node Registration Integration Tests', () => {
       expect(node.allocatable.cpu).toBe(8000);
       expect(node.allocatable.memory).toBe(16384);
       expect(node.labels.environment).toBe('production');
-      expect(node.annotations['deployment/version']).toBe('v2.3.0');
+      expect(node.annotations['service/version']).toBe('v2.3.0');
       expect(node.taints).toHaveLength(1);
       expect(node.taints[0].key).toBe('dedicated');
     });

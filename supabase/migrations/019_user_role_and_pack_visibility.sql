@@ -4,7 +4,7 @@
 --
 -- Role changes:
 -- - admin: Full access to all resources (unchanged)
--- - user: Can create/manage own packs, nodes, deployments (NEW)
+-- - user: Can create/manage own packs, nodes, services (NEW)
 -- - node: Node agents - can create/update own node, update pods assigned to it (unchanged)
 -- - viewer: Read-only access (unchanged)
 --
@@ -82,8 +82,8 @@ CREATE POLICY "Owners and admins can update nodes"
 -- Drop old policy
 DROP POLICY IF EXISTS "Admins can create pods" ON public.pods;
 
--- Users can create pods for their own deployments, admins can create any
--- Note: The deployment controller uses service client, so this is for direct pod creation
+-- Users can create pods for their own services, admins can create any
+-- Note: The service controller uses service client, so this is for direct pod creation
 CREATE POLICY "Users and admins can create pods"
     ON public.pods FOR INSERT
     WITH CHECK (
@@ -92,15 +92,15 @@ CREATE POLICY "Users and admins can create pods"
     );
 
 -- ============================================================================
--- Update deployments table policies
+-- Update services table policies
 -- ============================================================================
 
 -- Drop old policies
-DROP POLICY IF EXISTS "Authenticated users can create deployments" ON public.deployments;
+DROP POLICY IF EXISTS "Authenticated users can create services" ON public.services;
 
--- Users can create their own deployments
-CREATE POLICY "Users can create own deployments"
-    ON public.deployments FOR INSERT
+-- Users can create their own services
+CREATE POLICY "Users can create own services"
+    ON public.services FOR INSERT
     WITH CHECK (
         created_by = auth.uid()
         AND public.has_any_role(ARRAY['admin', 'user'])

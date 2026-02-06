@@ -51,9 +51,9 @@ export {
 } from './namespace';
 
 export {
-  DeploymentModel,
-  createReactiveDeploymentListItem,
-  type DeploymentCreationResult,
-  type DeploymentListResponse,
-  type DeploymentListFilters,
-} from './deployment';
+  ServiceModel,
+  createReactiveServiceListItem,
+  type ServiceCreationResult,
+  type ServiceListResponse,
+  type ServiceListFilters,
+} from './service';

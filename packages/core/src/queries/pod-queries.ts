@@ -37,7 +37,7 @@ export async function listPods(options?: {
   status?: PodStatus;
   namespace?: string;
   nodeId?: string;
-  deploymentId?: string;
+  serviceId?: string;
 }): Promise<Pod[]> {
   let pods = podsList.value;
 
@@ -53,8 +53,8 @@ export async function listPods(options?: {
     pods = pods.filter((p: Pod) => p.nodeId === options.nodeId);
   }
 
-  if (options?.deploymentId) {
-    pods = pods.filter((p: Pod) => p.labels?.deployment === options.deploymentId);
+  if (options?.serviceId) {
+    pods = pods.filter((p: Pod) => p.labels?.service === options.serviceId);
   }
 
   if (options?.limit) {

@@ -174,7 +174,7 @@ export const podCrashScenario: ChaosScenario<PodCrashOptions> = {
       case 'crash':
         return [
           'Pod immediately marked as failed',
-          'Deployment controller detects and recreates pod',
+          'Service controller detects and recreates pod',
           'New pod scheduled on available node',
           'Event log shows crash reason',
         ];
@@ -183,13 +183,13 @@ export const podCrashScenario: ChaosScenario<PodCrashOptions> = {
           'Pod messages delayed significantly',
           'Health check / readiness eventually times out',
           'Pod marked as unhealthy or failed',
-          'Scheduler recreates if part of deployment',
+          'Scheduler recreates if part of service',
         ];
       case 'crash_loop':
         return [
           'Each crash increments restart count',
           'Backoff time increases exponentially',
-          'After max retries, deployment may pause',
+          'After max retries, service may pause',
           'Clear crash loop indication in status',
         ];
       default:

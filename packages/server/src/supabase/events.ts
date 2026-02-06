@@ -526,7 +526,7 @@ export async function getEventStats(
         pod: 0,
         node: 0,
         pack: 0,
-        deployment: 0,
+        service: 0,
         system: 0,
         auth: 0,
         scheduler: 0,

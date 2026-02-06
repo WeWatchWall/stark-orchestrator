@@ -5,7 +5,7 @@
 
 ## Summary
 
-Build an isomorphic JavaScript orchestration platform using TypeScript and Vue's reactive system as the core state management layer. The system enables registration, pod deployment, and lifecycle management of software packages ("packs") across Node.js servers and browser runtimes. Vue reactivity provides automatic propagation of cluster state changes across the isomorphic codebase without requiring a traditional frontend. Supabase (running locally) serves as the central database, auth provider, and real-time communication layer.
+Build an isomorphic JavaScript orchestration platform using TypeScript and Vue's reactive system as the core state management layer. The system enables registration, pod service, and lifecycle management of software packages ("packs") across Node.js servers and browser runtimes. Vue reactivity provides automatic propagation of cluster state changes across the isomorphic codebase without requiring a traditional frontend. Supabase (running locally) serves as the central database, auth provider, and real-time communication layer.
 
 ## Technical Context
 
@@ -124,7 +124,7 @@ packages/
     │   │   ├── user.ts
     │   │   ├── pack.ts
     │   │   ├── node.ts
-    │   │   ├── deployment.ts
+    │   │   ├── service.ts
     │   │   ├── labels.ts             # Kubernetes-like labels & selectors
     │   │   ├── taints.ts             # Kubernetes-like taints & tolerations
     │   │   ├── scheduling.ts         # Kubernetes-like affinity & scheduling
@@ -176,7 +176,7 @@ Vue's `@vue/reactivity` package provides:
 - `reactive()` for cluster state objects (nodes, pods, packs)
 - `ref()` for primitive values (connection status, counters)
 - `computed()` for derived state (available nodes, health summaries)
-- `watch()` / `watchEffect()` for side effects (sync to database, trigger pod deployments)
+- `watch()` / `watchEffect()` for side effects (sync to database, trigger pod services)
 
 **Example Pattern**:
 ```typescript
@@ -252,19 +252,19 @@ Stark Orchestrator implements several Kubernetes-inspired concepts for advanced 
 
 ### Namespaces
 - Resource isolation boundaries for multi-tenant environments
-- **Resource Quotas**: Limit CPU, memory, pod deployments, pods per namespace
+- **Resource Quotas**: Limit CPU, memory, pod services, pods per namespace
 - **Limit Ranges**: Default and max/min resource constraints
 - Reserved namespaces: `default`, `stark-system`, `stark-public`
 
 ### Taints & Tolerations
-- **Taints**: Applied to nodes to repel pod deployments (NoSchedule, PreferNoSchedule, NoExecute)
-- **Tolerations**: Allow pod deployments to schedule on tainted nodes
+- **Taints**: Applied to nodes to repel pod services (NoSchedule, PreferNoSchedule, NoExecute)
+- **Tolerations**: Allow pod services to schedule on tainted nodes
 - Enables dedicated nodes, special hardware isolation, and maintenance modes
 
 ### Scheduling & Affinity
-- **Node Affinity**: Schedule pod deployments based on node labels (required/preferred)
-- **Deployment Affinity**: Co-locate pod deployments on same nodes
-- **Deployment Anti-Affinity**: Spread pod deployments across nodes
+- **Node Affinity**: Schedule pod services based on node labels (required/preferred)
+- **Service Affinity**: Co-locate pod services on same nodes
+- **Service Anti-Affinity**: Spread pod services across nodes
 - **Scheduling Policies**: Spread, BinPack, Random, Affinity, LeastLoaded
 
 ### Priority Classes

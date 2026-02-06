@@ -1,8 +1,8 @@
 /**
- * Integration tests for Runtime-Targeted Pack Deployment
+ * Integration tests for Runtime-Targeted Pack Service
  * @module tests/integration/runtime-targeting
  *
- * Tests for User Story 5: Runtime-Targeted Pack Deployment
+ * Tests for User Story 5: Runtime-Targeted Pack Service
  * These tests verify that runtime compatibility is enforced between packs and nodes
  *
  * Key scenarios tested:

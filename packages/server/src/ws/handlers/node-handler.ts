@@ -10,7 +10,7 @@ import { validateRegisterNodeInput, createServiceLogger } from '@stark-o/shared'
 import { getNodeQueries } from '../../supabase/nodes.js';
 import { getPodQueriesAdmin } from '../../supabase/pods.js';
 import { getConnectionManager, sendToNode } from '../../services/connection-service.js';
-import { getDeploymentController } from '../../services/deployment-controller.js';
+import { getServiceController } from '../../services/service-controller.js';
 import { getChaosProxy } from '../../services/chaos-proxy.js';
 
 /**
@@ -444,10 +444,10 @@ export async function handleNodeReconnect(
 
       // Trigger immediate reconciliation to create replacement pods for stopped orphans.
       // This ensures DaemonSet pods are re-created without waiting for the next reconcile cycle.
-      const deploymentController = getDeploymentController();
-      if (deploymentController && deploymentController.isActive()) {
+      const serviceController = getServiceController();
+      if (serviceController && serviceController.isActive()) {
         // Run reconciliation asynchronously to not block the response
-        deploymentController.triggerReconcile().catch((error) => {
+        serviceController.triggerReconcile().catch((error) => {
           logger.error('Failed to trigger reconciliation after orphan cleanup', error instanceof Error ? error : undefined, {
             nodeId: payload.nodeId,
           });

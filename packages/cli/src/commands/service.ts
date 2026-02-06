@@ -1,8 +1,8 @@
 /**
- * Deployment Commands
+ * Service Commands
  *
- * Deployment management commands: create, list, status, scale, delete
- * @module @stark-o/cli/commands/deployment
+ * Service management commands: create, list, status, scale, delete
+ * @module @stark-o/cli/commands/service
  */
 
 import { Command } from 'commander';
@@ -18,7 +18,7 @@ import {
   getOutputFormat,
   statusBadge,
 } from '../output.js';
-import type { DeploymentStatus } from '@stark-o/shared';
+import type { ServiceStatus } from '@stark-o/shared';
 
 /**
  * API response types
@@ -33,14 +33,14 @@ interface ApiResponse<T> {
   };
 }
 
-interface Deployment {
+interface Service {
   id: string;
   name: string;
   packId: string;
   packVersion: string;
   namespace: string;
   replicas: number;
-  status: DeploymentStatus;
+  status: ServiceStatus;
   statusMessage?: string;
   readyReplicas: number;
   availableReplicas: number;
@@ -50,7 +50,7 @@ interface Deployment {
   updatedAt: string;
 }
 
-interface DeploymentListItem {
+interface ServiceListItem {
   id: string;
   name: string;
   packId: string;
@@ -59,7 +59,7 @@ interface DeploymentListItem {
   replicas: number;
   readyReplicas: number;
   availableReplicas: number;
-  status: DeploymentStatus;
+  status: ServiceStatus;
   createdAt: string;
 }
 
@@ -85,7 +85,7 @@ async function createHandler(
   const name = nameArg || options.name;
 
   if (!name) {
-    error('Deployment name is required');
+    error('Service name is required');
     process.exit(1);
   }
 
@@ -100,14 +100,14 @@ async function createHandler(
   const replicas = options.replicas !== undefined ? parseInt(options.replicas, 10) : 1;
   const replicasDesc = replicas === 0 ? 'all matching nodes (DaemonSet mode)' : `${replicas} replica(s)`;
 
-  info(`Creating deployment: ${name} → ${options.pack}${options.ver ? '@' + options.ver : ''}`);
+  info(`Creating service: ${name} → ${options.pack}${options.ver ? '@' + options.ver : ''}`);
   info(`Replicas: ${replicasDesc}`);
 
   try {
     const api = createApiClient();
 
-    // Build deployment request
-    const deploymentRequest: Record<string, unknown> = {
+    // Build service request
+    const serviceRequest: Record<string, unknown> = {
       name,
       packName: options.pack,
       packVersion: options.ver,
@@ -124,7 +124,7 @@ async function createHandler(
           labels[key] = value;
         }
       }
-      deploymentRequest.labels = labels;
+      serviceRequest.labels = labels;
     }
 
     // Parse pod labels
@@ -136,7 +136,7 @@ async function createHandler(
           podLabels[key] = value;
         }
       }
-      deploymentRequest.podLabels = podLabels;
+      serviceRequest.podLabels = podLabels;
     }
 
     // Parse node selectors
@@ -148,7 +148,7 @@ async function createHandler(
           nodeSelector[key] = value;
         }
       }
-      deploymentRequest.scheduling = { nodeSelector };
+      serviceRequest.scheduling = { nodeSelector };
     }
 
     // Parse tolerations
@@ -169,49 +169,49 @@ async function createHandler(
           tolerations.push({ key: t, operator: 'Exists' });
         }
       }
-      deploymentRequest.tolerations = tolerations;
+      serviceRequest.tolerations = tolerations;
     }
 
     // Parse resource requests
     if (options.cpu || options.memory) {
-      deploymentRequest.resourceRequests = {
+      serviceRequest.resourceRequests = {
         cpu: options.cpu ? parseInt(options.cpu, 10) : 100,
         memory: options.memory ? parseInt(options.memory, 10) : 128,
       };
     }
 
-    const response = await api.post('/api/deployments', deploymentRequest);
-    const result = (await response.json()) as ApiResponse<{ deployment: Deployment }>;
+    const response = await api.post('/api/services', serviceRequest);
+    const result = (await response.json()) as ApiResponse<{ service: Service }>;
 
     if (!result.success || !result.data) {
-      error('Failed to create deployment', result.error);
+      error('Failed to create service', result.error);
       process.exit(1);
     }
 
-    const deployment = result.data.deployment;
+    const service = result.data.service;
 
-    success(`Deployment '${deployment.name}' created`);
+    success(`Service '${service.name}' created`);
 
     if (getOutputFormat() === 'json') {
-      console.log(JSON.stringify(deployment, null, 2));
+      console.log(JSON.stringify(service, null, 2));
       return;
     }
 
     console.log();
     keyValue({
-      'ID': deployment.id,
-      'Name': deployment.name,
-      'Pack Version': deployment.packVersion,
-      'Namespace': deployment.namespace,
-      'Replicas': deployment.replicas === 0 ? 'DaemonSet (all nodes)' : deployment.replicas.toString(),
-      'Status': statusBadge(deployment.status),
+      'ID': service.id,
+      'Name': service.name,
+      'Pack Version': service.packVersion,
+      'Namespace': service.namespace,
+      'Replicas': service.replicas === 0 ? 'DaemonSet (all nodes)' : service.replicas.toString(),
+      'Status': statusBadge(service.status),
     });
 
     console.log();
-    info(`The deployment controller will create pods automatically.`);
-    info(`Use 'stark deployment status ${deployment.name}' to check progress.`);
+    info(`The service controller will create pods automatically.`);
+    info(`Use 'stark service status ${service.name}' to check progress.`);
   } catch (err) {
-    error('Failed to create deployment', err instanceof Error ? { message: err.message } : undefined);
+    error('Failed to create service', err instanceof Error ? { message: err.message } : undefined);
     process.exit(1);
   }
 }
@@ -244,31 +244,31 @@ async function listHandler(options: {
       params.set('pageSize', options.limit);
     }
 
-    const url = `/api/deployments${params.toString() ? '?' + params.toString() : ''}`;
+    const url = `/api/services${params.toString() ? '?' + params.toString() : ''}`;
     const response = await api.get(url);
-    const result = (await response.json()) as ApiResponse<{ deployments: DeploymentListItem[] }>;
+    const result = (await response.json()) as ApiResponse<{ services: ServiceListItem[] }>;
 
     if (!result.success || !result.data) {
-      error('Failed to list deployments', result.error);
+      error('Failed to list services', result.error);
       process.exit(1);
     }
 
-    const deployments = result.data.deployments;
+    const services = result.data.services;
 
     if (getOutputFormat() === 'json') {
       console.log(JSON.stringify(result.data, null, 2));
       return;
     }
 
-    if (deployments.length === 0) {
-      info('No deployments found');
+    if (services.length === 0) {
+      info('No services found');
       return;
     }
 
-    console.log(chalk.bold(`\nDeployments (${deployments.length})\n`));
+    console.log(chalk.bold(`\nServices (${services.length})\n`));
 
     table(
-      deployments.map((d) => ({
+      services.map((d) => ({
         name: d.name,
         pack: d.packVersion,
         replicas: d.replicas === 0 ? 'DaemonSet' : `${d.readyReplicas}/${d.replicas}`,
@@ -286,7 +286,7 @@ async function listHandler(options: {
 
     console.log();
   } catch (err) {
-    error('Failed to list deployments', err instanceof Error ? { message: err.message } : undefined);
+    error('Failed to list services', err instanceof Error ? { message: err.message } : undefined);
     process.exit(1);
   }
 }
@@ -300,45 +300,45 @@ async function statusHandler(name: string, options: { namespace?: string }): Pro
   try {
     const api = createApiClient();
     const namespace = options.namespace ?? 'default';
-    const response = await api.get(`/api/deployments/name/${name}?namespace=${namespace}`);
-    const result = (await response.json()) as ApiResponse<{ deployment: Deployment }>;
+    const response = await api.get(`/api/services/name/${name}?namespace=${namespace}`);
+    const result = (await response.json()) as ApiResponse<{ service: Service }>;
 
     if (!result.success || !result.data) {
-      error('Deployment not found', result.error);
+      error('Service not found', result.error);
       process.exit(1);
     }
 
-    const deployment = result.data.deployment;
+    const service = result.data.service;
 
     if (getOutputFormat() === 'json') {
-      console.log(JSON.stringify(deployment, null, 2));
+      console.log(JSON.stringify(service, null, 2));
       return;
     }
 
-    console.log(chalk.bold(`\nDeployment: ${deployment.name}\n`));
+    console.log(chalk.bold(`\nService: ${service.name}\n`));
 
-    const replicaDisplay = deployment.replicas === 0
+    const replicaDisplay = service.replicas === 0
       ? 'DaemonSet (deploy to all matching nodes)'
-      : deployment.replicas.toString();
+      : service.replicas.toString();
 
     keyValue({
-      'ID': deployment.id,
-      'Status': statusBadge(deployment.status),
-      'Message': deployment.statusMessage ?? chalk.gray('(none)'),
-      'Pack ID': deployment.packId,
-      'Pack Version': deployment.packVersion,
-      'Namespace': deployment.namespace,
+      'ID': service.id,
+      'Status': statusBadge(service.status),
+      'Message': service.statusMessage ?? chalk.gray('(none)'),
+      'Pack ID': service.packId,
+      'Pack Version': service.packVersion,
+      'Namespace': service.namespace,
       'Replicas': replicaDisplay,
-      'Ready': `${deployment.readyReplicas}/${deployment.replicas === 0 ? 'N/A' : deployment.replicas}`,
-      'Available': deployment.availableReplicas.toString(),
-      'Updated': deployment.updatedReplicas.toString(),
-      'Created': new Date(deployment.createdAt).toLocaleString(),
-      'Updated At': new Date(deployment.updatedAt).toLocaleString(),
+      'Ready': `${service.readyReplicas}/${service.replicas === 0 ? 'N/A' : service.replicas}`,
+      'Available': service.availableReplicas.toString(),
+      'Updated': service.updatedReplicas.toString(),
+      'Created': new Date(service.createdAt).toLocaleString(),
+      'Updated At': new Date(service.updatedAt).toLocaleString(),
     });
 
     console.log();
   } catch (err) {
-    error('Failed to get deployment status', err instanceof Error ? { message: err.message } : undefined);
+    error('Failed to get service status', err instanceof Error ? { message: err.message } : undefined);
     process.exit(1);
   }
 }
@@ -359,39 +359,39 @@ async function scaleHandler(
   }
 
   const replicasDesc = replicas === 0 ? 'DaemonSet mode (all matching nodes)' : `${replicas} replica(s)`;
-  info(`Scaling deployment '${name}' to ${replicasDesc}`);
+  info(`Scaling service '${name}' to ${replicasDesc}`);
 
   try {
     const api = createApiClient();
     const namespace = options.namespace ?? 'default';
     
-    // First get the deployment
-    const getResponse = await api.get(`/api/deployments/name/${name}?namespace=${namespace}`);
-    const getResult = (await getResponse.json()) as ApiResponse<{ deployment: Deployment }>;
+    // First get the service
+    const getResponse = await api.get(`/api/services/name/${name}?namespace=${namespace}`);
+    const getResult = (await getResponse.json()) as ApiResponse<{ service: Service }>;
 
     if (!getResult.success || !getResult.data) {
-      error('Deployment not found', getResult.error);
+      error('Service not found', getResult.error);
       process.exit(1);
     }
 
-    const deploymentId = getResult.data.deployment.id;
+    const serviceId = getResult.data.service.id;
 
     // Scale it
-    const response = await api.post(`/api/deployments/${deploymentId}/scale`, { replicas });
-    const result = (await response.json()) as ApiResponse<{ deployment: Deployment }>;
+    const response = await api.post(`/api/services/${serviceId}/scale`, { replicas });
+    const result = (await response.json()) as ApiResponse<{ service: Service }>;
 
     if (!result.success || !result.data) {
-      error('Failed to scale deployment', result.error);
+      error('Failed to scale service', result.error);
       process.exit(1);
     }
 
-    success(`Deployment '${name}' scaled to ${replicasDesc}`);
+    success(`Service '${name}' scaled to ${replicasDesc}`);
 
     if (getOutputFormat() === 'json') {
-      console.log(JSON.stringify(result.data.deployment, null, 2));
+      console.log(JSON.stringify(result.data.service, null, 2));
     }
   } catch (err) {
-    error('Failed to scale deployment', err instanceof Error ? { message: err.message } : undefined);
+    error('Failed to scale service', err instanceof Error ? { message: err.message } : undefined);
     process.exit(1);
   }
 }
@@ -403,40 +403,40 @@ async function deleteHandler(name: string, options: { namespace?: string; force?
   requireAuth();
 
   if (!options.force) {
-    warn(`This will delete deployment '${name}' and stop all associated pods.`);
+    warn(`This will delete service '${name}' and stop all associated pods.`);
     warn('Use --force to confirm deletion.');
     process.exit(1);
   }
 
-  info(`Deleting deployment: ${name}`);
+  info(`Deleting service: ${name}`);
 
   try {
     const api = createApiClient();
     const namespace = options.namespace ?? 'default';
     
-    // First get the deployment
-    const getResponse = await api.get(`/api/deployments/name/${name}?namespace=${namespace}`);
-    const getResult = (await getResponse.json()) as ApiResponse<{ deployment: Deployment }>;
+    // First get the service
+    const getResponse = await api.get(`/api/services/name/${name}?namespace=${namespace}`);
+    const getResult = (await getResponse.json()) as ApiResponse<{ service: Service }>;
 
     if (!getResult.success || !getResult.data) {
-      error('Deployment not found', getResult.error);
+      error('Service not found', getResult.error);
       process.exit(1);
     }
 
-    const deploymentId = getResult.data.deployment.id;
+    const serviceId = getResult.data.service.id;
 
     // Delete it
-    const response = await api.delete(`/api/deployments/${deploymentId}`);
+    const response = await api.delete(`/api/services/${serviceId}`);
     const result = (await response.json()) as ApiResponse<{ deleted: boolean }>;
 
     if (!result.success) {
-      error('Failed to delete deployment', result.error);
+      error('Failed to delete service', result.error);
       process.exit(1);
     }
 
-    success(`Deployment '${name}' deleted`);
+    success(`Service '${name}' deleted`);
   } catch (err) {
-    error('Failed to delete deployment', err instanceof Error ? { message: err.message } : undefined);
+    error('Failed to delete service', err instanceof Error ? { message: err.message } : undefined);
     process.exit(1);
   }
 }
@@ -447,35 +447,35 @@ async function deleteHandler(name: string, options: { namespace?: string; force?
 async function pauseHandler(name: string, options: { namespace?: string }): Promise<void> {
   requireAuth();
 
-  info(`Pausing deployment: ${name}`);
+  info(`Pausing service: ${name}`);
 
   try {
     const api = createApiClient();
     const namespace = options.namespace ?? 'default';
     
-    // Get deployment
-    const getResponse = await api.get(`/api/deployments/name/${name}?namespace=${namespace}`);
-    const getResult = (await getResponse.json()) as ApiResponse<{ deployment: Deployment }>;
+    // Get service
+    const getResponse = await api.get(`/api/services/name/${name}?namespace=${namespace}`);
+    const getResult = (await getResponse.json()) as ApiResponse<{ service: Service }>;
 
     if (!getResult.success || !getResult.data) {
-      error('Deployment not found', getResult.error);
+      error('Service not found', getResult.error);
       process.exit(1);
     }
 
-    const deploymentId = getResult.data.deployment.id;
+    const serviceId = getResult.data.service.id;
 
     // Update status to paused
-    const response = await api.patch(`/api/deployments/${deploymentId}`, { status: 'paused' });
-    const result = (await response.json()) as ApiResponse<{ deployment: Deployment }>;
+    const response = await api.patch(`/api/services/${serviceId}`, { status: 'paused' });
+    const result = (await response.json()) as ApiResponse<{ service: Service }>;
 
     if (!result.success) {
-      error('Failed to pause deployment', result.error);
+      error('Failed to pause service', result.error);
       process.exit(1);
     }
 
-    success(`Deployment '${name}' paused`);
+    success(`Service '${name}' paused`);
   } catch (err) {
-    error('Failed to pause deployment', err instanceof Error ? { message: err.message } : undefined);
+    error('Failed to pause service', err instanceof Error ? { message: err.message } : undefined);
     process.exit(1);
   }
 }
@@ -486,57 +486,57 @@ async function pauseHandler(name: string, options: { namespace?: string }): Prom
 async function resumeHandler(name: string, options: { namespace?: string }): Promise<void> {
   requireAuth();
 
-  info(`Resuming deployment: ${name}`);
+  info(`Resuming service: ${name}`);
 
   try {
     const api = createApiClient();
     const namespace = options.namespace ?? 'default';
     
-    // Get deployment
-    const getResponse = await api.get(`/api/deployments/name/${name}?namespace=${namespace}`);
-    const getResult = (await getResponse.json()) as ApiResponse<{ deployment: Deployment }>;
+    // Get service
+    const getResponse = await api.get(`/api/services/name/${name}?namespace=${namespace}`);
+    const getResult = (await getResponse.json()) as ApiResponse<{ service: Service }>;
 
     if (!getResult.success || !getResult.data) {
-      error('Deployment not found', getResult.error);
+      error('Service not found', getResult.error);
       process.exit(1);
     }
 
-    const deploymentId = getResult.data.deployment.id;
+    const serviceId = getResult.data.service.id;
 
     // Update status to active
-    const response = await api.patch(`/api/deployments/${deploymentId}`, { status: 'active' });
-    const result = (await response.json()) as ApiResponse<{ deployment: Deployment }>;
+    const response = await api.patch(`/api/services/${serviceId}`, { status: 'active' });
+    const result = (await response.json()) as ApiResponse<{ service: Service }>;
 
     if (!result.success) {
-      error('Failed to resume deployment', result.error);
+      error('Failed to resume service', result.error);
       process.exit(1);
     }
 
-    success(`Deployment '${name}' resumed`);
+    success(`Service '${name}' resumed`);
   } catch (err) {
-    error('Failed to resume deployment', err instanceof Error ? { message: err.message } : undefined);
+    error('Failed to resume service', err instanceof Error ? { message: err.message } : undefined);
     process.exit(1);
   }
 }
 
 /**
- * Creates the deployment command group
+ * Creates the service command group
  */
-export function createDeploymentCommand(): Command {
-  const deployment = new Command('deployment')
+export function createServiceCommand(): Command {
+  const service = new Command('service')
     .alias('deploy')
-    .description('Deployment management commands');
+    .description('Service management commands');
 
-  // Create deployment
-  deployment
+  // Create service
+  service
     .command('create [name]')
-    .description('Create a persistent deployment')
-    .option('--name <name>', 'Deployment name')
+    .description('Create a persistent service')
+    .option('--name <name>', 'Service name')
     .requiredOption('--pack <packName>', 'Pack name to deploy')
     .option('-V, --ver <version>', 'Pack version (defaults to latest)')
     .option('--namespace <namespace>', 'Target namespace', 'default')
     .option('-r, --replicas <count>', 'Number of replicas (0 = all matching nodes)', '1')
-    .option('-l, --label <key=value...>', 'Deployment labels')
+    .option('-l, --label <key=value...>', 'Service labels')
     .option('--pod-label <key=value...>', 'Labels applied to created pods')
     .option('-s, --node-selector <key=value...>', 'Node selector (can be repeated)')
     .option('-t, --toleration <key=value:effect...>', 'Toleration (can be repeated)')
@@ -544,54 +544,54 @@ export function createDeploymentCommand(): Command {
     .option('--memory <mb>', 'Memory request in MB')
     .action(createHandler);
 
-  // List deployments
-  deployment
+  // List services
+  service
     .command('list')
     .alias('ls')
-    .description('List deployments')
+    .description('List services')
     .option('--namespace <namespace>', 'Filter by namespace')
     .option('-s, --status <status>', 'Filter by status')
     .option('-p, --page <page>', 'Page number')
     .option('--limit <limit>', 'Results per page')
     .action(listHandler);
 
-  // Deployment status
-  deployment
+  // Service status
+  service
     .command('status <name>')
-    .description('Show deployment status')
+    .description('Show service status')
     .option('--namespace <namespace>', 'Namespace', 'default')
     .action(statusHandler);
 
-  // Scale deployment
-  deployment
+  // Scale service
+  service
     .command('scale <name>')
-    .description('Scale deployment replicas')
+    .description('Scale service replicas')
     .requiredOption('-r, --replicas <count>', 'Number of replicas (0 = all matching nodes)')
     .option('--namespace <namespace>', 'Namespace', 'default')
     .action(scaleHandler);
 
-  // Pause deployment
-  deployment
+  // Pause service
+  service
     .command('pause <name>')
-    .description('Pause deployment reconciliation')
+    .description('Pause service reconciliation')
     .option('--namespace <namespace>', 'Namespace', 'default')
     .action(pauseHandler);
 
-  // Resume deployment
-  deployment
+  // Resume service
+  service
     .command('resume <name>')
-    .description('Resume deployment reconciliation')
+    .description('Resume service reconciliation')
     .option('--namespace <namespace>', 'Namespace', 'default')
     .action(resumeHandler);
 
-  // Delete deployment
-  deployment
+  // Delete service
+  service
     .command('delete <name>')
     .alias('rm')
-    .description('Delete a deployment')
+    .description('Delete a service')
     .option('--namespace <namespace>', 'Namespace', 'default')
     .option('-f, --force', 'Force deletion without confirmation')
     .action(deleteHandler);
 
-  return deployment;
+  return service;
 }

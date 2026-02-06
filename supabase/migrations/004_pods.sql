@@ -1,5 +1,5 @@
 -- Migration: 004_pods
--- Description: Pods table for pack deployments to nodes
+-- Description: Pods table for pack services to nodes
 -- Stark Orchestrator
 
 -- Pod status enum
@@ -161,7 +161,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Comments
-COMMENT ON TABLE public.pods IS 'Pack deployments to nodes';
+COMMENT ON TABLE public.pods IS 'Pack services to nodes';
 COMMENT ON COLUMN public.pods.pack_version IS 'Specific version of the pack being deployed';
 COMMENT ON COLUMN public.pods.status IS 'Current pod status';
 COMMENT ON COLUMN public.pods.resource_requests IS 'Minimum resources required: cpu (millicores), memory (MB)';

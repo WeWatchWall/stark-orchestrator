@@ -11,7 +11,7 @@ export { nodeLossScenario, default as nodeLoss } from './node-loss';
 export { podCrashScenario, default as podCrash } from './pod-crash';
 export { heartbeatDelayScenario, default as heartbeatDelay } from './heartbeat-delay';
 export { schedulerConflictScenario, default as schedulerConflict } from './scheduler-conflict';
-export { deploymentBackoffScenario, default as deploymentBackoff } from './deployment-backoff';
+export { serviceBackoffScenario, default as serviceBackoff } from './service-backoff';
 export {
   orchestratorRestartScenario,
   default as orchestratorRestart,
@@ -22,7 +22,7 @@ export { apiFlakinesScenario, default as apiFlakiness } from './api-flakiness';
 export {
   nodeBanReconciliationScenario,
   heartbeatDelayConvergenceScenario,
-  deploymentShapeChangeScenario,
+  serviceShapeChangeScenario,
   default as reconciliationTests,
 } from './reconciliation-tests';
 
@@ -31,13 +31,13 @@ import { nodeLossScenario } from './node-loss';
 import { podCrashScenario } from './pod-crash';
 import { heartbeatDelayScenario } from './heartbeat-delay';
 import { schedulerConflictScenario } from './scheduler-conflict';
-import { deploymentBackoffScenario } from './deployment-backoff';
+import { serviceBackoffScenario } from './service-backoff';
 import { orchestratorRestartScenario } from './orchestrator-restart';
 import { apiFlakinesScenario } from './api-flakiness';
 import {
   nodeBanReconciliationScenario,
   heartbeatDelayConvergenceScenario,
-  deploymentShapeChangeScenario,
+  serviceShapeChangeScenario,
 } from './reconciliation-tests';
 import type { ChaosScenario, ScenarioRegistry } from './types';
 
@@ -46,13 +46,13 @@ export const scenarios: ScenarioRegistry = {
   'pod-crash': podCrashScenario as ChaosScenario<unknown>,
   'heartbeat-delay': heartbeatDelayScenario as ChaosScenario<unknown>,
   'scheduler-conflict': schedulerConflictScenario as ChaosScenario<unknown>,
-  'deployment-backoff': deploymentBackoffScenario as ChaosScenario<unknown>,
+  'service-backoff': serviceBackoffScenario as ChaosScenario<unknown>,
   'orchestrator-restart': orchestratorRestartScenario as ChaosScenario<unknown>,
   'api-flakiness': apiFlakinesScenario as ChaosScenario<unknown>,
   // Reconciliation test scenarios
   'node-ban-reconciliation': nodeBanReconciliationScenario as ChaosScenario<unknown>,
   'heartbeat-delay-convergence': heartbeatDelayConvergenceScenario as ChaosScenario<unknown>,
-  'deployment-shape-change': deploymentShapeChangeScenario as ChaosScenario<unknown>,
+  'service-shape-change': serviceShapeChangeScenario as ChaosScenario<unknown>,
 };
 
 export function getScenario(name: string): ChaosScenario<unknown> | undefined {

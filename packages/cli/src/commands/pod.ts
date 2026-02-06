@@ -223,9 +223,9 @@ async function createHandler(
     );
 
     console.log();
-    info(`Use 'stark pod status <pod-id>' to check deployment status`);
+    info(`Use 'stark pod status <pod-id>' to check service status`);
   } catch (err) {
-    error('Deployment failed', err instanceof Error ? { message: err.message } : undefined);
+    error('Service failed', err instanceof Error ? { message: err.message } : undefined);
     process.exit(1);
   }
 }

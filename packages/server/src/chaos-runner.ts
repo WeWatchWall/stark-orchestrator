@@ -50,7 +50,7 @@ const testSuites = {
     { scenario: 'heartbeat-delay', options: { mode: 'intermittent', dropRate: 0.2, durationMs: 20000 } },
     { scenario: 'node-loss', options: { mode: 'single', nodeId: 'test-node-1' } },
     { scenario: 'scheduler-conflict', options: { mode: 'affinity_conflict' } },
-    { scenario: 'deployment-backoff', options: { mode: 'crash_loop' } },
+    { scenario: 'service-backoff', options: { mode: 'crash_loop' } },
     { scenario: 'orchestrator-restart', options: { mode: 'graceful' } },
   ],
 };
@@ -320,8 +320,8 @@ async function promptForOptions(
       options.durationMs = parseInt(await prompt('Duration ms [120000]: ') || '120000', 10);
       break;
 
-    case 'deployment-shape-change':
-      options.deploymentId = await prompt('Deployment ID: ');
+    case 'service-shape-change':
+      options.serviceId = await prompt('Service ID: ');
       options.changeType = await prompt('Change type (scale_down/daemonset_to_replica) [scale_down]: ') || 'scale_down';
       options.newReplicas = parseInt(await prompt('New replica count [1]: ') || '1', 10);
       break;
@@ -335,9 +335,9 @@ async function promptForOptions(
       }
       break;
 
-    case 'deployment-backoff':
+    case 'service-backoff':
       options.mode = await prompt('Mode (crash_loop/gradual_failure/rollback_test) [crash_loop]: ') || 'crash_loop';
-      options.deploymentId = await prompt('Deployment ID (optional, leave empty to create test deployment): ') || undefined;
+      options.serviceId = await prompt('Service ID (optional, leave empty to create test service): ') || undefined;
       break;
 
     case 'orchestrator-restart':
@@ -453,7 +453,7 @@ function getDefaultOptions(scenario: string): Record<string, unknown> {
       return { mode: 'delay', nodeId: 'test-node-1', delayMs: 3000, durationMs: 30000 };
     case 'scheduler-conflict':
       return { mode: 'affinity_conflict' };
-    case 'deployment-backoff':
+    case 'service-backoff':
       return { mode: 'crash_loop' };
     case 'orchestrator-restart':
       return { mode: 'graceful' };

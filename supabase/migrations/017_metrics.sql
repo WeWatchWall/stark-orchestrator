@@ -50,7 +50,7 @@ CREATE INDEX idx_node_metrics_node_time ON public.node_metrics(node_id, recorded
 CREATE INDEX idx_node_metrics_latest ON public.node_metrics(node_id, created_at DESC);
 
 -- Partition hint: In production, consider partitioning by time range
-COMMENT ON TABLE public.node_metrics IS 'Time-series metrics for nodes. Consider partitioning by recorded_at for large deployments.';
+COMMENT ON TABLE public.node_metrics IS 'Time-series metrics for nodes. Consider partitioning by recorded_at for large services.';
 
 -- ============================================================================
 -- Pod Metrics Table
@@ -151,7 +151,7 @@ CREATE TABLE public.cluster_metrics (
     pods_failed INTEGER NOT NULL DEFAULT 0,
     pods_evicted INTEGER NOT NULL DEFAULT 0,
     
-    -- Desired vs running (for deployments)
+    -- Desired vs running (for services)
     pods_desired INTEGER NOT NULL DEFAULT 0,
     
     -- Aggregate resource capacity
@@ -224,7 +224,7 @@ DECLARE
     node_stats RECORD;
     pod_stats RECORD;
     resource_stats RECORD;
-    deployment_stats RECORD;
+    service_stats RECORD;
     restart_stats RECORD;
 BEGIN
     -- Get node statistics
@@ -263,11 +263,11 @@ BEGIN
     FROM public.nodes
     WHERE status IN ('online', 'draining');
 
-    -- Get desired pods from deployments
+    -- Get desired pods from services
     SELECT
         COALESCE(SUM(replicas), 0) AS desired
-    INTO deployment_stats
-    FROM public.deployments
+    INTO service_stats
+    FROM public.services
     WHERE status = 'active';
 
     -- Get restart statistics from pod_metrics
@@ -290,7 +290,7 @@ BEGIN
     VALUES (
         node_stats.total, node_stats.online, node_stats.offline, node_stats.unhealthy, node_stats.draining,
         pod_stats.total, pod_stats.pending, pod_stats.scheduled, pod_stats.starting, pod_stats.running,
-        pod_stats.stopping, pod_stats.stopped, pod_stats.failed, pod_stats.evicted, deployment_stats.desired,
+        pod_stats.stopping, pod_stats.stopped, pod_stats.failed, pod_stats.evicted, service_stats.desired,
         resource_stats.cpu_capacity, resource_stats.memory_capacity, resource_stats.pods_capacity,
         resource_stats.cpu_allocated, resource_stats.memory_allocated, resource_stats.pods_allocated,
         CASE WHEN resource_stats.cpu_capacity > 0 

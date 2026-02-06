@@ -279,7 +279,7 @@ export interface PodStatusCounts {
   stopped: number;
   failed: number;
   evicted: number;
-  /** Desired pods from deployments */
+  /** Desired pods from services */
   desired: number;
 }
 

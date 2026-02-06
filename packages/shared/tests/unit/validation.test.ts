@@ -644,105 +644,105 @@ describe('Scheduling Validation', () => {
   });
 });
 
-// Import deployment validation functions
+// Import service validation functions
 import {
-  validateDeploymentName,
-  validateDeploymentPackId,
-  validateDeploymentPackName,
+  validateServiceName,
+  validateServicePackId,
+  validateServicePackName,
   validateReplicas,
-  validateDeploymentNamespace,
-  validateDeploymentStatus,
-  validateDeploymentMetadata,
-  validateCreateDeploymentInput,
-  validateUpdateDeploymentInput,
+  validateServiceNamespace,
+  validateServiceStatus,
+  validateServiceMetadata,
+  validateCreateServiceInput,
+  validateUpdateServiceInput,
 } from '../../src/validation';
 
-describe('Deployment Validation', () => {
-  describe('validateDeploymentName', () => {
-    it('should accept valid deployment names', () => {
-      expect(validateDeploymentName('my-deployment')).toBeNull();
-      expect(validateDeploymentName('deployment-1')).toBeNull();
-      expect(validateDeploymentName('a')).toBeNull();
-      expect(validateDeploymentName('web-app')).toBeNull();
-      expect(validateDeploymentName('backend-api-v2')).toBeNull();
+describe('Service Validation', () => {
+  describe('validateServiceName', () => {
+    it('should accept valid service names', () => {
+      expect(validateServiceName('my-service')).toBeNull();
+      expect(validateServiceName('service-1')).toBeNull();
+      expect(validateServiceName('a')).toBeNull();
+      expect(validateServiceName('web-app')).toBeNull();
+      expect(validateServiceName('backend-api-v2')).toBeNull();
     });
 
     it('should reject missing names', () => {
-      expect(validateDeploymentName(null)?.code).toBe('REQUIRED');
-      expect(validateDeploymentName(undefined)?.code).toBe('REQUIRED');
+      expect(validateServiceName(null)?.code).toBe('REQUIRED');
+      expect(validateServiceName(undefined)?.code).toBe('REQUIRED');
     });
 
     it('should reject empty names', () => {
-      expect(validateDeploymentName('')?.code).toBe('INVALID_LENGTH');
+      expect(validateServiceName('')?.code).toBe('INVALID_LENGTH');
     });
 
     it('should reject non-string names', () => {
-      expect(validateDeploymentName(123)?.code).toBe('INVALID_TYPE');
-      expect(validateDeploymentName({})?.code).toBe('INVALID_TYPE');
+      expect(validateServiceName(123)?.code).toBe('INVALID_TYPE');
+      expect(validateServiceName({})?.code).toBe('INVALID_TYPE');
     });
 
     it('should reject names with uppercase letters', () => {
-      expect(validateDeploymentName('MyDeployment')?.code).toBe('INVALID_FORMAT');
-      expect(validateDeploymentName('UPPERCASE')?.code).toBe('INVALID_FORMAT');
+      expect(validateServiceName('MyService')?.code).toBe('INVALID_FORMAT');
+      expect(validateServiceName('UPPERCASE')?.code).toBe('INVALID_FORMAT');
     });
 
     it('should reject names starting with hyphen', () => {
-      expect(validateDeploymentName('-invalid')?.code).toBe('INVALID_FORMAT');
+      expect(validateServiceName('-invalid')?.code).toBe('INVALID_FORMAT');
     });
 
     it('should reject names ending with hyphen', () => {
-      expect(validateDeploymentName('invalid-')?.code).toBe('INVALID_FORMAT');
+      expect(validateServiceName('invalid-')?.code).toBe('INVALID_FORMAT');
     });
 
     it('should reject names that are too long', () => {
       const longName = 'a'.repeat(64);
-      expect(validateDeploymentName(longName)?.code).toBe('INVALID_LENGTH');
+      expect(validateServiceName(longName)?.code).toBe('INVALID_LENGTH');
     });
 
     it('should accept max length names', () => {
       const maxName = 'a'.repeat(63);
-      expect(validateDeploymentName(maxName)).toBeNull();
+      expect(validateServiceName(maxName)).toBeNull();
     });
   });
 
-  describe('validateDeploymentPackId', () => {
+  describe('validateServicePackId', () => {
     it('should accept valid UUIDs', () => {
-      expect(validateDeploymentPackId('11111111-1111-4111-8111-111111111111')).toBeNull();
-      expect(validateDeploymentPackId('22222222-2222-4222-8222-222222222222')).toBeNull();
+      expect(validateServicePackId('11111111-1111-4111-8111-111111111111')).toBeNull();
+      expect(validateServicePackId('22222222-2222-4222-8222-222222222222')).toBeNull();
     });
 
     it('should allow undefined (optional)', () => {
-      expect(validateDeploymentPackId(undefined)).toBeNull();
-      expect(validateDeploymentPackId(null)).toBeNull();
+      expect(validateServicePackId(undefined)).toBeNull();
+      expect(validateServicePackId(null)).toBeNull();
     });
 
     it('should reject invalid UUIDs', () => {
-      expect(validateDeploymentPackId('not-a-uuid')?.code).toBe('INVALID_FORMAT');
-      expect(validateDeploymentPackId('12345')?.code).toBe('INVALID_FORMAT');
+      expect(validateServicePackId('not-a-uuid')?.code).toBe('INVALID_FORMAT');
+      expect(validateServicePackId('12345')?.code).toBe('INVALID_FORMAT');
     });
 
     it('should reject non-string values', () => {
-      expect(validateDeploymentPackId(123)?.code).toBe('INVALID_TYPE');
+      expect(validateServicePackId(123)?.code).toBe('INVALID_TYPE');
     });
   });
 
-  describe('validateDeploymentPackName', () => {
+  describe('validateServicePackName', () => {
     it('should accept valid pack names', () => {
-      expect(validateDeploymentPackName('my-pack')).toBeNull();
-      expect(validateDeploymentPackName('web-app')).toBeNull();
+      expect(validateServicePackName('my-pack')).toBeNull();
+      expect(validateServicePackName('web-app')).toBeNull();
     });
 
     it('should allow undefined (optional)', () => {
-      expect(validateDeploymentPackName(undefined)).toBeNull();
-      expect(validateDeploymentPackName(null)).toBeNull();
+      expect(validateServicePackName(undefined)).toBeNull();
+      expect(validateServicePackName(null)).toBeNull();
     });
 
     it('should reject empty pack names', () => {
-      expect(validateDeploymentPackName('')?.code).toBe('INVALID_LENGTH');
+      expect(validateServicePackName('')?.code).toBe('INVALID_LENGTH');
     });
 
     it('should reject non-string values', () => {
-      expect(validateDeploymentPackName(123)?.code).toBe('INVALID_TYPE');
+      expect(validateServicePackName(123)?.code).toBe('INVALID_TYPE');
     });
   });
 
@@ -776,71 +776,71 @@ describe('Deployment Validation', () => {
     });
   });
 
-  describe('validateDeploymentNamespace', () => {
+  describe('validateServiceNamespace', () => {
     it('should accept valid namespaces', () => {
-      expect(validateDeploymentNamespace('default')).toBeNull();
-      expect(validateDeploymentNamespace('production')).toBeNull();
-      expect(validateDeploymentNamespace('my-namespace')).toBeNull();
+      expect(validateServiceNamespace('default')).toBeNull();
+      expect(validateServiceNamespace('production')).toBeNull();
+      expect(validateServiceNamespace('my-namespace')).toBeNull();
     });
 
     it('should allow undefined (defaults to default)', () => {
-      expect(validateDeploymentNamespace(undefined)).toBeNull();
-      expect(validateDeploymentNamespace(null)).toBeNull();
+      expect(validateServiceNamespace(undefined)).toBeNull();
+      expect(validateServiceNamespace(null)).toBeNull();
     });
 
     it('should reject empty namespace', () => {
-      expect(validateDeploymentNamespace('')?.code).toBe('INVALID_LENGTH');
+      expect(validateServiceNamespace('')?.code).toBe('INVALID_LENGTH');
     });
 
     it('should reject namespace exceeding max length', () => {
       const longNamespace = 'a'.repeat(64);
-      expect(validateDeploymentNamespace(longNamespace)?.code).toBe('INVALID_LENGTH');
+      expect(validateServiceNamespace(longNamespace)?.code).toBe('INVALID_LENGTH');
     });
 
     it('should reject non-string namespace', () => {
-      expect(validateDeploymentNamespace(123)?.code).toBe('INVALID_TYPE');
+      expect(validateServiceNamespace(123)?.code).toBe('INVALID_TYPE');
     });
   });
 
-  describe('validateDeploymentStatus', () => {
+  describe('validateServiceStatus', () => {
     it('should accept valid statuses', () => {
-      expect(validateDeploymentStatus('active')).toBeNull();
-      expect(validateDeploymentStatus('paused')).toBeNull();
-      expect(validateDeploymentStatus('scaling')).toBeNull();
-      expect(validateDeploymentStatus('deleting')).toBeNull();
+      expect(validateServiceStatus('active')).toBeNull();
+      expect(validateServiceStatus('paused')).toBeNull();
+      expect(validateServiceStatus('scaling')).toBeNull();
+      expect(validateServiceStatus('deleting')).toBeNull();
     });
 
     it('should allow undefined (optional)', () => {
-      expect(validateDeploymentStatus(undefined)).toBeNull();
-      expect(validateDeploymentStatus(null)).toBeNull();
+      expect(validateServiceStatus(undefined)).toBeNull();
+      expect(validateServiceStatus(null)).toBeNull();
     });
 
     it('should reject invalid statuses', () => {
-      expect(validateDeploymentStatus('invalid')?.code).toBe('INVALID_VALUE');
-      expect(validateDeploymentStatus('running')?.code).toBe('INVALID_VALUE');
+      expect(validateServiceStatus('invalid')?.code).toBe('INVALID_VALUE');
+      expect(validateServiceStatus('running')?.code).toBe('INVALID_VALUE');
     });
 
     it('should reject non-string status', () => {
-      expect(validateDeploymentStatus(123)?.code).toBe('INVALID_TYPE');
+      expect(validateServiceStatus(123)?.code).toBe('INVALID_TYPE');
     });
   });
 
-  describe('validateDeploymentMetadata', () => {
+  describe('validateServiceMetadata', () => {
     it('should accept valid metadata', () => {
-      expect(validateDeploymentMetadata({})).toBeNull();
-      expect(validateDeploymentMetadata({ key: 'value' })).toBeNull();
-      expect(validateDeploymentMetadata({ nested: { data: 123 } })).toBeNull();
+      expect(validateServiceMetadata({})).toBeNull();
+      expect(validateServiceMetadata({ key: 'value' })).toBeNull();
+      expect(validateServiceMetadata({ nested: { data: 123 } })).toBeNull();
     });
 
     it('should allow undefined (defaults to empty object)', () => {
-      expect(validateDeploymentMetadata(undefined)).toBeNull();
-      expect(validateDeploymentMetadata(null)).toBeNull();
+      expect(validateServiceMetadata(undefined)).toBeNull();
+      expect(validateServiceMetadata(null)).toBeNull();
     });
 
     it('should reject non-object metadata', () => {
-      expect(validateDeploymentMetadata('string')?.code).toBe('INVALID_TYPE');
-      expect(validateDeploymentMetadata(123)?.code).toBe('INVALID_TYPE');
-      expect(validateDeploymentMetadata([])?.code).toBe('INVALID_TYPE');
+      expect(validateServiceMetadata('string')?.code).toBe('INVALID_TYPE');
+      expect(validateServiceMetadata(123)?.code).toBe('INVALID_TYPE');
+      expect(validateServiceMetadata([])?.code).toBe('INVALID_TYPE');
     });
 
     it('should reject metadata with too many keys', () => {
@@ -848,14 +848,14 @@ describe('Deployment Validation', () => {
       for (let i = 0; i < 51; i++) {
         tooManyKeys[`key${i}`] = 'value';
       }
-      expect(validateDeploymentMetadata(tooManyKeys)?.code).toBe('INVALID_LENGTH');
+      expect(validateServiceMetadata(tooManyKeys)?.code).toBe('INVALID_LENGTH');
     });
   });
 
-  describe('validateCreateDeploymentInput', () => {
+  describe('validateCreateServiceInput', () => {
     it('should accept valid input with packId', () => {
-      const result = validateCreateDeploymentInput({
-        name: 'my-deployment',
+      const result = validateCreateServiceInput({
+        name: 'my-service',
         packId: '11111111-1111-4111-8111-111111111111',
       });
       expect(result.valid).toBe(true);
@@ -863,8 +863,8 @@ describe('Deployment Validation', () => {
     });
 
     it('should accept valid input with packName', () => {
-      const result = validateCreateDeploymentInput({
-        name: 'my-deployment',
+      const result = validateCreateServiceInput({
+        name: 'my-service',
         packName: 'my-pack',
       });
       expect(result.valid).toBe(true);
@@ -872,8 +872,8 @@ describe('Deployment Validation', () => {
     });
 
     it('should accept valid input with all optional fields', () => {
-      const result = validateCreateDeploymentInput({
-        name: 'full-deployment',
+      const result = validateCreateServiceInput({
+        name: 'full-service',
         packId: '11111111-1111-4111-8111-111111111111',
         replicas: 5,
         namespace: 'production',
@@ -891,7 +891,7 @@ describe('Deployment Validation', () => {
     });
 
     it('should reject missing name', () => {
-      const result = validateCreateDeploymentInput({
+      const result = validateCreateServiceInput({
         packId: '11111111-1111-4111-8111-111111111111',
       });
       expect(result.valid).toBe(false);
@@ -899,16 +899,16 @@ describe('Deployment Validation', () => {
     });
 
     it('should reject missing packId and packName', () => {
-      const result = validateCreateDeploymentInput({
-        name: 'my-deployment',
+      const result = validateCreateServiceInput({
+        name: 'my-service',
       });
       expect(result.valid).toBe(false);
       expect(result.errors.some(e => e.field === 'packId' && e.code === 'REQUIRED')).toBe(true);
     });
 
     it('should reject invalid replicas', () => {
-      const result = validateCreateDeploymentInput({
-        name: 'my-deployment',
+      const result = validateCreateServiceInput({
+        name: 'my-service',
         packId: '11111111-1111-4111-8111-111111111111',
         replicas: -5,
       });
@@ -917,14 +917,14 @@ describe('Deployment Validation', () => {
     });
 
     it('should reject non-object input', () => {
-      const result = validateCreateDeploymentInput('not an object');
+      const result = validateCreateServiceInput('not an object');
       expect(result.valid).toBe(false);
       expect(result.errors.some(e => e.field === 'input')).toBe(true);
     });
 
     it('should accept DaemonSet mode (replicas=0)', () => {
-      const result = validateCreateDeploymentInput({
-        name: 'daemonset-deployment',
+      const result = validateCreateServiceInput({
+        name: 'daemonset-service',
         packId: '11111111-1111-4111-8111-111111111111',
         replicas: 0,
       });
@@ -932,36 +932,36 @@ describe('Deployment Validation', () => {
     });
   });
 
-  describe('validateUpdateDeploymentInput', () => {
+  describe('validateUpdateServiceInput', () => {
     it('should accept empty update (no fields)', () => {
-      const result = validateUpdateDeploymentInput({});
+      const result = validateUpdateServiceInput({});
       expect(result.valid).toBe(true);
     });
 
     it('should accept valid replicas update', () => {
-      const result = validateUpdateDeploymentInput({ replicas: 10 });
+      const result = validateUpdateServiceInput({ replicas: 10 });
       expect(result.valid).toBe(true);
     });
 
     it('should accept valid status update', () => {
-      const result = validateUpdateDeploymentInput({ status: 'paused' });
+      const result = validateUpdateServiceInput({ status: 'paused' });
       expect(result.valid).toBe(true);
     });
 
     it('should accept valid labels update', () => {
-      const result = validateUpdateDeploymentInput({ labels: { app: 'web' } });
+      const result = validateUpdateServiceInput({ labels: { app: 'web' } });
       expect(result.valid).toBe(true);
     });
 
     it('should accept valid tolerations update', () => {
-      const result = validateUpdateDeploymentInput({
+      const result = validateUpdateServiceInput({
         tolerations: [{ key: 'gpu', operator: 'Exists', effect: 'NoSchedule' }],
       });
       expect(result.valid).toBe(true);
     });
 
     it('should accept multiple field updates', () => {
-      const result = validateUpdateDeploymentInput({
+      const result = validateUpdateServiceInput({
         replicas: 5,
         status: 'active',
         labels: { app: 'web' },
@@ -971,25 +971,25 @@ describe('Deployment Validation', () => {
     });
 
     it('should reject invalid replicas', () => {
-      const result = validateUpdateDeploymentInput({ replicas: -1 });
+      const result = validateUpdateServiceInput({ replicas: -1 });
       expect(result.valid).toBe(false);
       expect(result.errors.some(e => e.field === 'replicas')).toBe(true);
     });
 
     it('should reject invalid status', () => {
-      const result = validateUpdateDeploymentInput({ status: 'invalid' });
+      const result = validateUpdateServiceInput({ status: 'invalid' });
       expect(result.valid).toBe(false);
       expect(result.errors.some(e => e.field === 'status')).toBe(true);
     });
 
     it('should reject non-object input', () => {
-      const result = validateUpdateDeploymentInput('not an object');
+      const result = validateUpdateServiceInput('not an object');
       expect(result.valid).toBe(false);
       expect(result.errors.some(e => e.field === 'input')).toBe(true);
     });
 
     it('should accept scale to DaemonSet mode', () => {
-      const result = validateUpdateDeploymentInput({ replicas: 0 });
+      const result = validateUpdateServiceInput({ replicas: 0 });
       expect(result.valid).toBe(true);
     });
   });

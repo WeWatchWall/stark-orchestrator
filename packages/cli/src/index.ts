@@ -13,7 +13,7 @@ import { createAuthCommand } from './commands/auth.js';
 import { createPackCommand } from './commands/pack.js';
 import { createNodeCommand } from './commands/node.js';
 import { createPodCommand } from './commands/pod.js';
-import { createDeploymentCommand } from './commands/deployment.js';
+import { createServiceCommand } from './commands/service.js';
 import { createNamespaceCommand } from './commands/namespace.js';
 import { createServerConfigCommand } from './commands/server-config.js';
 import { createChaosCommand } from './commands/chaos.js';
@@ -29,7 +29,7 @@ const VERSION = '0.0.1';
 const DESCRIPTION = `
 Stark Orchestrator CLI
 
-A command-line interface for managing distributed pack deployments
+A command-line interface for managing distributed pack services
 across Node.js servers and browser runtimes.
 
 Commands:
@@ -37,7 +37,7 @@ Commands:
   pack        Pack management (register, list, versions)
   node        Node management (list, status)
   pod         Pod management (create, list, status, rollback)
-  deployment  Deployment management (create, list, scale, pause)
+  service  Service management (create, list, scale, pause)
   namespace   Namespace management (create, list, delete)
   chaos       Chaos testing commands (fault injection, partitions)
 
@@ -45,8 +45,8 @@ Examples:
   $ stark auth login
   $ stark pack list
   $ stark pod create my-pack --node my-node
-  $ stark deployment create --pack my-pack --replicas 3
-  $ stark deployment create --pack my-pack --replicas 0 --node-selector gpu=true
+  $ stark service create --pack my-pack --replicas 3
+  $ stark service create --pack my-pack --replicas 0 --node-selector gpu=true
   $ stark node list --status healthy
 `;
 
@@ -87,7 +87,7 @@ function createProgram(): Command {
   program.addCommand(createPackCommand());
   program.addCommand(createNodeCommand());
   program.addCommand(createPodCommand());
-  program.addCommand(createDeploymentCommand());
+  program.addCommand(createServiceCommand());
   program.addCommand(createNamespaceCommand());
   program.addCommand(createServerConfigCommand());
   program.addCommand(createChaosCommand());

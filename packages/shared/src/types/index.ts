@@ -263,22 +263,22 @@ export {
   WorkerScriptRequiredError,
 } from './worker-adapter.js';
 
-// Deployment types
+// Service types
 export type {
-  Deployment,
-  DeploymentStatus,
-  CreateDeploymentInput,
-  UpdateDeploymentInput,
-  DeploymentListItem,
-} from './deployment.js';
+  Service,
+  ServiceStatus,
+  CreateServiceInput,
+  UpdateServiceInput,
+  ServiceListItem,
+} from './service.js';
 
 export {
-  isDeploymentActive,
-  isDeploymentDaemonSet,
-  isDeploymentReady,
-  DEFAULT_DEPLOYMENT_RESOURCE_REQUESTS,
-  DEFAULT_DEPLOYMENT_RESOURCE_LIMITS,
-} from './deployment.js';
+  isServiceActive,
+  isServiceDaemonSet,
+  isServiceReady,
+  DEFAULT_SERVICE_RESOURCE_REQUESTS,
+  DEFAULT_SERVICE_RESOURCE_LIMITS,
+} from './service.js';
 
 // App config types
 export type {
@@ -322,7 +322,7 @@ export type {
   PodEventType,
   NodeEventType,
   PackEventType,
-  DeploymentEventType,
+  ServiceEventType,
   SystemEventType,
   AuthEventType,
   SchedulerEventType,
@@ -337,8 +337,8 @@ export type {
   NodeEvent,
   PackEventState,
   PackEvent,
-  DeploymentEventState,
-  DeploymentEvent,
+  ServiceEventState,
+  ServiceEvent,
   EmitPodEventInput,
   EmitNodeEventInput,
   EmitEventInput,

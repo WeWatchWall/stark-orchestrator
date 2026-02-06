@@ -114,7 +114,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Comments
-COMMENT ON TABLE public.packs IS 'Registered software packages (packs) for deployment';
+COMMENT ON TABLE public.packs IS 'Registered software packages (packs) for service';
 COMMENT ON COLUMN public.packs.runtime_tag IS 'Target runtime: node, browser, or universal';
 COMMENT ON COLUMN public.packs.bundle_path IS 'Path to bundle in Supabase Storage';
 COMMENT ON COLUMN public.packs.metadata IS 'Additional pack metadata (dependencies, config, etc.)';

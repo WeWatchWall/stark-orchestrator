@@ -1,17 +1,17 @@
--- Migration: 013_deployments
--- Description: Deployments table for persistent pod scheduling
+-- Migration: 013_services
+-- Description: Services table for persistent pod scheduling
 -- Stark Orchestrator
 
--- Deployment status enum
-CREATE TYPE deployment_status AS ENUM (
+-- Service status enum
+CREATE TYPE service_status AS ENUM (
     'active',       -- Actively reconciling pods
     'paused',       -- Reconciliation paused
     'scaling',      -- Currently scaling up/down
     'deleting'      -- Being deleted
 );
 
--- Deployments table
-CREATE TABLE IF NOT EXISTS public.deployments (
+-- Services table
+CREATE TABLE IF NOT EXISTS public.services (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     
     -- Identity
@@ -26,14 +26,14 @@ CREATE TABLE IF NOT EXISTS public.deployments (
     
     -- Replica configuration
     -- replicas = 0 means "deploy to all matching nodes" (DaemonSet-like)
-    -- replicas > 0 means "maintain exactly N pods" (Deployment-like)
+    -- replicas > 0 means "maintain exactly N pods" (Service-like)
     replicas INTEGER NOT NULL DEFAULT 1 CHECK (replicas >= 0),
     
     -- Status
-    status deployment_status NOT NULL DEFAULT 'active',
+    status service_status NOT NULL DEFAULT 'active',
     status_message TEXT,
     
-    -- Labels and annotations for the deployment itself
+    -- Labels and annotations for the service itself
     labels JSONB DEFAULT '{}'::JSONB,
     annotations JSONB DEFAULT '{}'::JSONB,
     
@@ -81,41 +81,41 @@ CREATE TABLE IF NOT EXISTS public.deployments (
     UNIQUE(name, namespace)
 );
 
--- Add deployment_id to pods for tracking which deployment owns a pod
+-- Add service_id to pods for tracking which service owns a pod
 ALTER TABLE public.pods 
-ADD COLUMN IF NOT EXISTS deployment_id UUID REFERENCES public.deployments(id) ON DELETE SET NULL;
+ADD COLUMN IF NOT EXISTS service_id UUID REFERENCES public.services(id) ON DELETE SET NULL;
 
 -- Indexes for common queries
-CREATE INDEX IF NOT EXISTS idx_deployments_name ON public.deployments(name);
-CREATE INDEX IF NOT EXISTS idx_deployments_namespace ON public.deployments(namespace);
-CREATE INDEX IF NOT EXISTS idx_deployments_pack_id ON public.deployments(pack_id);
-CREATE INDEX IF NOT EXISTS idx_deployments_status ON public.deployments(status);
-CREATE INDEX IF NOT EXISTS idx_deployments_created_by ON public.deployments(created_by);
-CREATE INDEX IF NOT EXISTS idx_deployments_name_namespace ON public.deployments(name, namespace);
-CREATE INDEX IF NOT EXISTS idx_pods_deployment_id ON public.pods(deployment_id);
+CREATE INDEX IF NOT EXISTS idx_services_name ON public.services(name);
+CREATE INDEX IF NOT EXISTS idx_services_namespace ON public.services(namespace);
+CREATE INDEX IF NOT EXISTS idx_services_pack_id ON public.services(pack_id);
+CREATE INDEX IF NOT EXISTS idx_services_status ON public.services(status);
+CREATE INDEX IF NOT EXISTS idx_services_created_by ON public.services(created_by);
+CREATE INDEX IF NOT EXISTS idx_services_name_namespace ON public.services(name, namespace);
+CREATE INDEX IF NOT EXISTS idx_pods_service_id ON public.pods(service_id);
 
 -- Trigger for updated_at
-CREATE TRIGGER trigger_deployments_updated_at
-    BEFORE UPDATE ON public.deployments
+CREATE TRIGGER trigger_services_updated_at
+    BEFORE UPDATE ON public.services
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
 -- RLS (Row Level Security)
-ALTER TABLE public.deployments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.services ENABLE ROW LEVEL SECURITY;
 
--- Policy: Everyone can read deployments
-CREATE POLICY "Anyone can read deployments"
-    ON public.deployments FOR SELECT
+-- Policy: Everyone can read services
+CREATE POLICY "Anyone can read services"
+    ON public.services FOR SELECT
     USING (true);
 
--- Policy: Authenticated users can create deployments
-CREATE POLICY "Authenticated users can create deployments"
-    ON public.deployments FOR INSERT
+-- Policy: Authenticated users can create services
+CREATE POLICY "Authenticated users can create services"
+    ON public.services FOR INSERT
     WITH CHECK (auth.uid() IS NOT NULL);
 
--- Policy: Creators and admins can update deployments
-CREATE POLICY "Creators and admins can update deployments"
-    ON public.deployments FOR UPDATE
+-- Policy: Creators and admins can update services
+CREATE POLICY "Creators and admins can update services"
+    ON public.services FOR UPDATE
     USING (
         created_by = auth.uid() OR
         EXISTS (
@@ -124,9 +124,9 @@ CREATE POLICY "Creators and admins can update deployments"
         )
     );
 
--- Policy: Creators and admins can delete deployments
-CREATE POLICY "Creators and admins can delete deployments"
-    ON public.deployments FOR DELETE
+-- Policy: Creators and admins can delete services
+CREATE POLICY "Creators and admins can delete services"
+    ON public.services FOR DELETE
     USING (
         created_by = auth.uid() OR
         EXISTS (
@@ -136,7 +136,7 @@ CREATE POLICY "Creators and admins can delete deployments"
     );
 
 -- Comments
-COMMENT ON TABLE public.deployments IS 'Persistent deployment configurations for pack scheduling';
-COMMENT ON COLUMN public.deployments.replicas IS '0 = deploy to all matching nodes (DaemonSet), >0 = maintain N replicas (Deployment)';
-COMMENT ON COLUMN public.deployments.scheduling IS 'Scheduling config: nodeSelector, nodeAffinity, podAffinity, podAntiAffinity';
-COMMENT ON COLUMN public.pods.deployment_id IS 'Reference to the deployment that created this pod (null for standalone pods)';
+COMMENT ON TABLE public.services IS 'Persistent service configurations for pack scheduling';
+COMMENT ON COLUMN public.services.replicas IS '0 = deploy to all matching nodes (DaemonSet), >0 = maintain N replicas (Service)';
+COMMENT ON COLUMN public.services.scheduling IS 'Scheduling config: nodeSelector, nodeAffinity, podAffinity, podAntiAffinity';
+COMMENT ON COLUMN public.pods.service_id IS 'Reference to the service that created this pod (null for standalone pods)';

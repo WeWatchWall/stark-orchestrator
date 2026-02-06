@@ -93,16 +93,16 @@ export {
   validateSchedulingConfig,
 } from './scheduling-validation';
 
-// Deployment validation
+// Service validation
 export {
-  validateDeploymentName,
-  validateDeploymentPackId,
-  validateDeploymentPackName,
+  validateServiceName,
+  validateServicePackId,
+  validateServicePackName,
   validateReplicas,
-  validateDeploymentNamespace,
-  validateDeploymentStatus,
-  validateDeploymentMetadata,
+  validateServiceNamespace,
+  validateServiceStatus,
+  validateServiceMetadata,
   validateFollowLatest,
-  validateCreateDeploymentInput,
-  validateUpdateDeploymentInput,
-} from './deployment-validation';
+  validateCreateServiceInput,
+  validateUpdateServiceInput,
+} from './service-validation';

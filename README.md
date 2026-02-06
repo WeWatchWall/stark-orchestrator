@@ -54,7 +54,7 @@ pnpm dev:server
 
 The server will start at `https://localhost:443`.
 
-### Production Deployment
+### Production Service
 
 ```bash
 # Build all packages
@@ -201,7 +201,7 @@ node packages/cli/dist/index.js auth list-users
 #### User Roles
 
 - **admin**: Full access to everything (manage all). Admin nodes are shared infrastructure that can run packs from any user.
-- **user**: Self-service users - can create/manage own packs, nodes, and deployments. Packs can only be deployed to own nodes (unless public).
+- **user**: Self-service users - can create/manage own packs, nodes, and services. Packs can only be deployed to own nodes (unless public).
 - **node**: Node agents - can register/update own node, update pods assigned to it, read accessible packs/pods/namespaces
 - **viewer**: Read-only access to packs, pods, nodes, namespaces
 
@@ -331,29 +331,29 @@ Pods are scheduled to nodes based on these Kubernetes-like constraints:
   - **Public packs**: Deploy to any node
   - This enforces user isolation - users can only run their own packs on their own nodes
 
-### Deployment Management
+### Service Management
 
-Deployments are persistent resources that automatically create and manage pods. They are useful for:
+Services are persistent resources that automatically create and manage pods. They are useful for:
 
 - **Auto-healing**: Automatically recreate pods when nodes fail
 - **Scaling**: Easily scale the number of replicas
 - **DaemonSet mode**: Deploy to all nodes matching scheduling constraints
 
 ```bash
-# Create a deployment with 3 replicas
-node packages/cli/dist/index.js deployment create my-deployment \
+# Create a service with 3 replicas
+node packages/cli/dist/index.js service create my-service \
   --pack my-pack \
   --replicas 3
 
-# Create a DaemonSet-like deployment (deploys to all matching nodes)
-node packages/cli/dist/index.js deployment create gpu-worker \
+# Create a DaemonSet-like service (deploys to all matching nodes)
+node packages/cli/dist/index.js service create gpu-worker \
   --pack ml-pack \
   --replicas 0 \
   --node-selector gpu=true \
   --toleration gpu=dedicated:NoSchedule
 
-# Create a deployment with scheduling constraints
-node packages/cli/dist/index.js deployment create web-app \
+# Create a service with scheduling constraints
+node packages/cli/dist/index.js service create web-app \
   --pack web-pack \
   --replicas 5 \
   --namespace production \
@@ -361,29 +361,29 @@ node packages/cli/dist/index.js deployment create web-app \
   --node-selector tier=frontend \
   --label app=web
 
-# List all deployments
-node packages/cli/dist/index.js deployment list
+# List all services
+node packages/cli/dist/index.js service list
 
-# Check deployment status
-node packages/cli/dist/index.js deployment status my-deployment
+# Check service status
+node packages/cli/dist/index.js service status my-service
 
-# Scale a deployment
-node packages/cli/dist/index.js deployment scale my-deployment --replicas 10
+# Scale a service
+node packages/cli/dist/index.js service scale my-service --replicas 10
 
-# Convert a scaled deployment to DaemonSet mode
-node packages/cli/dist/index.js deployment scale my-deployment --replicas 0
+# Convert a scaled service to DaemonSet mode
+node packages/cli/dist/index.js service scale my-service --replicas 0
 
 # Pause reconciliation (stops creating/deleting pods)
-node packages/cli/dist/index.js deployment pause my-deployment
+node packages/cli/dist/index.js service pause my-service
 
 # Resume reconciliation
-node packages/cli/dist/index.js deployment resume my-deployment
+node packages/cli/dist/index.js service resume my-service
 
-# Delete a deployment (stops all pods)
-node packages/cli/dist/index.js deployment delete my-deployment --force
+# Delete a service (stops all pods)
+node packages/cli/dist/index.js service delete my-service --force
 ```
 
-#### Deployment Create Options
+#### Service Create Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -391,16 +391,16 @@ node packages/cli/dist/index.js deployment delete my-deployment --force
 | `-V, --ver <version>` | Pack version | latest |
 | `--namespace <ns>` | Target namespace | `default` |
 | `-r, --replicas <n>` | Number of replicas (0 = all matching nodes) | `1` |
-| `-l, --label <k=v>` | Deployment label (can be repeated) | - |
+| `-l, --label <k=v>` | Service label (can be repeated) | - |
 | `--pod-label <k=v>` | Label for created pods (can be repeated) | - |
 | `-s, --node-selector <k=v>` | Node selector (can be repeated) | - |
 | `-t, --toleration <k=v:effect>` | Toleration (can be repeated) | - |
 | `--cpu <millicores>` | CPU request in millicores | `100` |
 | `--memory <mb>` | Memory request in MB | `128` |
 
-#### Deployment vs Pod
+#### Service vs Pod
 
-| Aspect | Pod | Deployment |
+| Aspect | Pod | Service |
 |--------|-----|------------|
 | **Lifecycle** | Manual - you create and delete | Managed - controller creates pods |
 | **Auto-healing** | None - pod stays failed | Yes - recreates failed pods |
@@ -408,34 +408,34 @@ node packages/cli/dist/index.js deployment delete my-deployment --force
 | **New nodes** | Manual pod creation | Auto-deploys (if replicas=0) |
 | **Use case** | One-off tasks, testing | Production workloads |
 
-When `replicas=0`, the deployment operates in **DaemonSet mode**:
+When `replicas=0`, the service operates in **DaemonSet mode**:
 - Automatically creates one pod on every node matching the scheduling constraints
 - When new nodes join with matching labels, pods are automatically deployed
 - When nodes leave, their pods are removed
 
 #### Automatic Version Updates (Follow Latest)
 
-Deployments can automatically update to new pack versions when they are registered:
+Services can automatically update to new pack versions when they are registered:
 
 ```bash
-# Create a deployment that auto-updates to latest pack versions
-node packages/cli/dist/index.js deployment create my-deployment \
+# Create a service that auto-updates to latest pack versions
+node packages/cli/dist/index.js service create my-service \
   --pack my-pack \
   --follow-latest
 ```
 
 When `--follow-latest` is enabled:
-- The deployment controller checks for new pack versions during each reconciliation cycle
+- The service controller checks for new pack versions during each reconciliation cycle
 - When a new version is detected, a rolling update is triggered automatically
 - Old pods are stopped and replaced with pods running the new version
 
 #### Crash-Loop Protection
 
-The deployment controller includes built-in crash-loop protection to prevent infinite upgrade/fail cycles:
+The service controller includes built-in crash-loop protection to prevent infinite upgrade/fail cycles:
 
 | Feature | Description |
 |---------|-------------|
-| **Failure Tracking** | Counts consecutive pod failures per deployment |
+| **Failure Tracking** | Counts consecutive pod failures per service |
 | **Exponential Backoff** | Failed upgrades trigger increasing wait periods (1min → 2min → 4min → ... up to 1 hour) |
 | **Auto-Rollback** | After 3 consecutive failures, automatically rolls back to the last successful version |
 | **Version Blacklisting** | Failed versions are temporarily blocked from retry attempts |
@@ -445,7 +445,7 @@ The deployment controller includes built-in crash-loop protection to prevent inf
 1. When a new pack version fails to start pods, the failure count increments
 2. After 3 consecutive failures:
    - If a previous successful version exists → **auto-rollback** to that version
-   - If no previous version → **pause** the deployment with an error message
+   - If no previous version → **pause** the service with an error message
 3. The failed version is blocked until either:
    - The backoff period expires (exponential, up to 1 hour)
    - A newer pack version is registered
@@ -499,7 +499,7 @@ node packages/cli/dist/index.js node rm my-node-1
 
 ### Starting a Node Agent
 
-The Node.js runtime agent connects to the orchestrator and registers itself to receive pod deployments.
+The Node.js runtime agent connects to the orchestrator and registers itself to receive pod services.
 If you are logged in as admin, you can enable automatic registration of the node,
 which makes passing in authentification parameters optional:
 
@@ -562,7 +562,7 @@ The node agent also supports configuration via environment variables:
 
 #### Running as a Service
 
-For production deployments, run the node agent as a systemd service:
+For production services, run the node agent as a systemd service:
 
 ```bash
 # /etc/systemd/system/stark-node-agent.service

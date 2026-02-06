@@ -1179,8 +1179,8 @@ async function promptForOptions(
       options.durationMs = parseInt((await prompt('Duration ms [120000]: ')) || '120000', 10);
       break;
 
-    case 'deployment-shape-change':
-      options.deploymentId = await prompt('Deployment ID: ');
+    case 'service-shape-change':
+      options.serviceId = await prompt('Service ID: ');
       options.changeType = (await prompt('Change type (scale_down/daemonset_to_replica) [scale_down]: ')) || 'scale_down';
       options.newReplicas = parseInt((await prompt('New replica count [1]: ')) || '1', 10);
       break;
@@ -1202,9 +1202,9 @@ async function promptForOptions(
       }
       break;
 
-    case 'deployment-backoff':
+    case 'service-backoff':
       options.mode = (await prompt('Mode (crash_loop/gradual_failure/rollback_test) [crash_loop]: ')) || 'crash_loop';
-      options.deploymentId = (await prompt('Deployment ID (optional): ')) || undefined;
+      options.serviceId = (await prompt('Service ID (optional): ')) || undefined;
       break;
 
     case 'orchestrator-restart':

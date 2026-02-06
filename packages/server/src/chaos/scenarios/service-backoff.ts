@@ -1,5 +1,5 @@
 /**
- * Chaos Scenario: Deployment Backoff
+ * Chaos Scenario: Service Backoff
  *
  * Tests crash loops and rollback behavior:
  * - Deploy healthy version
@@ -8,24 +8,24 @@
  */
 
 import { getChaosProxy } from '../../services/chaos-proxy';
-import { podQueries, deploymentQueries } from '@stark-o/core';
+import { podQueries, serviceQueries } from '@stark-o/core';
 import type { ChaosScenario, ScenarioResult, OptionHelp } from './types';
 
 // Use the query modules that wrap the reactive stores
 
-export interface DeploymentBackoffOptions {
-  deploymentId?: string;
+export interface ServiceBackoffOptions {
+  serviceId?: string;
   packIdV1?: string; // Healthy version
   packIdV2?: string; // Failing version
   mode: 'crash_loop' | 'gradual_failure' | 'rollback_test';
   failAfterMs?: number; // How long V2 runs before failing
 }
 
-export const deploymentBackoffScenario: ChaosScenario<DeploymentBackoffOptions> = {
-  name: 'deployment-backoff',
-  description: 'Test deployment crash loops and rollback behavior',
+export const serviceBackoffScenario: ChaosScenario<ServiceBackoffOptions> = {
+  name: 'service-backoff',
+  description: 'Test service crash loops and rollback behavior',
 
-  async validate(options: DeploymentBackoffOptions): Promise<{ valid: boolean; error?: string }> {
+  async validate(options: ServiceBackoffOptions): Promise<{ valid: boolean; error?: string }> {
     const chaos = getChaosProxy();
     if (!chaos.isEnabled()) {
       return { valid: false, error: 'Chaos proxy not enabled' };
@@ -38,39 +38,39 @@ export const deploymentBackoffScenario: ChaosScenario<DeploymentBackoffOptions> 
     return { valid: true };
   },
 
-  async execute(options: DeploymentBackoffOptions): Promise<ScenarioResult> {
+  async execute(options: ServiceBackoffOptions): Promise<ScenarioResult> {
     const chaos = getChaosProxy();
     const startTime = Date.now();
     const events: string[] = [];
 
     console.log(`\n${'═'.repeat(60)}`);
-    console.log(`⚡ CHAOS SCENARIO: Deployment Backoff (${options.mode})`);
+    console.log(`⚡ CHAOS SCENARIO: Service Backoff (${options.mode})`);
     console.log(`${'═'.repeat(60)}\n`);
 
     try {
       switch (options.mode) {
         case 'crash_loop': {
-          const deploymentId = options.deploymentId;
-          if (!deploymentId) {
-            // Get any active deployment
-            events.push('No deployment specified, finding active deployment...');
-            // Would need to query deployments here
+          const serviceId = options.serviceId;
+          if (!serviceId) {
+            // Get any active service
+            events.push('No service specified, finding active service...');
+            // Would need to query services here
           }
 
-          events.push(`Targeting deployment: ${deploymentId ?? 'first available'}`);
+          events.push(`Targeting service: ${serviceId ?? 'first available'}`);
 
           // Force pods into crash loop by failing them repeatedly
-          if (deploymentId) {
-            const deployment = await deploymentQueries.getDeploymentById(deploymentId);
-            if (!deployment) {
-              throw new Error(`Deployment ${deploymentId} not found`);
+          if (serviceId) {
+            const service = await serviceQueries.getServiceById(serviceId);
+            if (!service) {
+              throw new Error(`Service ${serviceId} not found`);
             }
 
-            events.push(`Deployment found: ${deployment.name}, replicas: ${deployment.replicas}`);
+            events.push(`Service found: ${service.name}, replicas: ${service.replicas}`);
 
-            // Get pods for this deployment
+            // Get pods for this service
             const pods = await podQueries.listPods({
-              deploymentId,
+              serviceId,
               limit: 100,
             });
 
@@ -94,7 +94,7 @@ export const deploymentBackoffScenario: ChaosScenario<DeploymentBackoffOptions> 
               await sleep(5000);
 
               // Check current state
-              const currentPods = await podQueries.listPods({ deploymentId, limit: 100 });
+              const currentPods = await podQueries.listPods({ serviceId, limit: 100 });
               const running = currentPods.filter((p) => p.status === 'running').length;
               const pending = currentPods.filter((p) => p.status === 'pending').length;
               const failed = currentPods.filter((p) => p.status === 'failed').length;
@@ -104,9 +104,9 @@ export const deploymentBackoffScenario: ChaosScenario<DeploymentBackoffOptions> 
 
             // Check final backoff state
             await sleep(5000);
-            const finalDeployment = await deploymentQueries.getDeploymentById(deploymentId);
+            const finalService = await serviceQueries.getServiceById(serviceId);
             events.push(
-              `Final deployment status: ${finalDeployment?.status ?? 'unknown'}`
+              `Final service status: ${finalService?.status ?? 'unknown'}`
             );
           }
           break;
@@ -144,25 +144,25 @@ export const deploymentBackoffScenario: ChaosScenario<DeploymentBackoffOptions> 
           events.push(`V1 pack (healthy): ${packIdV1}`);
           events.push(`V2 pack (failing): ${packIdV2}`);
 
-          // Create deployment with V1
-          const deployment = await deploymentQueries.createDeployment({
+          // Create service with V1
+          const service = await serviceQueries.createService({
             name: `chaos-rollback-test-${Date.now()}`,
             packId: packIdV1,
             namespace: 'default',
             replicas: 2,
           });
 
-          events.push(`Created deployment ${deployment.id} with V1`);
+          events.push(`Created service ${service.id} with V1`);
 
           // Wait for V1 to be healthy
           await sleep(10000);
 
-          let v1Status = await deploymentQueries.getDeploymentById(deployment.id);
-          events.push(`V1 deployment status: ${v1Status?.status ?? 'unknown'}`);
+          let v1Status = await serviceQueries.getServiceById(service.id);
+          events.push(`V1 service status: ${v1Status?.status ?? 'unknown'}`);
 
           // Update to V2
           events.push('Updating to V2 (failing version)...');
-          await deploymentQueries.updateDeployment(deployment.id, {
+          await serviceQueries.updateService(service.id, {
             packId: packIdV2,
           });
 
@@ -174,7 +174,7 @@ export const deploymentBackoffScenario: ChaosScenario<DeploymentBackoffOptions> 
           // Simulate V2 pods crashing
           for (let i = 0; i < 3; i++) {
             const pods = await podQueries.listPods({
-              deploymentId: deployment.id,
+              serviceId: service.id,
               limit: 100,
             });
 
@@ -192,12 +192,12 @@ export const deploymentBackoffScenario: ChaosScenario<DeploymentBackoffOptions> 
           // Check if rollback occurred
           await sleep(10000);
 
-          const finalDeployment = await deploymentQueries.getDeploymentById(deployment.id);
+          const finalService = await serviceQueries.getServiceById(service.id);
           events.push(
-            `Final deployment: status=${finalDeployment?.status}, packId=${finalDeployment?.packId}`
+            `Final service: status=${finalService?.status}, packId=${finalService?.packId}`
           );
 
-          if (finalDeployment?.packId === packIdV1) {
+          if (finalService?.packId === packIdV1) {
             events.push('✓ Rollback to V1 occurred!');
           } else {
             events.push('✗ No automatic rollback detected');
@@ -210,7 +210,7 @@ export const deploymentBackoffScenario: ChaosScenario<DeploymentBackoffOptions> 
 
       return {
         success: true,
-        scenario: 'deployment-backoff',
+        scenario: 'service-backoff',
         mode: options.mode,
         duration,
         events,
@@ -220,7 +220,7 @@ export const deploymentBackoffScenario: ChaosScenario<DeploymentBackoffOptions> 
       chaos.clearSchedulerRules();
       return {
         success: false,
-        scenario: 'deployment-backoff',
+        scenario: 'service-backoff',
         mode: options.mode,
         duration: Date.now() - startTime,
         events,
@@ -229,13 +229,13 @@ export const deploymentBackoffScenario: ChaosScenario<DeploymentBackoffOptions> 
     }
   },
 
-  getExpectedBehavior(options: DeploymentBackoffOptions): string[] {
+  getExpectedBehavior(options: ServiceBackoffOptions): string[] {
     switch (options.mode) {
       case 'crash_loop':
         return [
           'Initial restart attempts are quick',
           'Backoff time increases exponentially',
-          'Deployment eventually marked as degraded/failed',
+          'Service eventually marked as degraded/failed',
           'Clear crash loop indication',
           'No infinite restart loop',
         ];
@@ -243,13 +243,13 @@ export const deploymentBackoffScenario: ChaosScenario<DeploymentBackoffOptions> 
         return [
           'System handles low failure rates gracefully',
           'Higher failure rates trigger alerts/warnings',
-          'Deployment maintains minimum replicas if possible',
+          'Service maintains minimum replicas if possible',
           'Clear failure reasons exposed',
         ];
       case 'rollback_test':
         return [
           'V1 deploys successfully',
-          'V2 deployment starts',
+          'V2 service starts',
           'V2 failures detected',
           'Automatic rollback to V1 (if configured)',
           'System returns to stable state',
@@ -262,10 +262,10 @@ export const deploymentBackoffScenario: ChaosScenario<DeploymentBackoffOptions> 
   getOptionsHelp(): OptionHelp[] {
     return [
       {
-        name: 'deploymentId',
+        name: 'serviceId',
         type: 'string',
         required: false,
-        description: 'Deployment ID to target for crash_loop mode',
+        description: 'Service ID to target for crash_loop mode',
         example: 'deploy-abc123',
       },
       {
@@ -286,7 +286,7 @@ export const deploymentBackoffScenario: ChaosScenario<DeploymentBackoffOptions> 
         name: 'mode',
         type: 'string',
         required: true,
-        description: 'Deployment backoff simulation mode',
+        description: 'Service backoff simulation mode',
         choices: ['crash_loop', 'gradual_failure', 'rollback_test'],
         example: 'crash_loop',
       },
@@ -305,4 +305,4 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export default deploymentBackoffScenario;
+export default serviceBackoffScenario;

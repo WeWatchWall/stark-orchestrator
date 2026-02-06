@@ -26,7 +26,7 @@ CREATE TYPE pod_termination_reason AS ENUM (
     'user_stopped',           -- Manual stop by user/operator
     'rolling_update',         -- Replaced during rolling update
     'scaled_down',            -- Removed due to scale down
-    'deployment_deleted',     -- Parent deployment was deleted
+    'service_deleted',     -- Parent service was deleted
     
     -- Lifecycle reasons
     'completed',              -- Normal completion (for job-like pods)

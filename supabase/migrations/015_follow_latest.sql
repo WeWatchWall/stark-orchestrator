@@ -1,15 +1,15 @@
 -- Migration: 015_follow_latest
--- Description: Add follow_latest column to deployments for auto-updating to newest pack versions
+-- Description: Add follow_latest column to services for auto-updating to newest pack versions
 -- Stark Orchestrator
 
--- Add follow_latest column to deployments
--- When true, the deployment will automatically update pods when a new version of the pack is registered
-ALTER TABLE public.deployments 
+-- Add follow_latest column to services
+-- When true, the service will automatically update pods when a new version of the pack is registered
+ALTER TABLE public.services 
 ADD COLUMN IF NOT EXISTS follow_latest BOOLEAN NOT NULL DEFAULT FALSE;
 
--- Add index for efficient querying of deployments that follow latest
-CREATE INDEX IF NOT EXISTS idx_deployments_follow_latest ON public.deployments(follow_latest) WHERE follow_latest = TRUE;
+-- Add index for efficient querying of services that follow latest
+CREATE INDEX IF NOT EXISTS idx_services_follow_latest ON public.services(follow_latest) WHERE follow_latest = TRUE;
 
 -- Add comment explaining the feature
-COMMENT ON COLUMN public.deployments.follow_latest IS 
-    'When true, the deployment automatically updates to the latest pack version when new versions are registered';
+COMMENT ON COLUMN public.services.follow_latest IS 
+    'When true, the service automatically updates to the latest pack version when new versions are registered';

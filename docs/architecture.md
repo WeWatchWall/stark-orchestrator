@@ -2,7 +2,7 @@
 
 > **Version 0.9.2** · Last updated February 2026
 
-Stark is an isomorphic JavaScript orchestration platform that treats both server-side and browser-side code as deployable, schedulable workloads. It borrows proven Kubernetes concepts — pods, nodes, namespaces, scheduling, deployments — and maps them onto JavaScript runtimes connected over WebSockets.
+Stark is an isomorphic JavaScript orchestration platform that treats both server-side and browser-side code as deployable, schedulable workloads. It borrows proven Kubernetes concepts — pods, nodes, namespaces, scheduling, services — and maps them onto JavaScript runtimes connected over WebSockets.
 
 ---
 
@@ -10,12 +10,12 @@ Stark is an isomorphic JavaScript orchestration platform that treats both server
 
 | Principle | What it means in practice |
 |---|---|
-| **Desired-state reconciliation** | The system continuously compares what is declared (deployments, replicas) with what exists, and converges. |
+| **Desired-state reconciliation** | The system continuously compares what is declared (services, replicas) with what exists, and converges. |
 | **Isomorphic first** | Core logic is runtime-agnostic TypeScript. The same pack can be scheduled onto a Node.js process *or* a browser tab. |
 | **Kubernetes-inspired, JavaScript-native** | Familiar resource model (pods, nodes, taints, tolerations, affinity) — no YAML, no containers, no complex networking. |
 | **Reactive state** | Vue 3 `@vue/reactivity` primitives (`ref`, `reactive`, `computed`, `watch`) propagate state changes through every layer. |
 | **UI is just another workload** | The browser is a first-class node. UI packs are scheduled and observed identically to backend packs. |
-| **Failure is normal** | Auto-restart, crash-loop back-off, heartbeat-based liveness, automatic deployment rollback after 3 consecutive failures. |
+| **Failure is normal** | Auto-restart, crash-loop back-off, heartbeat-based liveness, automatic service rollback after 3 consecutive failures. |
 | **Security by default** | RBAC (admin / user / node / viewer), Supabase RLS, pack namespaces with trust boundaries, JWT auth on every request. |
 | **Developer experience first** | A single, consistent CLI: `stark <resource> <action> [name] [options]`. |
 
@@ -50,7 +50,7 @@ Stark is an isomorphic JavaScript orchestration platform that treats both server
 | **Pod** | Container / Pod | Ephemeral running instance of a pack on a specific node. Owns its lifecycle state machine. |
 | **Node** | Node | A runtime environment (Node.js process or browser tab) connected via WebSocket. Reports heartbeats, resources, labels. |
 | **Namespace** | Namespace | Isolation boundary for resource scoping. |
-| **Deployment** | Deployment | Declarative desired-state spec: replica count, auto-healing, rolling updates, rollback, DaemonSet mode. |
+| **Service** | Service | Declarative desired-state spec: replica count, auto-healing, rolling updates, rollback, DaemonSet mode. |
 
 ---
 
@@ -76,7 +76,7 @@ Stark is an isomorphic JavaScript orchestration platform that treats both server
  │  │             CORE SERVICES               │    │
  │  │                                         │    │
  │  │  PackService   PodService   NodeService │    │
- │  │  SchedulerService   DeploymentController│    │
+ │  │  SchedulerService   ServiceController│    │
  │  │  NodeHealthService  NamespaceService    │    │
  │  │  AuthService   EventService             │    │
  │  └────────────────┬────────────────────────┘    │
@@ -101,7 +101,7 @@ Stark is an isomorphic JavaScript orchestration platform that treats both server
 |---|---|
 | **CLI** (`packages/cli`) | User-facing command-line interface built on Commander.js. Outputs JSON, table, or plain text. |
 | **Client** (`packages/client`) | Nuxt 3 dashboard for visual cluster management. |
-| **Server** (`packages/server`) | Express HTTPS server + WebSocket gateway. Starts scheduler, deployment controller, and node-health services on boot. Auto-generates self-signed TLS certs for development. |
+| **Server** (`packages/server`) | Express HTTPS server + WebSocket gateway. Starts scheduler, service controller, and node-health services on boot. Auto-generates self-signed TLS certs for development. |
 | **Core** (`packages/core`) | Pure orchestration logic — services, stores (reactive), models, queries, type definitions. Zero I/O side-effects; all external interaction injected. |
 | **Shared** (`packages/shared`) | Cross-package types, validation functions (~60+), structured logging, utility helpers (retry, deepClone, debounce, etc.), error classes. |
 | **Node Runtime** (`packages/node-runtime`) | Runtime adapter for Node.js. `NodeAgent` connects to the server, `PackExecutor` runs packs in `worker_threads`. File-system credential store. |
@@ -189,10 +189,10 @@ Node Agent              Server                    NodeHealthService
 
 Nodes send heartbeats at a configurable interval. If a node is unresponsive beyond the threshold, its pods are rescheduled to healthy nodes.
 
-### 5.4  Deployment reconciliation
+### 5.4  Service reconciliation
 
 ```
-                  DeploymentController (reconciliation loop)
+                  ServiceController (reconciliation loop)
                            │
           ┌────────────────┼────────────────┐
           ▼                ▼                ▼
@@ -288,7 +288,7 @@ Initial admin bootstrap: `stark auth setup` (only works when zero users exist).
 | Role | Capabilities |
 |---|---|
 | **admin** | Full cluster access. Register system packs. Mark nodes trusted. Manage all users. |
-| **user** | Self-service: own packs, pods, deployments, namespaces. Cannot access other users' private resources. |
+| **user** | Self-service: own packs, pods, services, namespaces. Cannot access other users' private resources. |
 | **node** | Agent role. Receives only its assigned pod data. |
 | **viewer** | Read-only across visible resources. |
 
@@ -339,7 +339,7 @@ Events are **first-class, structured, persistent, queryable** records:
 }
 ```
 
-**Categories:** Pod · Node · Deployment · Pack · System · Auth · Scheduler
+**Categories:** Pod · Node · Service · Pack · System · Auth · Scheduler
 
 Events are emitted by database triggers and programmatic calls, delivered in real time over WebSocket channels, and queryable via `GET /api/events`.
 
@@ -358,7 +358,7 @@ Events are emitted by database triggers and programmatic calls, delivered in rea
 | `pod_history` | Audit trail of pod state transitions |
 | `namespaces` | Isolation boundaries |
 | `cluster_config` | Singleton cluster-wide settings |
-| `deployments` | Desired-state declarations with replica targets |
+| `services` | Desired-state declarations with replica targets |
 | `priority_classes` | Named priority levels for preemption |
 | `events` | Structured event log |
 
@@ -392,7 +392,7 @@ stark <resource> <action> [name] [options]
   auth      login | logout | whoami | setup | register | users
   pack      bundle | register | list | versions
   pod       create | status | rollback | delete | list
-  deployment create | list | status | scale | pause | resume | delete
+  service create | list | status | scale | pause | resume | delete
   node      list | status | update | cordon | uncordon | agents
   namespace list | create | delete
   config    get | set
@@ -422,14 +422,14 @@ All persistent connections use WSS. Messages are JSON with a `type` field:
 - **Structured JSON logging** — every log line carries `timestamp`, `level`, `service`, `nodeId`, `podId`, `userId`.
 - **Health endpoint** — `GET /health` returns server status.
 - **Node heartbeats** — configurable interval; missed heartbeats trigger `NotReady` → `Offline` transitions and pod rescheduling.
-- **Real-time WebSocket events** — subscribe to `node:*`, `pod:*`, `deployment:*` channels.
-- **Crash-loop detection** — exponential back-off with automatic deployment rollback after 3 consecutive failures.
+- **Real-time WebSocket events** — subscribe to `node:*`, `pod:*`, `service:*` channels.
+- **Crash-loop detection** — exponential back-off with automatic service rollback after 3 consecutive failures.
 - **Resource monitoring** — `stark node status` shows allocatable vs. allocated CPU/memory; `stark pod status` shows per-pod resource usage.
 - **JSON output** — `--output json` for scripting and pipeline integration.
 
 ---
 
-## 15  Deployment Topology
+## 15  Service Topology
 
 ### Development
 

@@ -19,12 +19,12 @@ export {
 } from './connection-service.js';
 
 export {
-  DeploymentController,
-  createDeploymentController,
-  getDeploymentController,
-  resetDeploymentController,
-  type DeploymentControllerConfig,
-} from './deployment-controller.js';
+  ServiceController,
+  createServiceController,
+  getServiceController,
+  resetServiceController,
+  type ServiceControllerConfig,
+} from './service-controller.js';
 export {
   MetricsService,
   getMetricsService,

@@ -1,35 +1,35 @@
 /**
- * Deployment Controller Service
- * @module @stark-o/server/services/deployment-controller
+ * Service Controller Service
+ * @module @stark-o/server/services/service-controller
  *
- * Background service that reconciles deployments by:
+ * Background service that reconciles services by:
  * 1. Checking desired vs actual pod counts
- * 2. Creating pods for under-replicated deployments
+ * 2. Creating pods for under-replicated services
  * 3. Handling DaemonSet mode (replicas=0) by deploying to all matching nodes
- * 4. Cleaning up pods when deployments are deleted
+ * 4. Cleaning up pods when services are deleted
  */
 
 import { createServiceLogger, matchesSelector, isRuntimeCompatible, isNodeVersionCompatible, shouldCountTowardCrashLoop } from '@stark-o/shared';
-import type { Deployment, Labels, RuntimeTag, RuntimeType, PodTerminationReason, NodeListItem, PackMetadata, Pack } from '@stark-o/shared';
+import type { Service, Labels, RuntimeTag, RuntimeType, PodTerminationReason, NodeListItem, PackMetadata, Pack } from '@stark-o/shared';
 import { toleratesBlockingTaints } from '@stark-o/shared';
-import { getDeploymentQueriesAdmin } from '../supabase/deployments.js';
+import { getServiceQueriesAdmin } from '../supabase/services.js';
 import { getPodQueriesAdmin } from '../supabase/pods.js';
 import { getNodeQueries } from '../supabase/nodes.js';
 import { getPackQueriesAdmin } from '../supabase/packs.js';
 import { getConnectionManager, sendToNode } from './connection-service.js';
 
 /**
- * Logger for deployment controller
+ * Logger for service controller
  */
 const logger = createServiceLogger({
   level: 'debug',
   service: 'stark-orchestrator',
-}, { component: 'deployment-controller' });
+}, { component: 'service-controller' });
 
 /**
- * Deployment controller configuration
+ * Service controller configuration
  */
-export interface DeploymentControllerConfig {
+export interface ServiceControllerConfig {
   /** Interval between reconciliation runs in milliseconds (default: 10000) */
   reconcileInterval?: number;
   /** Whether to start the controller automatically (default: true) */
@@ -47,7 +47,7 @@ export interface DeploymentControllerConfig {
 /**
  * Default controller configuration
  */
-const DEFAULT_CONFIG: Required<DeploymentControllerConfig> = {
+const DEFAULT_CONFIG: Required<ServiceControllerConfig> = {
   reconcileInterval: 10000,
   autoStart: true,
   maxConsecutiveFailures: 3,
@@ -57,14 +57,14 @@ const DEFAULT_CONFIG: Required<DeploymentControllerConfig> = {
 };
 
 /**
- * Deployment Controller Service
+ * Service Controller Service
  *
- * Runs a background loop that reconciles deployments:
+ * Runs a background loop that reconciles services:
  * - For replicas > 0: maintains exactly N pods
  * - For replicas = 0 (DaemonSet): maintains 1 pod per matching node
  */
-export class DeploymentController {
-  private config: Required<DeploymentControllerConfig>;
+export class ServiceController {
+  private config: Required<ServiceControllerConfig>;
   private intervalTimer: NodeJS.Timeout | null = null;
   private isRunning = false;
   private isProcessing = false;
@@ -75,7 +75,7 @@ export class DeploymentController {
    */
   private pendingReconcile = false;
 
-  constructor(config: DeploymentControllerConfig = {}) {
+  constructor(config: ServiceControllerConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
@@ -84,12 +84,12 @@ export class DeploymentController {
    */
   start(): void {
     if (this.isRunning) {
-      logger.warn('Deployment controller is already running');
+      logger.warn('Service controller is already running');
       return;
     }
 
     this.isRunning = true;
-    logger.info('Starting deployment controller', {
+    logger.info('Starting service controller', {
       interval: this.config.reconcileInterval,
     });
 
@@ -116,7 +116,7 @@ export class DeploymentController {
       this.intervalTimer = null;
     }
 
-    logger.info('Deployment controller stopped');
+    logger.info('Service controller stopped');
   }
 
   /**
@@ -135,7 +135,7 @@ export class DeploymentController {
     this.pendingReconcile = false;
 
     try {
-      await this.reconcileDeployments();
+      await this.reconcileServices();
     } catch (error) {
       logger.error('Error in reconcile cycle', error instanceof Error ? error : undefined);
     } finally {
@@ -155,57 +155,57 @@ export class DeploymentController {
   /**
    * Main reconciliation logic
    */
-  private async reconcileDeployments(): Promise<void> {
-    const deploymentQueries = getDeploymentQueriesAdmin();
+  private async reconcileServices(): Promise<void> {
+    const serviceQueries = getServiceQueriesAdmin();
 
-    // Get all active deployments
-    const deploymentsResult = await deploymentQueries.listActiveDeployments();
-    if (deploymentsResult.error || !deploymentsResult.data) {
-      logger.error('Failed to get active deployments', undefined, { 
-        error: deploymentsResult.error 
+    // Get all active services
+    const servicesResult = await serviceQueries.listActiveServices();
+    if (servicesResult.error || !servicesResult.data) {
+      logger.error('Failed to get active services', undefined, { 
+        error: servicesResult.error 
       });
       return;
     }
 
-    const deployments = deploymentsResult.data;
-    if (deployments.length === 0) {
+    const services = servicesResult.data;
+    if (services.length === 0) {
       return;
     }
 
-    // logger.debug('Reconciling deployments', { count: deployments.length });
+    // logger.debug('Reconciling services', { count: services.length });
 
-    // First, check for pack version updates on followLatest deployments
-    await this.reconcileFollowLatestVersions(deployments.filter(d => d.followLatest));
+    // First, check for pack version updates on followLatest services
+    await this.reconcileFollowLatestVersions(services.filter(d => d.followLatest));
 
-    // Reconcile each deployment
-    for (const deployment of deployments) {
-      await this.reconcileDeployment(deployment);
+    // Reconcile each service
+    for (const service of services) {
+      await this.reconcileService(service);
     }
   }
 
   /**
-   * Check and update deployments that follow the latest pack version
-   * If a new pack version exists, update the deployment and trigger a rolling update
+   * Check and update services that follow the latest pack version
+   * If a new pack version exists, update the service and trigger a rolling update
    * Includes crash-loop protection to prevent infinite upgrade/fail cycles
    */
-  private async reconcileFollowLatestVersions(deployments: Deployment[]): Promise<void> {
-    if (deployments.length === 0) {
+  private async reconcileFollowLatestVersions(services: Service[]): Promise<void> {
+    if (services.length === 0) {
       return;
     }
 
     const packQueries = getPackQueriesAdmin();
-    const deploymentQueries = getDeploymentQueriesAdmin();
+    const serviceQueries = getServiceQueriesAdmin();
 
-    // Group deployments by packId to minimize pack queries
-    const deploymentsByPackId = new Map<string, Deployment[]>();
-    for (const deployment of deployments) {
-      const existing = deploymentsByPackId.get(deployment.packId) ?? [];
-      existing.push(deployment);
-      deploymentsByPackId.set(deployment.packId, existing);
+    // Group services by packId to minimize pack queries
+    const servicesByPackId = new Map<string, Service[]>();
+    for (const service of services) {
+      const existing = servicesByPackId.get(service.packId) ?? [];
+      existing.push(service);
+      servicesByPackId.set(service.packId, existing);
     }
 
     // Check each pack for new versions
-    for (const [packId, packDeployments] of deploymentsByPackId) {
+    for (const [packId, packServices] of servicesByPackId) {
       // Get the pack to find its name
       const packResult = await packQueries.getPackById(packId);
       if (packResult.error || !packResult.data) {
@@ -228,24 +228,24 @@ export class DeploymentController {
 
       const latestVersion = latestResult.data.version;
 
-      // Update deployments that are behind
-      for (const deployment of packDeployments) {
+      // Update services that are behind
+      for (const service of packServices) {
         // Skip if we're in backoff period for this failed version
-        if (this.isInFailureBackoff(deployment, latestVersion)) {
+        if (this.isInFailureBackoff(service, latestVersion)) {
           logger.debug('Skipping upgrade due to failure backoff', {
-            deploymentName: deployment.name,
-            failedVersion: deployment.failedVersion,
-            backoffUntil: deployment.failureBackoffUntil,
+            serviceName: service.name,
+            failedVersion: service.failedVersion,
+            backoffUntil: service.failureBackoffUntil,
             latestVersion,
           });
           continue;
         }
 
-        if (deployment.packVersion !== latestVersion) {
-          logger.info('Updating followLatest deployment to new pack version', {
-            deploymentName: deployment.name,
-            deploymentId: deployment.id,
-            oldVersion: deployment.packVersion,
+        if (service.packVersion !== latestVersion) {
+          logger.info('Updating followLatest service to new pack version', {
+            serviceName: service.name,
+            serviceId: service.id,
+            oldVersion: service.packVersion,
             newVersion: latestVersion,
           });
 
@@ -256,32 +256,32 @@ export class DeploymentController {
           };
           
           // Only record last successful if we have running pods
-          if (deployment.readyReplicas > 0 && !deployment.lastSuccessfulVersion) {
-            updateData.lastSuccessfulVersion = deployment.packVersion;
+          if (service.readyReplicas > 0 && !service.lastSuccessfulVersion) {
+            updateData.lastSuccessfulVersion = service.packVersion;
           }
 
-          // Update the deployment's pack version
-          await deploymentQueries.updateDeployment(deployment.id, updateData);
+          // Update the service's pack version
+          await serviceQueries.updateService(service.id, updateData);
 
           // Trigger rolling update of existing pods
-          await this.triggerRollingUpdate(deployment, latestVersion);
+          await this.triggerRollingUpdate(service, latestVersion);
         }
       }
     }
   }
 
   /**
-   * Trigger a rolling update of pods for a deployment
+   * Trigger a rolling update of pods for a service
    * Marks existing pods for replacement with new version
    */
-  private async triggerRollingUpdate(deployment: Deployment, newVersion: string): Promise<void> {
+  private async triggerRollingUpdate(service: Service, newVersion: string): Promise<void> {
     const podQueries = getPodQueriesAdmin();
 
-    // Get current pods for this deployment
-    const podsResult = await podQueries.listPodsByDeployment(deployment.id);
+    // Get current pods for this service
+    const podsResult = await podQueries.listPodsByService(service.id);
     if (podsResult.error || !podsResult.data) {
       logger.error('Failed to get pods for rolling update', undefined, {
-        deploymentId: deployment.id,
+        serviceId: service.id,
         error: podsResult.error,
       });
       return;
@@ -300,12 +300,12 @@ export class DeploymentController {
     }
 
     logger.info('Triggering rolling update', {
-      deploymentName: deployment.name,
+      serviceName: service.name,
       podsToUpdate: podsToUpdate.length,
       newVersion,
     });
 
-    // Mark old pods for termination (they will be replaced by reconcileDeployment)
+    // Mark old pods for termination (they will be replaced by reconcileService)
     for (const pod of podsToUpdate) {
       await podQueries.updatePod(pod.id, { 
         status: 'stopping',
@@ -315,12 +315,12 @@ export class DeploymentController {
   }
 
   /**
-   * Check if a deployment is in failure backoff for a specific version
+   * Check if a service is in failure backoff for a specific version
    */
-  private isInFailureBackoff(deployment: Deployment, targetVersion: string): boolean {
+  private isInFailureBackoff(service: Service, targetVersion: string): boolean {
     // If the target version is the one that failed, check backoff
-    if (deployment.failedVersion === targetVersion && deployment.failureBackoffUntil) {
-      return new Date() < deployment.failureBackoffUntil;
+    if (service.failedVersion === targetVersion && service.failureBackoffUntil) {
+      return new Date() < service.failureBackoffUntil;
     }
     return false;
   }
@@ -336,13 +336,13 @@ export class DeploymentController {
 
   /**
    * Detect crash loop and handle auto-rollback if needed
-   * Returns true if deployment should skip further reconciliation
+   * Returns true if service should skip further reconciliation
    */
   private async detectAndHandleCrashLoop(
-    deployment: Deployment,
+    service: Service,
     allPods: Array<{ id: string; status: string; terminationReason?: PodTerminationReason; packVersion: string; updatedAt?: Date }>
   ): Promise<boolean> {
-    const deploymentQueries = getDeploymentQueriesAdmin();
+    const serviceQueries = getServiceQueriesAdmin();
 
     // Count recent failures (pods that failed within the detection window)
     // Only count application failures - infrastructure failures don't indicate bugs
@@ -361,19 +361,19 @@ export class DeploymentController {
     const runningPods = allPods.filter(p => p.status === 'running');
     if (runningPods.length > 0) {
       // Check if running pods are on current version - if so, it's successful
-      const currentVersionRunning = runningPods.some(p => p.packVersion === deployment.packVersion);
-      if (currentVersionRunning && deployment.consecutiveFailures > 0) {
-        // Clear failure state - deployment is now healthy
-        logger.info('Deployment recovered, clearing failure state', {
-          deploymentName: deployment.name,
-          version: deployment.packVersion,
-          previousFailures: deployment.consecutiveFailures,
+      const currentVersionRunning = runningPods.some(p => p.packVersion === service.packVersion);
+      if (currentVersionRunning && service.consecutiveFailures > 0) {
+        // Clear failure state - service is now healthy
+        logger.info('Service recovered, clearing failure state', {
+          serviceName: service.name,
+          version: service.packVersion,
+          previousFailures: service.consecutiveFailures,
         });
-        await deploymentQueries.updateDeployment(deployment.id, {
+        await serviceQueries.updateService(service.id, {
           consecutiveFailures: 0,
           failedVersion: null,
           failureBackoffUntil: null,
-          lastSuccessfulVersion: deployment.packVersion,
+          lastSuccessfulVersion: service.packVersion,
         });
       }
       return false;
@@ -385,14 +385,14 @@ export class DeploymentController {
     }
 
     // We have failures and no running pods - potential crash loop
-    const newFailureCount = deployment.consecutiveFailures + recentFailures.length;
+    const newFailureCount = service.consecutiveFailures + recentFailures.length;
 
     // Check if we've exceeded the threshold
     if (newFailureCount >= this.config.maxConsecutiveFailures) {
       logger.warn('Crash loop detected - too many consecutive failures', {
-        deploymentName: deployment.name,
-        deploymentId: deployment.id,
-        version: deployment.packVersion,
+        serviceName: service.name,
+        serviceId: service.id,
+        version: service.packVersion,
         consecutiveFailures: newFailureCount,
         threshold: this.config.maxConsecutiveFailures,
       });
@@ -402,37 +402,37 @@ export class DeploymentController {
       const backoffUntil = new Date(Date.now() + backoffMs);
 
       // Check if we can auto-rollback
-      if (deployment.lastSuccessfulVersion && 
-          deployment.lastSuccessfulVersion !== deployment.packVersion) {
+      if (service.lastSuccessfulVersion && 
+          service.lastSuccessfulVersion !== service.packVersion) {
         // Auto-rollback to last successful version
         logger.info('Auto-rolling back to last successful version', {
-          deploymentName: deployment.name,
-          failedVersion: deployment.packVersion,
-          rollbackVersion: deployment.lastSuccessfulVersion,
+          serviceName: service.name,
+          failedVersion: service.packVersion,
+          rollbackVersion: service.lastSuccessfulVersion,
         });
 
-        await deploymentQueries.updateDeployment(deployment.id, {
-          packVersion: deployment.lastSuccessfulVersion,
+        await serviceQueries.updateService(service.id, {
+          packVersion: service.lastSuccessfulVersion,
           consecutiveFailures: 0,
-          failedVersion: deployment.packVersion,
+          failedVersion: service.packVersion,
           failureBackoffUntil: backoffUntil,
-          statusMessage: `Auto-rolled back from ${deployment.packVersion} to ${deployment.lastSuccessfulVersion} after ${newFailureCount} failures`,
+          statusMessage: `Auto-rolled back from ${service.packVersion} to ${service.lastSuccessfulVersion} after ${newFailureCount} failures`,
         });
 
         // Trigger rolling update to the old version
-        await this.triggerRollingUpdate(deployment, deployment.lastSuccessfulVersion);
+        await this.triggerRollingUpdate(service, service.lastSuccessfulVersion);
         return true;
       } else {
         // No version to roll back to - just pause and wait
-        logger.warn('No previous version to rollback to, pausing deployment', {
-          deploymentName: deployment.name,
-          failedVersion: deployment.packVersion,
+        logger.warn('No previous version to rollback to, pausing service', {
+          serviceName: service.name,
+          failedVersion: service.packVersion,
         });
 
-        await deploymentQueries.updateDeployment(deployment.id, {
+        await serviceQueries.updateService(service.id, {
           status: 'paused',
           consecutiveFailures: newFailureCount,
-          failedVersion: deployment.packVersion,
+          failedVersion: service.packVersion,
           failureBackoffUntil: backoffUntil,
           statusMessage: `Paused after ${newFailureCount} failures. No previous version available for rollback.`,
         });
@@ -440,9 +440,9 @@ export class DeploymentController {
       }
     } else {
       // Update failure count but don't trigger rollback yet
-      await deploymentQueries.updateDeployment(deployment.id, {
+      await serviceQueries.updateService(service.id, {
         consecutiveFailures: newFailureCount,
-        failedVersion: deployment.packVersion,
+        failedVersion: service.packVersion,
       });
     }
 
@@ -450,16 +450,16 @@ export class DeploymentController {
   }
 
   /**
-   * Reconcile a single deployment
+   * Reconcile a single service
    */
-  private async reconcileDeployment(deployment: Deployment): Promise<void> {
+  private async reconcileService(service: Service): Promise<void> {
     const podQueries = getPodQueriesAdmin();
 
-    // Get current pods for this deployment
-    const podsResult = await podQueries.listPodsByDeployment(deployment.id);
+    // Get current pods for this service
+    const podsResult = await podQueries.listPodsByService(service.id);
     if (podsResult.error || !podsResult.data) {
-      logger.error('Failed to get pods for deployment', undefined, {
-        deploymentId: deployment.id,
+      logger.error('Failed to get pods for service', undefined, {
+        serviceId: service.id,
         error: podsResult.error,
       });
       return;
@@ -474,7 +474,7 @@ export class DeploymentController {
       updatedAt: p.updatedAt,
     }));
     
-    const shouldSkip = await this.detectAndHandleCrashLoop(deployment, allPods);
+    const shouldSkip = await this.detectAndHandleCrashLoop(service, allPods);
     if (shouldSkip) {
       return;
     }
@@ -484,12 +484,12 @@ export class DeploymentController {
       !['stopped', 'failed', 'evicted'].includes(p.status)
     );
 
-    if (deployment.replicas === 0) {
+    if (service.replicas === 0) {
       // DaemonSet mode: one pod per matching node
-      await this.reconcileDaemonSet(deployment, activePods);
+      await this.reconcileDaemonSet(service, activePods);
     } else {
-      // Regular deployment: maintain exact replica count
-      await this.reconcileReplicas(deployment, activePods);
+      // Regular service: maintain exact replica count
+      await this.reconcileReplicas(service, activePods);
     }
 
     // Update replica counts
@@ -498,9 +498,9 @@ export class DeploymentController {
       ['running', 'starting', 'scheduled'].includes(p.status)
     );
 
-    const deploymentQueries = getDeploymentQueriesAdmin();
-    await deploymentQueries.updateReplicaCounts(
-      deployment.id,
+    const serviceQueries = getServiceQueriesAdmin();
+    await serviceQueries.updateReplicaCounts(
+      service.id,
       readyPods.length,
       availablePods.length,
       activePods.length
@@ -512,18 +512,18 @@ export class DeploymentController {
    * Creates one pod per matching node
    */
   private async reconcileDaemonSet(
-    deployment: Deployment,
+    service: Service,
     currentPods: Array<{ id: string; nodeId: string | null; status: string }>
   ): Promise<void> {
     const nodeQueries = getNodeQueries();
     const packQueries = getPackQueriesAdmin();
 
     // Get pack to check runtime compatibility
-    const packResult = await packQueries.getPackById(deployment.packId);
+    const packResult = await packQueries.getPackById(service.packId);
     if (packResult.error || !packResult.data) {
       logger.error('Failed to get pack for DaemonSet reconciliation', undefined, {
-        deploymentId: deployment.id,
-        packId: deployment.packId,
+        serviceId: service.id,
+        packId: service.packId,
         error: packResult.error,
       });
       return;
@@ -535,7 +535,7 @@ export class DeploymentController {
     const nodesResult = await nodeQueries.listNodes({ status: 'online' });
     if (nodesResult.error || !nodesResult.data) {
       logger.error('Failed to get nodes for DaemonSet reconciliation', undefined, {
-        deploymentId: deployment.id,
+        serviceId: service.id,
         error: nodesResult.error,
       });
       return;
@@ -564,7 +564,7 @@ export class DeploymentController {
     // Filter nodes based on scheduling constraints AND runtime compatibility
     const eligibleNodes = this.filterEligibleNodes(
       accessibleNodes,
-      deployment,
+      service,
       packRuntimeTag,
       pack.metadata
     );
@@ -578,44 +578,44 @@ export class DeploymentController {
     }
 
     logger.info('DaemonSet needs pods on new nodes', {
-      deploymentName: deployment.name,
+      serviceName: service.name,
       nodesCount: nodesNeedingPods.length,
     });
 
     // Create pods for each node
     for (const node of nodesNeedingPods) {
-      await this.createPodForDeployment(deployment, node.id);
+      await this.createPodForService(service, node.id);
     }
   }
 
   /**
-   * Reconcile regular deployment (replicas > 0)
+   * Reconcile regular service (replicas > 0)
    */
   private async reconcileReplicas(
-    deployment: Deployment,
+    service: Service,
     currentPods: Array<{ id: string; nodeId: string | null; status: string }>
   ): Promise<void> {
-    const desired = deployment.replicas;
+    const desired = service.replicas;
     const current = currentPods.length;
 
     if (current < desired) {
       // Scale up
       const toCreate = desired - current;
-      logger.info('Scaling up deployment', {
-        deploymentName: deployment.name,
+      logger.info('Scaling up service', {
+        serviceName: service.name,
         current,
         desired,
         toCreate,
       });
 
       for (let i = 0; i < toCreate; i++) {
-        await this.createPodForDeployment(deployment);
+        await this.createPodForService(service);
       }
     } else if (current > desired) {
       // Scale down - remove excess pods
       const toRemove = current - desired;
-      logger.info('Scaling down deployment', {
-        deploymentName: deployment.name,
+      logger.info('Scaling down service', {
+        serviceName: service.name,
         current,
         desired,
         toRemove,
@@ -632,7 +632,7 @@ export class DeploymentController {
 
       if (podsToRemove.length === 0) {
         logger.debug('Scale down already in progress, waiting for pods to terminate', {
-          deploymentName: deployment.name,
+          serviceName: service.name,
           alreadyStopping,
         });
         return;
@@ -651,8 +651,8 @@ export class DeploymentController {
               type: 'pod:stop',
               payload: {
                 podId: pod.id,
-                reason: 'deployment_scale_down',
-                message: `Pod stopped due to deployment ${deployment.name} scale down`,
+                reason: 'service_scale_down',
+                message: `Pod stopped due to service ${service.name} scale down`,
               },
             });
 
@@ -680,7 +680,7 @@ export class DeploymentController {
   }
 
   /**
-   * Filter nodes eligible for a deployment based on scheduling constraints and runtime
+   * Filter nodes eligible for a service based on scheduling constraints and runtime
    */
   private filterEligibleNodes(
     nodes: Array<{ 
@@ -691,7 +691,7 @@ export class DeploymentController {
       taints?: Array<{ key: string; value?: string; effect: string }>;
       capabilities?: { version?: string; [key: string]: unknown };
     }>,
-    deployment: Deployment,
+    service: Service,
     packRuntimeTag?: RuntimeTag,
     packMetadata?: PackMetadata
   ): Array<{ id: string; name: string }> {
@@ -710,16 +710,16 @@ export class DeploymentController {
       }
 
       // Check node selector
-      if (deployment.scheduling?.nodeSelector) {
+      if (service.scheduling?.nodeSelector) {
         const nodeLabels = node.labels ?? {};
-        if (!matchesSelector(nodeLabels, deployment.scheduling.nodeSelector)) {
+        if (!matchesSelector(nodeLabels, service.scheduling.nodeSelector)) {
           return false;
         }
       }
 
       // Check tolerations vs taints
       if (node.taints && node.taints.length > 0) {
-        const tolerations = deployment.tolerations ?? [];
+        const tolerations = service.tolerations ?? [];
         if (!toleratesBlockingTaints(tolerations, node.taints as never[])) {
           return false;
         }
@@ -730,54 +730,54 @@ export class DeploymentController {
   }
 
   /**
-   * Create a pod for a deployment with proper incarnation tracking
+   * Create a pod for a service with proper incarnation tracking
    */
-  private async createPodForDeployment(
-    deployment: Deployment,
+  private async createPodForService(
+    service: Service,
     targetNodeId?: string
   ): Promise<void> {
     const podQueries = getPodQueriesAdmin();
     const packQueries = getPackQueriesAdmin();
 
     // Get pack info
-    const packResult = await packQueries.getPackById(deployment.packId);
+    const packResult = await packQueries.getPackById(service.packId);
     if (packResult.error || !packResult.data) {
-      logger.error('Failed to get pack for deployment', undefined, {
-        deploymentId: deployment.id,
-        packId: deployment.packId,
+      logger.error('Failed to get pack for service', undefined, {
+        serviceId: service.id,
+        packId: service.packId,
         error: packResult.error,
       });
       return;
     }
     const pack = packResult.data;
 
-    // Get the next incarnation number for this deployment
+    // Get the next incarnation number for this service
     // This ensures late messages from old incarnations are rejected
-    const incarnationResult = await podQueries.getNextIncarnation(deployment.id);
+    const incarnationResult = await podQueries.getNextIncarnation(service.id);
     const incarnation = incarnationResult.data ?? 1;
 
-    // Create pod with deployment reference and incarnation
+    // Create pod with service reference and incarnation
     // For DaemonSet mode (targetNodeId provided), the pod is pre-assigned to the node
     const result = await podQueries.createPodWithIncarnation({
-      packId: deployment.packId,
-      packVersion: deployment.packVersion,
-      namespace: deployment.namespace,
+      packId: service.packId,
+      packVersion: service.packVersion,
+      namespace: service.namespace,
       labels: {
-        ...deployment.podLabels,
-        'stark.io/deployment': deployment.name,
-        'stark.io/deployment-id': deployment.id,
+        ...service.podLabels,
+        'stark.io/service': service.name,
+        'stark.io/service-id': service.id,
       },
-      annotations: deployment.podAnnotations,
-      priorityClassName: deployment.priorityClassName,
-      tolerations: deployment.tolerations,
-      resourceRequests: deployment.resourceRequests,
-      resourceLimits: deployment.resourceLimits,
-      scheduling: deployment.scheduling,
-    }, deployment.createdBy, deployment.id, incarnation, targetNodeId);
+      annotations: service.podAnnotations,
+      priorityClassName: service.priorityClassName,
+      tolerations: service.tolerations,
+      resourceRequests: service.resourceRequests,
+      resourceLimits: service.resourceLimits,
+      scheduling: service.scheduling,
+    }, service.createdBy, service.id, incarnation, targetNodeId);
 
     if (result.error) {
-      logger.error('Failed to create pod for deployment', undefined, {
-        deploymentId: deployment.id,
+      logger.error('Failed to create pod for service', undefined, {
+        serviceId: service.id,
         error: result.error,
       });
       return;
@@ -785,8 +785,8 @@ export class DeploymentController {
 
     const pod = result.data;
 
-    logger.info('Created pod for deployment', {
-      deploymentName: deployment.name,
+    logger.info('Created pod for service', {
+      serviceName: service.name,
       podId: pod?.id,
       incarnation,
       targetNodeId,
@@ -809,7 +809,7 @@ export class DeploymentController {
   ): Promise<void> {
     const connectionManager = getConnectionManager();
     if (!connectionManager) {
-      logger.error('No connection manager available for pod deployment', {
+      logger.error('No connection manager available for pod service', {
         podId,
         nodeId,
       });
@@ -820,7 +820,7 @@ export class DeploymentController {
     const nodeQueries = getNodeQueries();
     const nodeResult = await nodeQueries.getNodeById(nodeId);
     if (nodeResult.error || !nodeResult.data) {
-      logger.error('Failed to get node for pod deployment', undefined, {
+      logger.error('Failed to get node for pod service', undefined, {
         podId,
         nodeId,
         error: nodeResult.error,
@@ -838,11 +838,11 @@ export class DeploymentController {
       return;
     }
 
-    // Get full pod details for deployment
+    // Get full pod details for service
     const podQueries = getPodQueriesAdmin();
     const podResult = await podQueries.getPodById(podId);
     if (podResult.error || !podResult.data) {
-      logger.error('Failed to get pod for deployment', undefined, {
+      logger.error('Failed to get pod for service', undefined, {
         podId,
         error: podResult.error,
       });
@@ -906,35 +906,35 @@ export class DeploymentController {
 }
 
 /**
- * Create a deployment controller instance
+ * Create a service controller instance
  */
-export function createDeploymentController(
-  config?: DeploymentControllerConfig
-): DeploymentController {
-  return new DeploymentController(config);
+export function createServiceController(
+  config?: ServiceControllerConfig
+): ServiceController {
+  return new ServiceController(config);
 }
 
 /**
  * Singleton controller instance
  */
-let controllerInstance: DeploymentController | null = null;
+let controllerInstance: ServiceController | null = null;
 
 /**
- * Get or create the singleton deployment controller
+ * Get or create the singleton service controller
  */
-export function getDeploymentController(
-  config?: DeploymentControllerConfig
-): DeploymentController {
+export function getServiceController(
+  config?: ServiceControllerConfig
+): ServiceController {
   if (!controllerInstance) {
-    controllerInstance = createDeploymentController(config);
+    controllerInstance = createServiceController(config);
   }
   return controllerInstance;
 }
 
 /**
- * Reset the deployment controller (for testing)
+ * Reset the service controller (for testing)
  */
-export function resetDeploymentController(): void {
+export function resetServiceController(): void {
   if (controllerInstance) {
     controllerInstance.stop();
     controllerInstance = null;

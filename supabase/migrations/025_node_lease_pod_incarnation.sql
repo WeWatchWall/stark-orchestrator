@@ -20,7 +20,7 @@ COMMENT ON COLUMN public.nodes.suspect_since IS
   'Timestamp when node entered suspect state. NULL when node is not suspect. Used for lease expiration.';
 
 -- Add incarnation field to pods table
--- Incremented each time a replacement pod is created for the same deployment slot
+-- Incremented each time a replacement pod is created for the same service slot
 ALTER TABLE public.pods
 ADD COLUMN IF NOT EXISTS incarnation INTEGER NOT NULL DEFAULT 1;
 

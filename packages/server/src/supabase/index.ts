@@ -172,13 +172,13 @@ export {
   isPublicRegistrationEnabled,
 } from './app-config.js';
 
-// Deployment queries
+// Service queries
 export {
-  type DeploymentResult,
-  DeploymentQueries,
-  getDeploymentQueries,
-  getDeploymentQueriesAdmin,
-} from './deployments.js';
+  type ServiceResult,
+  ServiceQueries,
+  getServiceQueries,
+  getServiceQueriesAdmin,
+} from './services.js';
 // Metrics queries
 export {
   type MetricsResult,

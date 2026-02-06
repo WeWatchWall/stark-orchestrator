@@ -32,7 +32,7 @@ export {
   type RegisteredBrowserNodesMap,
 } from './agent/browser-state-store.js';
 
-// Pod Handler (handles pod deployment and lifecycle)
+// Pod Handler (handles pod service and lifecycle)
 export {
   PodHandler,
   createPodHandler,

@@ -1,17 +1,17 @@
 /**
- * Deployment CRUD Queries
+ * Service CRUD Queries
  *
- * Provides database operations for deployment entities using Supabase.
- * @module @stark-o/server/supabase/deployments
+ * Provides database operations for service entities using Supabase.
+ * @module @stark-o/server/supabase/services
  */
 
 import type { SupabaseClient, PostgrestError } from '@supabase/supabase-js';
 import type {
-  Deployment,
-  DeploymentStatus,
-  DeploymentListItem,
-  CreateDeploymentInput,
-  UpdateDeploymentInput,
+  Service,
+  ServiceStatus,
+  ServiceListItem,
+  CreateServiceInput,
+  UpdateServiceInput,
   ResourceRequirements,
   Labels,
   Annotations,
@@ -21,9 +21,9 @@ import type {
 import { getSupabaseClient, getSupabaseServiceClient } from './client.js';
 
 /**
- * Database row type for deployments table
+ * Database row type for services table
  */
-interface DeploymentRow {
+interface ServiceRow {
   id: string;
   name: string;
   pack_id: string;
@@ -31,7 +31,7 @@ interface DeploymentRow {
   follow_latest: boolean;
   namespace: string;
   replicas: number;
-  status: DeploymentStatus;
+  status: ServiceStatus;
   status_message: string | null;
   labels: Labels;
   annotations: Annotations;
@@ -60,15 +60,15 @@ interface DeploymentRow {
 /**
  * Result type for database operations
  */
-export interface DeploymentResult<T> {
+export interface ServiceResult<T> {
   data: T | null;
   error: PostgrestError | null;
 }
 
 /**
- * Converts a database row to a Deployment entity
+ * Converts a database row to a Service entity
  */
-function rowToDeployment(row: DeploymentRow): Deployment {
+function rowToService(row: ServiceRow): Service {
   return {
     id: row.id,
     name: row.name,
@@ -105,9 +105,9 @@ function rowToDeployment(row: DeploymentRow): Deployment {
 }
 
 /**
- * Converts a database row to a DeploymentListItem
+ * Converts a database row to a ServiceListItem
  */
-function rowToDeploymentListItem(row: DeploymentRow): DeploymentListItem {
+function rowToServiceListItem(row: ServiceRow): ServiceListItem {
   return {
     id: row.id,
     name: row.name,
@@ -125,22 +125,22 @@ function rowToDeploymentListItem(row: DeploymentRow): DeploymentListItem {
 }
 
 /**
- * Deployment queries using authenticated user context
+ * Service queries using authenticated user context
  */
-export class DeploymentQueries {
+export class ServiceQueries {
   constructor(private client: SupabaseClient) {}
 
   /**
-   * Create a new deployment
+   * Create a new service
    */
-  async createDeployment(
-    input: CreateDeploymentInput,
+  async createService(
+    input: CreateServiceInput,
     packId: string,
     packVersion: string,
     createdBy: string
-  ): Promise<DeploymentResult<Deployment>> {
+  ): Promise<ServiceResult<Service>> {
     const { data, error } = await this.client
-      .from('deployments')
+      .from('services')
       .insert({
         name: input.name,
         pack_id: packId,
@@ -175,15 +175,15 @@ export class DeploymentQueries {
       return { data: null, error };
     }
 
-    return { data: rowToDeployment(data as DeploymentRow), error: null };
+    return { data: rowToService(data as ServiceRow), error: null };
   }
 
   /**
-   * Get deployment by ID
+   * Get service by ID
    */
-  async getDeploymentById(id: string): Promise<DeploymentResult<Deployment>> {
+  async getServiceById(id: string): Promise<ServiceResult<Service>> {
     const { data, error } = await this.client
-      .from('deployments')
+      .from('services')
       .select('*')
       .eq('id', id)
       .single();
@@ -192,18 +192,18 @@ export class DeploymentQueries {
       return { data: null, error };
     }
 
-    return { data: rowToDeployment(data as DeploymentRow), error: null };
+    return { data: rowToService(data as ServiceRow), error: null };
   }
 
   /**
-   * Get deployment by name and namespace
+   * Get service by name and namespace
    */
-  async getDeploymentByName(
+  async getServiceByName(
     name: string,
     namespace: string = 'default'
-  ): Promise<DeploymentResult<Deployment>> {
+  ): Promise<ServiceResult<Service>> {
     const { data, error } = await this.client
-      .from('deployments')
+      .from('services')
       .select('*')
       .eq('name', name)
       .eq('namespace', namespace)
@@ -213,26 +213,26 @@ export class DeploymentQueries {
       return { data: null, error };
     }
 
-    return { data: rowToDeployment(data as DeploymentRow), error: null };
+    return { data: rowToService(data as ServiceRow), error: null };
   }
 
   /**
-   * List deployments with optional filters
+   * List services with optional filters
    */
-  async listDeployments(filters?: {
+  async listServices(filters?: {
     namespace?: string;
-    status?: DeploymentStatus;
+    status?: ServiceStatus;
     packId?: string;
     page?: number;
     pageSize?: number;
-  }): Promise<DeploymentResult<DeploymentListItem[]>> {
+  }): Promise<ServiceResult<ServiceListItem[]>> {
     const page = filters?.page ?? 1;
     const pageSize = filters?.pageSize ?? 20;
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
     let query = this.client
-      .from('deployments')
+      .from('services')
       .select('*', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(from, to);
@@ -253,16 +253,16 @@ export class DeploymentQueries {
       return { data: null, error };
     }
 
-    const deployments = (data as DeploymentRow[]).map(rowToDeploymentListItem);
-    return { data: deployments, error: null };
+    const services = (data as ServiceRow[]).map(rowToServiceListItem);
+    return { data: services, error: null };
   }
 
   /**
-   * List all active deployments (for reconciliation)
+   * List all active services (for reconciliation)
    */
-  async listActiveDeployments(): Promise<DeploymentResult<Deployment[]>> {
+  async listActiveServices(): Promise<ServiceResult<Service[]>> {
     const { data, error } = await this.client
-      .from('deployments')
+      .from('services')
       .select('*')
       .eq('status', 'active')
       .order('created_at', { ascending: true });
@@ -271,17 +271,17 @@ export class DeploymentQueries {
       return { data: null, error };
     }
 
-    const deployments = (data as DeploymentRow[]).map(rowToDeployment);
-    return { data: deployments, error: null };
+    const services = (data as ServiceRow[]).map(rowToService);
+    return { data: services, error: null };
   }
 
   /**
-   * List active deployments that follow latest pack version
+   * List active services that follow latest pack version
    * Used for auto-update reconciliation when new pack versions are registered
    */
-  async listFollowLatestDeployments(): Promise<DeploymentResult<Deployment[]>> {
+  async listFollowLatestServices(): Promise<ServiceResult<Service[]>> {
     const { data, error } = await this.client
-      .from('deployments')
+      .from('services')
       .select('*')
       .eq('status', 'active')
       .eq('follow_latest', true)
@@ -291,17 +291,17 @@ export class DeploymentQueries {
       return { data: null, error };
     }
 
-    const deployments = (data as DeploymentRow[]).map(rowToDeployment);
-    return { data: deployments, error: null };
+    const services = (data as ServiceRow[]).map(rowToService);
+    return { data: services, error: null };
   }
 
   /**
-   * List active deployments by pack ID that follow latest
-   * Used to quickly find deployments affected by a specific pack version update
+   * List active services by pack ID that follow latest
+   * Used to quickly find services affected by a specific pack version update
    */
-  async listFollowLatestDeploymentsByPackId(packId: string): Promise<DeploymentResult<Deployment[]>> {
+  async listFollowLatestServicesByPackId(packId: string): Promise<ServiceResult<Service[]>> {
     const { data, error } = await this.client
-      .from('deployments')
+      .from('services')
       .select('*')
       .eq('status', 'active')
       .eq('pack_id', packId)
@@ -312,17 +312,17 @@ export class DeploymentQueries {
       return { data: null, error };
     }
 
-    const deployments = (data as DeploymentRow[]).map(rowToDeployment);
-    return { data: deployments, error: null };
+    const services = (data as ServiceRow[]).map(rowToService);
+    return { data: services, error: null };
   }
 
   /**
-   * Update deployment
+   * Update service
    */
-  async updateDeployment(
+  async updateService(
     id: string,
-    input: UpdateDeploymentInput
-  ): Promise<DeploymentResult<Deployment>> {
+    input: UpdateServiceInput
+  ): Promise<ServiceResult<Service>> {
     const updates: Partial<Record<string, unknown>> = {};
 
     if (input.packVersion !== undefined) {
@@ -387,7 +387,7 @@ export class DeploymentQueries {
     updates.updated_at = new Date().toISOString();
 
     const { data, error } = await this.client
-      .from('deployments')
+      .from('services')
       .update(updates)
       .eq('id', id)
       .select()
@@ -397,20 +397,20 @@ export class DeploymentQueries {
       return { data: null, error };
     }
 
-    return { data: rowToDeployment(data as DeploymentRow), error: null };
+    return { data: rowToService(data as ServiceRow), error: null };
   }
 
   /**
-   * Update deployment replica counts
+   * Update service replica counts
    */
   async updateReplicaCounts(
     id: string,
     ready: number,
     available: number,
     updated: number
-  ): Promise<DeploymentResult<Deployment>> {
+  ): Promise<ServiceResult<Service>> {
     const { data, error } = await this.client
-      .from('deployments')
+      .from('services')
       .update({
         ready_replicas: ready,
         available_replicas: available,
@@ -425,15 +425,15 @@ export class DeploymentQueries {
       return { data: null, error };
     }
 
-    return { data: rowToDeployment(data as DeploymentRow), error: null };
+    return { data: rowToService(data as ServiceRow), error: null };
   }
 
   /**
-   * Delete deployment
+   * Delete service
    */
-  async deleteDeployment(id: string): Promise<DeploymentResult<{ deleted: boolean }>> {
+  async deleteService(id: string): Promise<ServiceResult<{ deleted: boolean }>> {
     const { error } = await this.client
-      .from('deployments')
+      .from('services')
       .delete()
       .eq('id', id);
 
@@ -446,15 +446,15 @@ export class DeploymentQueries {
 }
 
 /**
- * Get deployment queries with authenticated client
+ * Get service queries with authenticated client
  */
-export function getDeploymentQueries(): DeploymentQueries {
-  return new DeploymentQueries(getSupabaseClient());
+export function getServiceQueries(): ServiceQueries {
+  return new ServiceQueries(getSupabaseClient());
 }
 
 /**
- * Get deployment queries with service (admin) client
+ * Get service queries with service (admin) client
  */
-export function getDeploymentQueriesAdmin(): DeploymentQueries {
-  return new DeploymentQueries(getSupabaseServiceClient());
+export function getServiceQueriesAdmin(): ServiceQueries {
+  return new ServiceQueries(getSupabaseServiceClient());
 }

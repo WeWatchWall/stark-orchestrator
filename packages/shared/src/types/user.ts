@@ -6,7 +6,7 @@
 /**
  * User roles for RBAC
  * - admin: Full access to all resources (manage users, cluster config, all entities)
- * - user: Self-service users - can manage own packs, nodes, and deployments
+ * - user: Self-service users - can manage own packs, nodes, and services
  * - node: Node agents - can register/update own node and update pods assigned to it
  * - viewer: Read-only access to packs, pods, nodes, namespaces
  */

@@ -1,18 +1,18 @@
 /**
- * Deployment validation
- * @module @stark-o/shared/validation/deployment-validation
+ * Service validation
+ * @module @stark-o/shared/validation/service-validation
  */
 
-import type { DeploymentStatus, CreateDeploymentInput, UpdateDeploymentInput } from '../types/deployment';
+import type { ServiceStatus, CreateServiceInput, UpdateServiceInput } from '../types/service';
 import type { ValidationResult, ValidationError } from './pack-validation';
 import { validateLabels, validateAnnotations } from './node-validation';
 import { validateTolerations, validateResourceRequirements } from './pod-validation';
 import { validateSchedulingConfig } from './scheduling-validation';
 
 /**
- * Valid deployment statuses
+ * Valid service statuses
  */
-const VALID_DEPLOYMENT_STATUSES: DeploymentStatus[] = [
+const VALID_SERVICE_STATUSES: ServiceStatus[] = [
   'active',
   'paused',
   'scaling',
@@ -25,14 +25,14 @@ const VALID_DEPLOYMENT_STATUSES: DeploymentStatus[] = [
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
- * Deployment name pattern (DNS-like: lowercase, alphanumeric, hyphens)
+ * Service name pattern (DNS-like: lowercase, alphanumeric, hyphens)
  */
-const DEPLOYMENT_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
+const SERVICE_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
 
 /**
- * Maximum deployment name length
+ * Maximum service name length
  */
-const MAX_DEPLOYMENT_NAME_LENGTH = 63;
+const MAX_SERVICE_NAME_LENGTH = 63;
 
 /**
  * Maximum replicas
@@ -45,13 +45,13 @@ const MAX_REPLICAS = 1000;
 const MAX_METADATA_KEYS = 50;
 
 /**
- * Validate deployment name
+ * Validate service name
  */
-export function validateDeploymentName(name: unknown): ValidationError | null {
+export function validateServiceName(name: unknown): ValidationError | null {
   if (name === undefined || name === null) {
     return {
       field: 'name',
-      message: 'Deployment name is required',
+      message: 'Service name is required',
       code: 'REQUIRED',
     };
   }
@@ -59,7 +59,7 @@ export function validateDeploymentName(name: unknown): ValidationError | null {
   if (typeof name !== 'string') {
     return {
       field: 'name',
-      message: 'Deployment name must be a string',
+      message: 'Service name must be a string',
       code: 'INVALID_TYPE',
     };
   }
@@ -67,23 +67,23 @@ export function validateDeploymentName(name: unknown): ValidationError | null {
   if (name.length === 0) {
     return {
       field: 'name',
-      message: 'Deployment name cannot be empty',
+      message: 'Service name cannot be empty',
       code: 'INVALID_LENGTH',
     };
   }
 
-  if (name.length > MAX_DEPLOYMENT_NAME_LENGTH) {
+  if (name.length > MAX_SERVICE_NAME_LENGTH) {
     return {
       field: 'name',
-      message: `Deployment name cannot exceed ${MAX_DEPLOYMENT_NAME_LENGTH} characters`,
+      message: `Service name cannot exceed ${MAX_SERVICE_NAME_LENGTH} characters`,
       code: 'INVALID_LENGTH',
     };
   }
 
-  if (!DEPLOYMENT_NAME_PATTERN.test(name)) {
+  if (!SERVICE_NAME_PATTERN.test(name)) {
     return {
       field: 'name',
-      message: 'Deployment name must be lowercase alphanumeric with hyphens, starting and ending with alphanumeric',
+      message: 'Service name must be lowercase alphanumeric with hyphens, starting and ending with alphanumeric',
       code: 'INVALID_FORMAT',
     };
   }
@@ -92,9 +92,9 @@ export function validateDeploymentName(name: unknown): ValidationError | null {
 }
 
 /**
- * Validate pack ID for deployment (can be ID or name)
+ * Validate pack ID for service (can be ID or name)
  */
-export function validateDeploymentPackId(packId: unknown): ValidationError | null {
+export function validateServicePackId(packId: unknown): ValidationError | null {
   if (packId === undefined || packId === null) {
     return null; // Optional if packName is provided
   }
@@ -119,9 +119,9 @@ export function validateDeploymentPackId(packId: unknown): ValidationError | nul
 }
 
 /**
- * Validate pack name for deployment
+ * Validate pack name for service
  */
-export function validateDeploymentPackName(packName: unknown): ValidationError | null {
+export function validateServicePackName(packName: unknown): ValidationError | null {
   if (packName === undefined || packName === null) {
     return null; // Optional if packId is provided
   }
@@ -191,7 +191,7 @@ export function validateReplicas(replicas: unknown): ValidationError | null {
 /**
  * Validate namespace
  */
-export function validateDeploymentNamespace(namespace: unknown): ValidationError | null {
+export function validateServiceNamespace(namespace: unknown): ValidationError | null {
   if (namespace === undefined || namespace === null) {
     return null; // Defaults to 'default'
   }
@@ -224,9 +224,9 @@ export function validateDeploymentNamespace(namespace: unknown): ValidationError
 }
 
 /**
- * Validate deployment status
+ * Validate service status
  */
-export function validateDeploymentStatus(status: unknown): ValidationError | null {
+export function validateServiceStatus(status: unknown): ValidationError | null {
   if (status === undefined || status === null) {
     return null; // Optional
   }
@@ -239,10 +239,10 @@ export function validateDeploymentStatus(status: unknown): ValidationError | nul
     };
   }
 
-  if (!VALID_DEPLOYMENT_STATUSES.includes(status as DeploymentStatus)) {
+  if (!VALID_SERVICE_STATUSES.includes(status as ServiceStatus)) {
     return {
       field: 'status',
-      message: `Status must be one of: ${VALID_DEPLOYMENT_STATUSES.join(', ')}`,
+      message: `Status must be one of: ${VALID_SERVICE_STATUSES.join(', ')}`,
       code: 'INVALID_VALUE',
     };
   }
@@ -251,9 +251,9 @@ export function validateDeploymentStatus(status: unknown): ValidationError | nul
 }
 
 /**
- * Validate deployment metadata
+ * Validate service metadata
  */
-export function validateDeploymentMetadata(metadata: unknown): ValidationError | null {
+export function validateServiceMetadata(metadata: unknown): ValidationError | null {
   if (metadata === undefined || metadata === null) {
     return null; // Defaults to {}
   }
@@ -298,9 +298,9 @@ export function validateFollowLatest(followLatest: unknown): ValidationError | n
 }
 
 /**
- * Validate create deployment input
+ * Validate create service input
  */
-export function validateCreateDeploymentInput(input: unknown): ValidationResult {
+export function validateCreateServiceInput(input: unknown): ValidationResult {
   const errors: ValidationError[] = [];
 
   if (!input || typeof input !== 'object') {
@@ -310,15 +310,15 @@ export function validateCreateDeploymentInput(input: unknown): ValidationResult 
     };
   }
 
-  const data = input as CreateDeploymentInput;
+  const data = input as CreateServiceInput;
 
   // Required: name
-  const nameError = validateDeploymentName(data.name);
+  const nameError = validateServiceName(data.name);
   if (nameError) errors.push(nameError);
 
   // Either packId or packName is required
-  const packIdError = validateDeploymentPackId(data.packId);
-  const packNameError = validateDeploymentPackName(data.packName);
+  const packIdError = validateServicePackId(data.packId);
+  const packNameError = validateServicePackName(data.packName);
   
   if (!data.packId && !data.packName) {
     errors.push({
@@ -336,7 +336,7 @@ export function validateCreateDeploymentInput(input: unknown): ValidationResult 
   if (replicasError) errors.push(replicasError);
 
   // Optional: namespace
-  const namespaceError = validateDeploymentNamespace(data.namespace);
+  const namespaceError = validateServiceNamespace(data.namespace);
   if (namespaceError) errors.push(namespaceError);
 
   // Optional: followLatest
@@ -394,7 +394,7 @@ export function validateCreateDeploymentInput(input: unknown): ValidationResult 
   }
 
   // Optional: metadata
-  const metadataError = validateDeploymentMetadata(data.metadata);
+  const metadataError = validateServiceMetadata(data.metadata);
   if (metadataError) errors.push(metadataError);
 
   return {
@@ -404,9 +404,9 @@ export function validateCreateDeploymentInput(input: unknown): ValidationResult 
 }
 
 /**
- * Validate update deployment input
+ * Validate update service input
  */
-export function validateUpdateDeploymentInput(input: unknown): ValidationResult {
+export function validateUpdateServiceInput(input: unknown): ValidationResult {
   const errors: ValidationError[] = [];
 
   if (!input || typeof input !== 'object') {
@@ -416,7 +416,7 @@ export function validateUpdateDeploymentInput(input: unknown): ValidationResult 
     };
   }
 
-  const data = input as UpdateDeploymentInput;
+  const data = input as UpdateServiceInput;
 
   // All fields are optional for update
 
@@ -434,7 +434,7 @@ export function validateUpdateDeploymentInput(input: unknown): ValidationResult 
 
   // Optional: status
   if (data.status !== undefined) {
-    const statusError = validateDeploymentStatus(data.status);
+    const statusError = validateServiceStatus(data.status);
     if (statusError) errors.push(statusError);
   }
 
@@ -490,7 +490,7 @@ export function validateUpdateDeploymentInput(input: unknown): ValidationResult 
 
   // Optional: metadata
   if (data.metadata !== undefined) {
-    const metadataError = validateDeploymentMetadata(data.metadata);
+    const metadataError = validateServiceMetadata(data.metadata);
     if (metadataError) errors.push(metadataError);
   }
 

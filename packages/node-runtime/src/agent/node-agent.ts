@@ -3,7 +3,7 @@
  * @module @stark-o/node-runtime/agent/node-agent
  *
  * Agent that runs on Node.js servers to register with the orchestrator,
- * send heartbeats, and receive pod deployment commands.
+ * send heartbeats, and receive pod service commands.
  */
 
 import WebSocket from 'ws';
@@ -133,7 +133,7 @@ const DEFAULT_NODE_ALLOCATABLE: AllocatableResources = {
  * - Node registration
  * - Periodic heartbeats
  * - Resource reporting
- * - Pod deployment and lifecycle
+ * - Pod service and lifecycle
  * - Persistent storage of node state for resumption
  */
 export class NodeAgent {
@@ -459,7 +459,7 @@ export class NodeAgent {
         break;
 
       case 'pod:deploy': {
-        // Handle pod deployment request from orchestrator
+        // Handle pod service request from orchestrator
         const deployPayload = message.payload as PodDeployPayload;
         this.config.logger.info('Received pod deploy command', {
           podId: deployPayload.podId,

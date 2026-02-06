@@ -10,7 +10,7 @@
  * • heartbeatTimeout → SUSPECT:         60,000 ms  (node-health-service.ts)
  * • leaseTimeout → OFFLINE:            120,000 ms  (node-health-service.ts)
  * • healthCheckInterval:                30,000 ms  (node-health-service.ts)
- * • reconcileInterval:                  10,000 ms  (deployment-controller.ts)
+ * • reconcileInterval:                  10,000 ms  (service-controller.ts)
  *
  * RECONNECTION BACKOFF (node-agent.ts):
  * • Initial delay: 5,000 ms
@@ -24,7 +24,7 @@
 import { getChaosProxy } from '../../services/chaos-proxy';
 import { getNodeQueries } from '../../supabase/nodes.js';
 import { getPodQueriesAdmin } from '../../supabase/pods.js';
-import { getDeploymentQueriesAdmin } from '../../supabase/deployments.js';
+import { getServiceQueriesAdmin } from '../../supabase/services.js';
 import type { ChaosScenario, ScenarioResult, OptionHelp } from './types';
 import type { PodListItem } from '@stark-o/shared';
 
@@ -39,7 +39,7 @@ const TIMING = {
   LEASE_TIMEOUT_MS: 120_000,
   /** How often the health service checks node status */
   HEALTH_CHECK_INTERVAL_MS: 30_000,
-  /** How often the deployment controller reconciles */
+  /** How often the service controller reconciles */
   RECONCILE_INTERVAL_MS: 10_000,
   /** How often nodes send heartbeats */
   HEARTBEAT_INTERVAL_MS: 15_000,
@@ -340,7 +340,7 @@ export const nodeBanReconciliationScenario: ChaosScenario<NodeBanReconciliationO
     How to verify:
     1. NodeA status should have stayed ONLINE throughout
     2. Pod count should be unchanged
-    3. No reschedule events in deployment controller logs
+    3. No reschedule events in service controller logs
         `);
       } else if (options.mode === 'late_unban') {
         verify('Node may need manual restart (reconnection exhausted)');
@@ -557,7 +557,7 @@ export const heartbeatDelayConvergenceScenario: ChaosScenario<HeartbeatDelayConv
       
       const monitorInterval = 10_000;
       const injectTime = Date.now();
-      let overDeploymentDetected = false;
+      let overServiceDetected = false;
       let maxPodCount = initialPodCount;
       
       while (Date.now() - injectTime < options.durationMs) {
@@ -569,12 +569,12 @@ export const heartbeatDelayConvergenceScenario: ChaosScenario<HeartbeatDelayConv
         const runningPods = currentPods.data?.filter((p: PodListItem) => p.status === 'running').length ?? 0;
         
         if (runningPods > maxPodCount) {
-          overDeploymentDetected = true;
+          overServiceDetected = true;
           maxPodCount = runningPods;
         }
         
-        // Check for pod duplication by looking at deployment-level counts
-        // (Would need deployment context for real check)
+        // Check for pod duplication by looking at service-level counts
+        // (Would need service context for real check)
         
         timeline(`Node=${nodeStatus.data?.status ?? '?'}, running_pods=${runningPods}`, elapsed);
         events.push(`T+${formatTime(elapsed)}: Node=${nodeStatus.data?.status}, running_pods=${runningPods}`);
@@ -606,7 +606,7 @@ export const heartbeatDelayConvergenceScenario: ChaosScenario<HeartbeatDelayConv
       console.log(`    Node: ${finalNode.data?.status ?? 'NOT FOUND'}`);
       console.log(`    Running pods: ${finalPodCount}`);
       console.log(`    Max pod count during test: ${maxPodCount}`);
-      console.log(`    Over-deployment detected: ${overDeploymentDetected ? 'YES ⚠' : 'NO ✓'}`);
+      console.log(`    Over-service detected: ${overServiceDetected ? 'YES ⚠' : 'NO ✓'}`);
 
       // ─────────────────────────────────────────────────────────────────────────
       // Verification
@@ -614,7 +614,7 @@ export const heartbeatDelayConvergenceScenario: ChaosScenario<HeartbeatDelayConv
 
       section('MANUAL VERIFICATION');
       
-      verify('No over-deployment occurred (pod count never exceeded initial)');
+      verify('No over-service occurred (pod count never exceeded initial)');
       verify('No duplicate pods created');
       verify('System converged correctly after delay removed');
       verify(`Node reached expected state: ${expectedBehavior}`);
@@ -642,7 +642,7 @@ export const heartbeatDelayConvergenceScenario: ChaosScenario<HeartbeatDelayConv
           initialPodCount,
           finalPodCount,
           maxPodCount,
-          overDeploymentDetected,
+          overServiceDetected,
         },
       };
 
@@ -661,7 +661,7 @@ export const heartbeatDelayConvergenceScenario: ChaosScenario<HeartbeatDelayConv
 
   getExpectedBehavior(options): string[] {
     const behaviors = [
-      'No over-deployment occurs',
+      'No over-service occurs',
       'No duplicate pods created',
       'Orchestrator tolerates delay and converges correctly',
     ];
@@ -705,12 +705,12 @@ export const heartbeatDelayConvergenceScenario: ChaosScenario<HeartbeatDelayConv
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SCENARIO 3: Deployment Shape Change Cleanup
+// SCENARIO 3: Service Shape Change Cleanup
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface DeploymentShapeChangeOptions {
-  /** Deployment ID to modify */
-  deploymentId: string;
+export interface ServiceShapeChangeOptions {
+  /** Service ID to modify */
+  serviceId: string;
   /**
    * Change type:
    * - 'scale_down': Reduce replica count
@@ -721,17 +721,17 @@ export interface DeploymentShapeChangeOptions {
   newReplicas: number;
 }
 
-export const deploymentShapeChangeScenario: ChaosScenario<DeploymentShapeChangeOptions> = {
-  name: 'deployment-shape-change',
-  description: 'Test pod cleanup when deployment shape changes (scale down, DaemonSet→replica)',
+export const serviceShapeChangeScenario: ChaosScenario<ServiceShapeChangeOptions> = {
+  name: 'service-shape-change',
+  description: 'Test pod cleanup when service shape changes (scale down, DaemonSet→replica)',
 
   async validate(options): Promise<{ valid: boolean; error?: string }> {
     const chaos = getChaosProxy();
     if (!chaos.isEnabled()) {
       return { valid: false, error: 'Chaos proxy not enabled' };
     }
-    if (!options.deploymentId) {
-      return { valid: false, error: 'deploymentId is required' };
+    if (!options.serviceId) {
+      return { valid: false, error: 'serviceId is required' };
     }
     if (options.newReplicas < 0) {
       return { valid: false, error: 'newReplicas must be non-negative' };
@@ -740,12 +740,12 @@ export const deploymentShapeChangeScenario: ChaosScenario<DeploymentShapeChangeO
   },
 
   async execute(options): Promise<ScenarioResult> {
-    const deploymentQueries = getDeploymentQueriesAdmin();
+    const serviceQueries = getServiceQueriesAdmin();
     const podQueries = getPodQueriesAdmin();
     const startTime = Date.now();
     const events: string[] = [];
 
-    banner(`CHAOS SCENARIO: Deployment Shape Change (${options.changeType})`);
+    banner(`CHAOS SCENARIO: Service Shape Change (${options.changeType})`);
 
     try {
       // ─────────────────────────────────────────────────────────────────────────
@@ -754,33 +754,33 @@ export const deploymentShapeChangeScenario: ChaosScenario<DeploymentShapeChangeO
 
       section('INITIAL STATE');
       
-      const initialDeployment = await deploymentQueries.getDeploymentById(options.deploymentId);
-      if (!initialDeployment.data) {
+      const initialService = await serviceQueries.getServiceById(options.serviceId);
+      if (!initialService.data) {
         return {
           success: false,
-          scenario: 'deployment-shape-change',
+          scenario: 'service-shape-change',
           duration: Date.now() - startTime,
-          events: ['Deployment not found'],
-          error: `Deployment ${options.deploymentId} not found`,
+          events: ['Service not found'],
+          error: `Service ${options.serviceId} not found`,
         };
       }
       
-      const initialPods = await podQueries.listPodsByDeployment(options.deploymentId);
+      const initialPods = await podQueries.listPodsByService(options.serviceId);
       const runningPods = initialPods.data?.filter((p: PodListItem) => p.status === 'running') ?? [];
       
-      console.log(`    Deployment: ${initialDeployment.data.name}`);
-      console.log(`    Current replicas setting: ${initialDeployment.data.replicas}`);
+      console.log(`    Service: ${initialService.data.name}`);
+      console.log(`    Current replicas setting: ${initialService.data.replicas}`);
       console.log(`    Running pods: ${runningPods.length}`);
       runningPods.forEach((pod: PodListItem) => {
         console.log(`      • ${pod.id} on node ${pod.nodeId}`);
       });
       
-      events.push(`Initial: replicas=${initialDeployment.data.replicas}, running_pods=${runningPods.length}`);
+      events.push(`Initial: replicas=${initialService.data.replicas}, running_pods=${runningPods.length}`);
 
-      const isDaemonSet = initialDeployment.data.replicas === 0;
+      const isDaemonSet = initialService.data.replicas === 0;
       
       if (options.changeType === 'daemonset_to_replica' && !isDaemonSet) {
-        console.log(`\n    ⚠ Warning: Deployment is not a DaemonSet (replicas=${initialDeployment.data.replicas})`);
+        console.log(`\n    ⚠ Warning: Service is not a DaemonSet (replicas=${initialService.data.replicas})`);
       }
 
       // ─────────────────────────────────────────────────────────────────────────
@@ -789,10 +789,10 @@ export const deploymentShapeChangeScenario: ChaosScenario<DeploymentShapeChangeO
       
       section('TIMING EXPECTATIONS');
       console.log(`
-    Deployment controller reconcile interval: ${TIMING.RECONCILE_INTERVAL_MS}ms (${formatTime(TIMING.RECONCILE_INTERVAL_MS)})
+    Service controller reconcile interval: ${TIMING.RECONCILE_INTERVAL_MS}ms (${formatTime(TIMING.RECONCILE_INTERVAL_MS)})
     
     After changing replica count from ${runningPods.length} → ${options.newReplicas}:
-    1. Deployment updated in database
+    1. Service updated in database
     2. Next reconcile detects mismatch (within ${formatTime(TIMING.RECONCILE_INTERVAL_MS)})
     3. Excess pods marked 'stopping'
     4. pod:stop messages sent to nodes
@@ -806,25 +806,25 @@ export const deploymentShapeChangeScenario: ChaosScenario<DeploymentShapeChangeO
       // Apply the change
       // ─────────────────────────────────────────────────────────────────────────
 
-      section('APPLYING DEPLOYMENT CHANGE');
+      section('APPLYING SERVICE CHANGE');
       
-      const updateResult = await deploymentQueries.updateDeployment(options.deploymentId, {
+      const updateResult = await serviceQueries.updateService(options.serviceId, {
         replicas: options.newReplicas,
       });
       
       if (updateResult.error) {
         return {
           success: false,
-          scenario: 'deployment-shape-change',
+          scenario: 'service-shape-change',
           duration: Date.now() - startTime,
           events,
-          error: `Failed to update deployment: ${updateResult.error.message}`,
+          error: `Failed to update service: ${updateResult.error.message}`,
         };
       }
       
       const changeTime = Date.now();
-      timeline(`Deployment updated: replicas=${options.newReplicas}`, 0);
-      events.push(`T+0: Deployment replicas changed to ${options.newReplicas}`);
+      timeline(`Service updated: replicas=${options.newReplicas}`, 0);
+      events.push(`T+0: Service replicas changed to ${options.newReplicas}`);
 
       // ─────────────────────────────────────────────────────────────────────────
       // Monitor convergence
@@ -843,7 +843,7 @@ export const deploymentShapeChangeScenario: ChaosScenario<DeploymentShapeChangeO
         await sleep(checkInterval);
         const elapsed = Date.now() - changeTime;
         
-        const currentPods = await podQueries.listPodsByDeployment(options.deploymentId);
+        const currentPods = await podQueries.listPodsByService(options.serviceId);
         const running = currentPods.data?.filter((p: PodListItem) => p.status === 'running') ?? [];
         const stopping = currentPods.data?.filter((p: PodListItem) => p.status === 'stopping') ?? [];
         const total = currentPods.data?.length ?? 0;
@@ -872,7 +872,7 @@ export const deploymentShapeChangeScenario: ChaosScenario<DeploymentShapeChangeO
 
       section('FINAL STATE');
       
-      const finalPods = await podQueries.listPodsByDeployment(options.deploymentId);
+      const finalPods = await podQueries.listPodsByService(options.serviceId);
       const finalRunning = finalPods.data?.filter((p: PodListItem) => p.status === 'running') ?? [];
       const finalStopping = finalPods.data?.filter((p: PodListItem) => p.status === 'stopping') ?? [];
       
@@ -915,7 +915,7 @@ export const deploymentShapeChangeScenario: ChaosScenario<DeploymentShapeChangeO
 
       return {
         success: converged && !stoppingPodsStuck,
-        scenario: 'deployment-shape-change',
+        scenario: 'service-shape-change',
         mode: options.changeType,
         duration: Date.now() - startTime,
         events,
@@ -933,7 +933,7 @@ export const deploymentShapeChangeScenario: ChaosScenario<DeploymentShapeChangeO
     } catch (error) {
       return {
         success: false,
-        scenario: 'deployment-shape-change',
+        scenario: 'service-shape-change',
         mode: options.changeType,
         duration: Date.now() - startTime,
         events,
@@ -944,7 +944,7 @@ export const deploymentShapeChangeScenario: ChaosScenario<DeploymentShapeChangeO
 
   getExpectedBehavior(options): string[] {
     return [
-      `Deployment replicas changed to ${options.newReplicas}`,
+      `Service replicas changed to ${options.newReplicas}`,
       'Excess pods marked as stopping within 10s (reconcile interval)',
       'pod:stop messages sent to nodes hosting excess pods',
       'Nodes terminate excess pods and confirm',
@@ -957,10 +957,10 @@ export const deploymentShapeChangeScenario: ChaosScenario<DeploymentShapeChangeO
   getOptionsHelp(): OptionHelp[] {
     return [
       {
-        name: 'deploymentId',
+        name: 'serviceId',
         type: 'string',
         required: true,
-        description: 'Deployment ID to modify',
+        description: 'Service ID to modify',
         example: 'abc123-def456',
       },
       {
@@ -989,5 +989,5 @@ export const deploymentShapeChangeScenario: ChaosScenario<DeploymentShapeChangeO
 export default {
   nodeBanReconciliationScenario,
   heartbeatDelayConvergenceScenario,
-  deploymentShapeChangeScenario,
+  serviceShapeChangeScenario,
 };

@@ -15,7 +15,7 @@ export type EventCategory =
   | 'pod'        // Pod lifecycle events
   | 'node'       // Node lifecycle events
   | 'pack'       // Pack lifecycle events
-  | 'deployment' // Deployment events
+  | 'service' // Service events
   | 'system'     // System-level events
   | 'auth'       // Authentication events
   | 'scheduler'; // Scheduler events
@@ -89,22 +89,22 @@ export type PackEventType =
   | 'PackVersionDeprecated';
 
 // ============================================================================
-// Deployment Event Types
+// Service Event Types
 // ============================================================================
 
 /**
- * All deployment event types
+ * All service event types
  */
-export type DeploymentEventType =
-  | 'DeploymentCreated'
-  | 'DeploymentScaled'
-  | 'DeploymentRollingUpdate'
-  | 'DeploymentRollback'
-  | 'DeploymentPaused'
-  | 'DeploymentResumed'
-  | 'DeploymentCompleted'
-  | 'DeploymentFailed'
-  | 'DeploymentDeleted';
+export type ServiceEventType =
+  | 'ServiceCreated'
+  | 'ServiceScaled'
+  | 'ServiceRollingUpdate'
+  | 'ServiceRollback'
+  | 'ServicePaused'
+  | 'ServiceResumed'
+  | 'ServiceCompleted'
+  | 'ServiceFailed'
+  | 'ServiceDeleted';
 
 // ============================================================================
 // System Event Types
@@ -158,7 +158,7 @@ export type StarkEventType =
   | PodEventType
   | NodeEventType
   | PackEventType
-  | DeploymentEventType
+  | ServiceEventType
   | SystemEventType
   | AuthEventType
   | SchedulerEventType;
@@ -315,9 +315,9 @@ export type PackEvent = StarkEvent<PackEventState> & {
 };
 
 /**
- * Deployment state for event tracking
+ * Service state for event tracking
  */
-export interface DeploymentEventState {
+export interface ServiceEventState {
   replicas?: number;
   readyReplicas?: number;
   version?: string;
@@ -325,12 +325,12 @@ export interface DeploymentEventState {
 }
 
 /**
- * Deployment event with typed state
+ * Service event with typed state
  */
-export type DeploymentEvent = StarkEvent<DeploymentEventState> & {
-  category: 'deployment';
-  eventType: DeploymentEventType;
-  resourceType: 'deployment';
+export type ServiceEvent = StarkEvent<ServiceEventState> & {
+  category: 'service';
+  eventType: ServiceEventType;
+  resourceType: 'service';
 };
 
 // ============================================================================
@@ -604,7 +604,7 @@ export function getCategoryFromEventType(eventType: StarkEventType): EventCatego
   if (eventType.startsWith('Pod')) return 'pod';
   if (eventType.startsWith('Node')) return 'node';
   if (eventType.startsWith('Pack')) return 'pack';
-  if (eventType.startsWith('Deployment')) return 'deployment';
+  if (eventType.startsWith('Service')) return 'service';
   if (eventType.startsWith('Cluster') || eventType.startsWith('Config') || eventType.startsWith('Garbage')) return 'system';
   if (eventType.startsWith('User') || eventType.startsWith('Token') || eventType.startsWith('Permission')) return 'auth';
   if (eventType.startsWith('Scheduling') || eventType.startsWith('NoNodes') || eventType.startsWith('Preemption')) return 'scheduler';
