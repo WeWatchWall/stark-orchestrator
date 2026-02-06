@@ -3,8 +3,8 @@
  *
  * This interface defines a unified worker pool abstraction that can be
  * implemented by different runtimes:
- * - Node.js: Using sub-processes via Workerpool (default) or worker_threads
- * - Browser: Using Web Workers via Workerpool
+ * - Node.js: Using sub-processes via child_process.fork()
+ * - Browser: Using native Web Workers
  *
  * @module @stark-o/shared/types/worker-adapter
  */
@@ -170,7 +170,7 @@ export interface TaskHandle<T = unknown> {
  *
  * This interface provides a consistent API for executing tasks in worker threads
  * across different runtime environments (Node.js and Browser).
- * Implementations should use Workerpool with appropriate worker types.
+ * Implementations should use native isolation primitives (child_process, Web Workers).
  */
 export interface IWorkerAdapter {
   // ============================================

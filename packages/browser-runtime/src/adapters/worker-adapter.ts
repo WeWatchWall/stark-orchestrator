@@ -1,8 +1,6 @@
 // Stark Orchestrator - Browser Runtime
-// Worker Adapter using Workerpool for Web Worker management
+// Worker Adapter using native Web Workers
 
-import workerpool from 'workerpool';
-import type { Pool, WorkerPoolOptions, Promise as WorkerPromise } from 'workerpool';
 import type {
   IWorkerAdapter,
   WorkerAdapterConfig,
@@ -15,7 +13,6 @@ import {
   TaskCancelledError,
   TaskTimeoutError,
   WorkerNotInitializedError,
-  WorkerScriptRequiredError,
 } from '@stark-o/shared';
 
 /**
@@ -23,11 +20,11 @@ import {
  */
 export interface BrowserWorkerAdapterConfig extends WorkerAdapterConfig {
   /**
-   * Worker type: 'web' for Web Workers.
-   * In browser environments, only 'web' is supported.
-   * @default 'web'
+   * URL to the worker script bundle.
+   * This script will be loaded by each Web Worker and must import its
+   * own dependencies (PodLogSink, etc.) directly via the bundle.
    */
-  workerType?: 'web';
+  workerScriptUrl?: string;
 }
 
 // Re-export shared types for convenience
@@ -44,16 +41,41 @@ export {
   TaskCancelledError,
   TaskTimeoutError,
   WorkerNotInitializedError,
-  WorkerScriptRequiredError,
 } from '@stark-o/shared';
 
 /**
- * Internal task tracking info including the worker promise for force termination.
+ * Message sent from the main thread to the Web Worker.
  */
-interface PendingTaskInfo<T = unknown> {
-  cancel: () => void;
-  workerPromise: WorkerPromise<T>;
+export interface BrowserWorkerRequest {
+  type: 'execute';
+  taskId: string;
+  bundleCode: string;
+  context: unknown; // PackExecutionContext (serialized via structured clone)
+  args: unknown[];
+}
+
+/**
+ * Message sent back from the Web Worker to the main thread.
+ */
+export interface BrowserWorkerResponse {
+  type: 'result' | 'error';
+  taskId: string;
+  value?: unknown;
+  error?: string;
+  errorStack?: string;
+}
+
+/**
+ * Internal tracking for a running Web Worker task.
+ */
+interface WebWorkerTask<T = unknown> {
+  taskId: string;
+  worker: Worker;
+  resolve: (result: TaskResult<T>) => void;
+  reject: (error: Error) => void;
   cancelled: boolean;
+  startTime: number;
+  timeoutHandle?: ReturnType<typeof setTimeout>;
 }
 
 /**
@@ -64,505 +86,416 @@ function getHardwareConcurrency(): number {
   if (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) {
     return navigator.hardwareConcurrency;
   }
-  // Default fallback for environments without navigator
   return 4;
 }
 
 /**
- * Browser worker adapter wrapping Workerpool for Web Worker management.
- * Provides a unified interface for executing tasks in Web Workers.
- *
- * This implementation uses Workerpool which manages a pool of Web Workers
- * for parallel task execution in browser environments.
+ * Browser worker adapter using native Web Workers.
+ * 
+ * Each task spawns a dedicated Web Worker that runs the bundled worker script.
+ * The worker script imports all dependencies (like PodLogSink, formatLogArgs)
+ * directly via the bundle — no serialized function injection. Only pack bundle
+ * code and metadata state are passed as messages.
  */
 export class WorkerAdapter implements IWorkerAdapter {
-  private readonly config: Required<Omit<BrowserWorkerAdapterConfig, 'workerScript' | 'onError'>> &
-    Pick<BrowserWorkerAdapterConfig, 'workerScript' | 'onError'>;
-  private pool: Pool | null = null;
+  private readonly config: Required<Omit<BrowserWorkerAdapterConfig, 'workerScript' | 'workerScriptUrl' | 'onError'>> &
+    Pick<BrowserWorkerAdapterConfig, 'workerScript' | 'workerScriptUrl' | 'onError'>;
   private initialized: boolean = false;
-  private readonly pendingTasks: Map<string, PendingTaskInfo> = new Map();
+  private readonly runningTasks: Map<string, WebWorkerTask> = new Map();
   private taskIdCounter: number = 0;
+
+  /** URL to the worker script */
+  private workerScriptUrl: string;
 
   constructor(config: BrowserWorkerAdapterConfig = {}) {
     this.config = {
       minWorkers: config.minWorkers ?? 0,
       maxWorkers: config.maxWorkers ?? getHardwareConcurrency(),
       maxQueueSize: config.maxQueueSize ?? Infinity,
-      taskTimeout: config.taskTimeout ?? 60000,
+      taskTimeout: config.taskTimeout ?? 0,
       workerTerminateTimeout: config.workerTerminateTimeout ?? 1000,
-      workerType: config.workerType ?? 'web',
       workerScript: config.workerScript,
+      workerScriptUrl: config.workerScriptUrl,
       onError: config.onError,
     };
+
+    // Use workerScriptUrl or workerScript (legacy alias)
+    this.workerScriptUrl = config.workerScriptUrl ?? config.workerScript ?? '';
   }
 
   /**
-   * Initialize the worker pool.
-   * Must be called before executing any tasks.
+   * Initialize the worker adapter.
    */
   async initialize(): Promise<void> {
     if (this.initialized) {
       return;
     }
-
-    const poolOptions: WorkerPoolOptions = {
-      minWorkers: this.config.minWorkers,
-      maxWorkers: this.config.maxWorkers,
-      maxQueueSize: this.config.maxQueueSize,
-      workerType: 'web', // Browser always uses web workers
-      workerTerminateTimeout: this.config.workerTerminateTimeout,
-    };
-
-    // Create pool with or without a worker script
-    if (this.config.workerScript) {
-      this.pool = workerpool.pool(this.config.workerScript, poolOptions);
-    } else {
-      this.pool = workerpool.pool(poolOptions);
-    }
-
     this.initialized = true;
   }
 
   /**
-   * Check if the adapter is initialized.
+   * Check if the adapter has been initialized.
    */
   isInitialized(): boolean {
     return this.initialized;
   }
 
   /**
-   * Execute a function in a Web Worker.
-   * The function must be self-contained and serializable.
+   * Execute pack code in a Web Worker.
    *
-   * @param fn - The function to execute
-   * @param args - Arguments to pass to the function
-   * @param options - Task execution options
+   * Creates a new Web Worker, posts the bundle code + execution context
+   * as a message, and waits for the result.
+   *
+   * @param bundleCode - The pack's JavaScript bundle code
+   * @param context - The PackExecutionContext (serializable metadata/state)
+   * @param args - Additional arguments for the pack entrypoint
+   * @param options - Task execution options (timeout, etc.)
    * @returns Promise resolving to the task result
    */
-  async exec<T, Args extends unknown[]>(
-    fn: (...args: Args) => T | Promise<T>,
-    args: Args = [] as unknown as Args,
-    options: TaskOptions = {}
-  ): Promise<TaskResult<T>> {
-    this.ensureInitialized();
-
-    const startTime = Date.now();
-    const taskTimeout = options.timeout ?? this.config.taskTimeout;
-
-    try {
-      const workerPromise = this.pool!.exec(fn, args);
-      const result = await this.withTimeout(workerPromise, taskTimeout);
-      return {
-        value: result as T,
-        duration: Date.now() - startTime,
-      };
-    } catch (error) {
-      this.handleError(error as Error);
-      throw error;
-    }
-  }
-
-  /**
-   * Execute a function in a Web Worker with cancellation support.
-   *
-   * @param fn - The function to execute
-   * @param args - Arguments to pass to the function
-   * @param options - Task execution options
-   * @returns Task handle with promise and cancel function
-   */
-  execCancellable<T, Args extends unknown[]>(
-    fn: (...args: Args) => T | Promise<T>,
-    args: Args = [] as unknown as Args,
-    options: TaskOptions = {}
-  ): TaskHandle<T> {
-    this.ensureInitialized();
-
-    const taskId = this.generateTaskId();
-    const startTime = Date.now();
-    const taskTimeout = options.timeout ?? this.config.taskTimeout;
-    let cancelled = false;
-
-    const workerPromise = this.pool!.exec(fn, args) as WorkerPromise<T>;
-
-    const cancel = () => {
-      if (!cancelled) {
-        cancelled = true;
-        workerPromise.cancel();
-        const taskInfo = this.pendingTasks.get(taskId);
-        if (taskInfo) {
-          taskInfo.cancelled = true;
-        }
-        this.pendingTasks.delete(taskId);
-        options.onCancel?.();
-      }
-    };
-
-    const forceTerminate = async (): Promise<void> => {
-      if (!cancelled) {
-        cancelled = true;
-        const taskInfo = this.pendingTasks.get(taskId);
-        if (taskInfo) {
-          taskInfo.cancelled = true;
-        }
-        this.pendingTasks.delete(taskId);
-        options.onCancel?.();
-      }
-      // Force terminate all workers and reinitialize the pool
-      if (this.pool) {
-        await this.pool.terminate(true, 100);
-        // Reinitialize the pool
-        const poolOptions: WorkerPoolOptions = {
-          minWorkers: this.config.minWorkers,
-          maxWorkers: this.config.maxWorkers,
-          maxQueueSize: this.config.maxQueueSize,
-          workerType: 'web',
-          workerTerminateTimeout: this.config.workerTerminateTimeout,
-        };
-        if (this.config.workerScript) {
-          this.pool = workerpool.pool(this.config.workerScript, poolOptions);
-        } else {
-          this.pool = workerpool.pool(poolOptions);
-        }
-      }
-    };
-
-    this.pendingTasks.set(taskId, { cancel, workerPromise, cancelled: false });
-
-    const promise = this.withTimeout(workerPromise, taskTimeout)
-      .then((value) => {
-        this.pendingTasks.delete(taskId);
-        return {
-          value: value as T,
-          duration: Date.now() - startTime,
-        };
-      })
-      .catch((error) => {
-        this.pendingTasks.delete(taskId);
-        if (cancelled) {
-          throw new TaskCancelledError();
-        }
-        this.handleError(error as Error);
-        throw error;
-      });
-
-    return {
-      promise,
-      cancel,
-      forceTerminate,
-      isCancelled: () => cancelled,
-    };
-  }
-
-  /**
-   * Execute a method on a worker script.
-   * Requires the adapter to be initialized with a workerScript.
-   *
-   * @param method - The method name to call on the worker
-   * @param args - Arguments to pass to the method
-   * @param options - Task execution options
-   * @returns Promise resolving to the task result
-   */
-  async execMethod<T>(
-    method: string,
+  async execTask<T>(
+    bundleCode: string,
+    context: unknown,
     args: unknown[] = [],
     options: TaskOptions = {}
   ): Promise<TaskResult<T>> {
     this.ensureInitialized();
 
-    if (!this.config.workerScript) {
-      throw new WorkerScriptRequiredError('execMethod');
-    }
-
-    const startTime = Date.now();
-    const taskTimeout = options.timeout ?? this.config.taskTimeout;
-
-    try {
-      const workerPromise = this.pool!.exec(method, args);
-      const result = await this.withTimeout(workerPromise, taskTimeout);
-      return {
-        value: result as T,
-        duration: Date.now() - startTime,
-      };
-    } catch (error) {
-      this.handleError(error as Error);
-      throw error;
-    }
-  }
-
-  /**
-   * Execute a method on a worker script with cancellation support.
-   *
-   * @param method - The method name to call on the worker
-   * @param args - Arguments to pass to the method
-   * @param options - Task execution options
-   * @returns Task handle with promise and cancel function
-   */
-  execMethodCancellable<T>(
-    method: string,
-    args: unknown[] = [],
-    options: TaskOptions = {}
-  ): TaskHandle<T> {
-    this.ensureInitialized();
-
-    if (!this.config.workerScript) {
-      throw new WorkerScriptRequiredError('execMethodCancellable');
-    }
-
     const taskId = this.generateTaskId();
     const startTime = Date.now();
     const taskTimeout = options.timeout ?? this.config.taskTimeout;
-    let cancelled = false;
 
-    const workerPromise = this.pool!.exec(method, args) as WorkerPromise<T>;
+    return new Promise<TaskResult<T>>((resolve, reject) => {
+      let worker: Worker;
 
-    const cancel = () => {
-      if (!cancelled) {
-        cancelled = true;
-        workerPromise.cancel();
-        const taskInfo = this.pendingTasks.get(taskId);
-        if (taskInfo) {
-          taskInfo.cancelled = true;
-        }
-        this.pendingTasks.delete(taskId);
-        options.onCancel?.();
+      if (this.workerScriptUrl) {
+        // Use the pre-built worker script URL
+        worker = new Worker(this.workerScriptUrl, { type: 'module' });
+      } else {
+        // Create an inline worker from the pack-worker-inline code
+        // This is a fallback when no workerScriptUrl is configured
+        const blob = new Blob(
+          [getInlineWorkerCode()],
+          { type: 'application/javascript' }
+        );
+        worker = new Worker(URL.createObjectURL(blob), { type: 'module' });
       }
-    };
 
-    const forceTerminate = async (): Promise<void> => {
-      if (!cancelled) {
-        cancelled = true;
-        const taskInfo = this.pendingTasks.get(taskId);
-        if (taskInfo) {
-          taskInfo.cancelled = true;
-        }
-        this.pendingTasks.delete(taskId);
-        options.onCancel?.();
+      const task: WebWorkerTask<T> = {
+        taskId,
+        worker,
+        resolve,
+        reject,
+        cancelled: false,
+        startTime,
+      };
+      this.runningTasks.set(taskId, task as WebWorkerTask);
+
+      // Set up timeout
+      if (taskTimeout > 0 && Number.isFinite(taskTimeout)) {
+        task.timeoutHandle = setTimeout(() => {
+          if (!task.cancelled) {
+            task.cancelled = true;
+            worker.terminate();
+            this.runningTasks.delete(taskId);
+            reject(new TaskTimeoutError(taskTimeout));
+          }
+        }, taskTimeout);
       }
-      // Force terminate all workers and reinitialize the pool
-      if (this.pool) {
-        await this.pool.terminate(true, 100);
-        // Reinitialize the pool
-        const poolOptions: WorkerPoolOptions = {
-          minWorkers: this.config.minWorkers,
-          maxWorkers: this.config.maxWorkers,
-          maxQueueSize: this.config.maxQueueSize,
-          workerType: 'web',
-          workerTerminateTimeout: this.config.workerTerminateTimeout,
-        };
-        if (this.config.workerScript) {
-          this.pool = workerpool.pool(this.config.workerScript, poolOptions);
+
+      worker.onmessage = (event: MessageEvent<BrowserWorkerResponse>) => {
+        const msg = event.data;
+        if (msg.taskId !== taskId) return;
+
+        if (task.timeoutHandle) clearTimeout(task.timeoutHandle);
+        this.runningTasks.delete(taskId);
+        worker.terminate();
+
+        if (task.cancelled) {
+          reject(new TaskCancelledError());
+          return;
+        }
+
+        if (msg.type === 'result') {
+          resolve({
+            value: msg.value as T,
+            duration: Date.now() - startTime,
+          });
         } else {
-          this.pool = workerpool.pool(poolOptions);
+          const error = new Error(msg.error ?? 'Unknown worker error');
+          if (msg.errorStack) error.stack = msg.errorStack;
+          reject(error);
         }
-      }
-    };
+      };
 
-    this.pendingTasks.set(taskId, { cancel, workerPromise, cancelled: false });
-
-    const promise = this.withTimeout(workerPromise, taskTimeout)
-      .then((value) => {
-        this.pendingTasks.delete(taskId);
-        return {
-          value: value as T,
-          duration: Date.now() - startTime,
-        };
-      })
-      .catch((error) => {
-        this.pendingTasks.delete(taskId);
-        if (cancelled) {
-          throw new TaskCancelledError();
+      worker.onerror = (event: ErrorEvent) => {
+        if (task.timeoutHandle) clearTimeout(task.timeoutHandle);
+        this.runningTasks.delete(taskId);
+        worker.terminate();
+        if (!task.cancelled) {
+          const error = new Error(event.message ?? 'Worker error');
+          this.handleError(error);
+          reject(error);
         }
-        this.handleError(error as Error);
-        throw error;
-      });
+      };
 
-    return {
-      promise,
-      cancel,
-      forceTerminate,
-      isCancelled: () => cancelled,
-    };
-  }
-
-  /**
-   * Create a proxy for a worker script.
-   * Allows calling worker methods as if they were local async functions.
-   *
-   * @param _options - Task execution options applied to all proxied calls
-   * @returns Proxy object for the worker script
-   */
-  async proxy<T extends Record<string, (...args: unknown[]) => unknown>>(
-    _options: TaskOptions = {}
-  ): Promise<T> {
-    this.ensureInitialized();
-
-    if (!this.config.workerScript) {
-      throw new WorkerScriptRequiredError('proxy');
-    }
-
-    const workerProxy = await this.pool!.proxy();
-
-    // Wrap the proxy to add timing and error handling
-    return new Proxy(workerProxy as T, {
-      get: (target, prop: string) => {
-        if (typeof target[prop] === 'function') {
-          return async (...args: unknown[]) => {
-            const startTime = Date.now();
-            try {
-              const result = await (target[prop] as (...args: unknown[]) => Promise<unknown>)(
-                ...args
-              );
-              return {
-                value: result,
-                duration: Date.now() - startTime,
-              };
-            } catch (error) {
-              this.handleError(error as Error);
-              throw error;
-            }
-          };
-        }
-        return target[prop];
-      },
+      // Send the task to the worker
+      const request: BrowserWorkerRequest = {
+        type: 'execute',
+        taskId,
+        bundleCode,
+        context,
+        args,
+      };
+      worker.postMessage(request);
     });
   }
 
   /**
-   * Get current pool statistics.
+   * Execute pack code in a Web Worker with cancellation support.
    *
-   * @returns Pool statistics
+   * @param bundleCode - The pack's JavaScript bundle code
+   * @param context - The PackExecutionContext (serializable metadata/state)
+   * @param args - Additional arguments for the pack entrypoint
+   * @param options - Task execution options
+   * @returns Task handle with promise and cancel/forceTerminate functions
+   */
+  execTaskCancellable<T>(
+    bundleCode: string,
+    context: unknown,
+    args: unknown[] = [],
+    options: TaskOptions = {}
+  ): TaskHandle<T> {
+    this.ensureInitialized();
+
+    const taskId = this.generateTaskId();
+    const startTime = Date.now();
+    const taskTimeout = options.timeout ?? this.config.taskTimeout;
+    let cancelled = false;
+    let worker: Worker | null = null;
+
+    const promise = new Promise<TaskResult<T>>((resolve, reject) => {
+      if (this.workerScriptUrl) {
+        worker = new Worker(this.workerScriptUrl, { type: 'module' });
+      } else {
+        const blob = new Blob(
+          [getInlineWorkerCode()],
+          { type: 'application/javascript' }
+        );
+        worker = new Worker(URL.createObjectURL(blob), { type: 'module' });
+      }
+
+      const task: WebWorkerTask<T> = {
+        taskId,
+        worker,
+        resolve,
+        reject,
+        cancelled: false,
+        startTime,
+      };
+      this.runningTasks.set(taskId, task as WebWorkerTask);
+
+      // Set up timeout
+      if (taskTimeout > 0 && Number.isFinite(taskTimeout)) {
+        task.timeoutHandle = setTimeout(() => {
+          if (!task.cancelled && !cancelled) {
+            task.cancelled = true;
+            cancelled = true;
+            worker?.terminate();
+            this.runningTasks.delete(taskId);
+            reject(new TaskTimeoutError(taskTimeout));
+          }
+        }, taskTimeout);
+      }
+
+      worker.onmessage = (event: MessageEvent<BrowserWorkerResponse>) => {
+        const msg = event.data;
+        if (msg.taskId !== taskId) return;
+
+        if (task.timeoutHandle) clearTimeout(task.timeoutHandle);
+        this.runningTasks.delete(taskId);
+        worker?.terminate();
+
+        if (cancelled || task.cancelled) {
+          reject(new TaskCancelledError());
+          return;
+        }
+
+        if (msg.type === 'result') {
+          resolve({
+            value: msg.value as T,
+            duration: Date.now() - startTime,
+          });
+        } else {
+          const error = new Error(msg.error ?? 'Unknown worker error');
+          if (msg.errorStack) error.stack = msg.errorStack;
+          reject(error);
+        }
+      };
+
+      worker.onerror = (event: ErrorEvent) => {
+        if (task.timeoutHandle) clearTimeout(task.timeoutHandle);
+        this.runningTasks.delete(taskId);
+        worker?.terminate();
+        if (!cancelled && !task.cancelled) {
+          const error = new Error(event.message ?? 'Worker error');
+          this.handleError(error);
+          reject(error);
+        }
+      };
+
+      // Send the task to the worker
+      const request: BrowserWorkerRequest = {
+        type: 'execute',
+        taskId,
+        bundleCode,
+        context,
+        args,
+      };
+      worker.postMessage(request);
+    });
+
+    const cancel = (): void => {
+      if (!cancelled) {
+        cancelled = true;
+        const task = this.runningTasks.get(taskId);
+        if (task) {
+          task.cancelled = true;
+          if (task.timeoutHandle) clearTimeout(task.timeoutHandle);
+        }
+        worker?.terminate();
+        this.runningTasks.delete(taskId);
+        options.onCancel?.();
+      }
+    };
+
+    const forceTerminate = async (): Promise<void> => {
+      if (!cancelled) {
+        cancelled = true;
+        options.onCancel?.();
+      }
+      const task = this.runningTasks.get(taskId);
+      if (task) {
+        task.cancelled = true;
+        if (task.timeoutHandle) clearTimeout(task.timeoutHandle);
+      }
+      worker?.terminate();
+      this.runningTasks.delete(taskId);
+    };
+
+    return {
+      promise,
+      cancel,
+      forceTerminate,
+      isCancelled: () => cancelled,
+    };
+  }
+
+  // ============================================
+  // Legacy IWorkerAdapter interface methods
+  // (kept for interface compatibility, throw descriptive errors)
+  // ============================================
+
+  async exec<T, Args extends unknown[]>(
+    _fn: (...args: Args) => T | Promise<T>,
+    _args: Args = [] as unknown as Args,
+    _options: TaskOptions = {}
+  ): Promise<TaskResult<T>> {
+    throw new Error(
+      'WorkerAdapter.exec() with serialized functions is no longer supported. ' +
+      'Use execTask() with bundleCode and context instead.'
+    );
+  }
+
+  execCancellable<T, Args extends unknown[]>(
+    _fn: (...args: Args) => T | Promise<T>,
+    _args: Args = [] as unknown as Args,
+    _options: TaskOptions = {}
+  ): TaskHandle<T> {
+    throw new Error(
+      'WorkerAdapter.execCancellable() with serialized functions is no longer supported. ' +
+      'Use execTaskCancellable() with bundleCode and context instead.'
+    );
+  }
+
+  async execMethod<T>(
+    _method: string,
+    _args: unknown[] = [],
+    _options: TaskOptions = {}
+  ): Promise<TaskResult<T>> {
+    throw new Error(
+      'WorkerAdapter.execMethod() is no longer supported. ' +
+      'Use execTask() with bundleCode and context instead.'
+    );
+  }
+
+  execMethodCancellable<T>(
+    _method: string,
+    _args: unknown[] = [],
+    _options: TaskOptions = {}
+  ): TaskHandle<T> {
+    throw new Error(
+      'WorkerAdapter.execMethodCancellable() is no longer supported. ' +
+      'Use execTaskCancellable() with bundleCode and context instead.'
+    );
+  }
+
+  /**
+   * Get current pool statistics.
+   * Reports running Web Worker counts as pool stats.
    */
   getStats(): PoolStats {
     this.ensureInitialized();
 
-    const stats = this.pool!.stats();
-
+    const activeTasks = this.runningTasks.size;
     return {
-      totalWorkers: stats.totalWorkers,
-      busyWorkers: stats.busyWorkers,
-      idleWorkers: stats.idleWorkers,
-      pendingTasks: stats.pendingTasks,
-      activeTasks: stats.activeTasks,
+      totalWorkers: activeTasks,
+      busyWorkers: activeTasks,
+      idleWorkers: 0,
+      pendingTasks: 0,
+      activeTasks,
     };
   }
 
   /**
-   * Cancel all pending tasks.
+   * Cancel all running tasks by terminating their Web Workers.
    */
   cancelAll(): void {
-    for (const task of this.pendingTasks.values()) {
-      task.cancel();
+    for (const task of this.runningTasks.values()) {
+      task.cancelled = true;
+      if (task.timeoutHandle) clearTimeout(task.timeoutHandle);
+      task.worker.terminate();
     }
-    this.pendingTasks.clear();
+    this.runningTasks.clear();
   }
 
   /**
-   * Terminate all workers and shut down the pool.
+   * Terminate all workers and shut down.
    *
-   * @param force - If true, terminate immediately without waiting for pending tasks
-   * @param timeout - Timeout in milliseconds to wait for pending tasks
+   * @param _force - Unused (Web Workers always terminate immediately)
+   * @param _timeout - Unused
    */
-  async terminate(force: boolean = false, timeout?: number): Promise<void> {
-    if (!this.pool) {
-      return;
+  async terminate(_force: boolean = false, _timeout?: number): Promise<void> {
+    for (const task of this.runningTasks.values()) {
+      task.cancelled = true;
+      if (task.timeoutHandle) clearTimeout(task.timeoutHandle);
+      task.worker.terminate();
     }
-
-    // Cancel all pending tasks if forcing
-    if (force) {
-      this.cancelAll();
-    }
-
-    await this.pool.terminate(force, timeout);
-    this.pool = null;
+    this.runningTasks.clear();
     this.initialized = false;
   }
 
   /**
    * Get the number of available logical processors.
-   * Useful for determining optimal worker pool size.
    */
   static getHardwareConcurrency(): number {
     return getHardwareConcurrency();
   }
 
   /**
-   * Create a worker adapter from a script URL.
-   * Helper factory method for common use case.
-   *
-   * @param scriptUrl - URL to the worker script
-   * @param config - Additional configuration options
-   */
-  static fromScript(
-    scriptUrl: string,
-    config: Omit<BrowserWorkerAdapterConfig, 'workerScript'> = {}
-  ): WorkerAdapter {
-    return new WorkerAdapter({
-      ...config,
-      workerScript: scriptUrl,
-    });
-  }
-
-  /**
-   * Create a worker adapter optimized for CPU-intensive tasks.
-   * Uses maximum workers based on hardware concurrency.
-   *
-   * @param config - Additional configuration options
-   */
-  static forCpuIntensive(
-    config: Omit<BrowserWorkerAdapterConfig, 'minWorkers' | 'maxWorkers'> = {}
-  ): WorkerAdapter {
-    const cpuCount = getHardwareConcurrency();
-    return new WorkerAdapter({
-      ...config,
-      minWorkers: Math.max(1, Math.floor(cpuCount / 2)),
-      maxWorkers: cpuCount,
-    });
-  }
-
-  /**
-   * Create a worker adapter optimized for I/O-bound tasks.
-   * Uses fewer workers to reduce overhead.
-   *
-   * @param config - Additional configuration options
-   */
-  static forIoBound(
-    config: Omit<BrowserWorkerAdapterConfig, 'minWorkers' | 'maxWorkers'> = {}
-  ): WorkerAdapter {
-    const cpuCount = getHardwareConcurrency();
-    return new WorkerAdapter({
-      ...config,
-      minWorkers: 0,
-      maxWorkers: Math.max(2, Math.floor(cpuCount / 4)),
-    });
-  }
-
-  /**
-   * Wrap a promise with a timeout.
-   *
-   * @param promise - The promise to wrap
-   * @param timeout - Timeout in milliseconds (0 or Infinity means no timeout)
-   * @returns Promise that rejects if timeout is exceeded
-   */
-  private withTimeout<T>(promise: Promise<T>, timeout: number): Promise<T> {
-    // No timeout if 0 or Infinity
-    if (timeout <= 0 || !Number.isFinite(timeout)) {
-      return promise;
-    }
-    return Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        setTimeout(() => {
-          reject(new TaskTimeoutError(timeout));
-        }, timeout);
-      }),
-    ]);
-  }
-
-  /**
    * Ensure the adapter is initialized before operations.
    */
   private ensureInitialized(): void {
-    if (!this.initialized || !this.pool) {
+    if (!this.initialized) {
       throw new WorkerNotInitializedError();
     }
   }
@@ -585,23 +518,104 @@ export class WorkerAdapter implements IWorkerAdapter {
 }
 
 /**
+ * Returns inline worker code as a string for use when no workerScriptUrl is configured.
+ * This code is self-contained and handles message-based pack execution inside a Web Worker.
+ * It includes its own formatLogArgs and console patching (mirroring PodLogSink format).
+ */
+function getInlineWorkerCode(): string {
+  return `
+// Inline pack worker for Stark Browser Runtime
+// This code runs inside a Web Worker
+
+function formatLogArgs(args) {
+  return args.map(function(arg) {
+    if (typeof arg === 'string') return arg;
+    if (arg instanceof Error) return arg.name + ': ' + arg.message;
+    try { return JSON.stringify(arg); } catch(e) { return String(arg); }
+  }).join(' ');
+}
+
+self.onmessage = async function(event) {
+  var msg = event.data;
+  if (msg.type !== 'execute') return;
+
+  var taskId = msg.taskId;
+  var bundleCode = msg.bundleCode;
+  var context = msg.context;
+  var args = msg.args;
+
+  // Patch console to route through pod log sink format
+  var podId = context.podId;
+  var originalConsole = {
+    log: console.log.bind(console),
+    info: console.info.bind(console),
+    warn: console.warn.bind(console),
+    error: console.error.bind(console),
+    debug: console.debug.bind(console),
+  };
+
+  console.log = function() { originalConsole.log('[' + new Date().toISOString() + '][' + podId + ':out]', formatLogArgs(Array.from(arguments))); };
+  console.info = function() { originalConsole.log('[' + new Date().toISOString() + '][' + podId + ':out]', formatLogArgs(Array.from(arguments))); };
+  console.debug = function() { originalConsole.log('[' + new Date().toISOString() + '][' + podId + ':out]', formatLogArgs(Array.from(arguments))); };
+  console.warn = function() { originalConsole.error('[' + new Date().toISOString() + '][' + podId + ':err]', formatLogArgs(Array.from(arguments))); };
+  console.error = function() { originalConsole.error('[' + new Date().toISOString() + '][' + podId + ':err]', formatLogArgs(Array.from(arguments))); };
+
+  // Make env available globally
+  self.__STARK_ENV__ = context.env || {};
+  self.__STARK_CONTEXT__ = context;
+
+  try {
+    var moduleExports = {};
+    var mod = { exports: moduleExports };
+
+    var moduleFactory = new Function(
+      'exports', 'module', 'context', 'args', '__STARK_ENV__',
+      bundleCode + '\\n//# sourceURL=pack-' + context.packId + '-' + context.packVersion + '.js'
+    );
+
+    moduleFactory(moduleExports, mod, context, args, context.env || {});
+
+    var entrypoint = (context.metadata && context.metadata.entrypoint) || 'default';
+    var packExports = mod.exports;
+    var entrypointFn = packExports[entrypoint] || packExports.default;
+
+    if (typeof entrypointFn !== 'function') {
+      throw new Error(
+        "Pack entrypoint '" + entrypoint + "' is not a function. " +
+        "Available exports: " + Object.keys(packExports).join(', ')
+      );
+    }
+
+    var result = await Promise.resolve(entrypointFn(context, ...args));
+    self.postMessage({ type: 'result', taskId: taskId, value: result });
+  } catch (error) {
+    self.postMessage({
+      type: 'error',
+      taskId: taskId,
+      error: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : undefined,
+    });
+  } finally {
+    console.log = originalConsole.log;
+    console.info = originalConsole.info;
+    console.debug = originalConsole.debug;
+    console.warn = originalConsole.warn;
+    console.error = originalConsole.error;
+    delete self.__STARK_ENV__;
+    delete self.__STARK_CONTEXT__;
+  }
+};
+`;
+}
+
+/**
  * Default worker adapter instance.
- * Can be used directly or as a template for custom configurations.
  */
 export const defaultWorkerAdapter = new WorkerAdapter();
 
 /**
  * Factory function to create a worker adapter with custom configuration.
- *
- * @param config - Configuration options
- * @returns Configured WorkerAdapter instance
  */
 export function createWorkerAdapter(config: BrowserWorkerAdapterConfig = {}): WorkerAdapter {
   return new WorkerAdapter(config);
 }
-
-/**
- * Export workerpool module for advanced usage.
- * Allows direct access to workerpool functionality when needed.
- */
-export { workerpool };

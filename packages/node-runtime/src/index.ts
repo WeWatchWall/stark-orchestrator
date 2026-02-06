@@ -77,7 +77,7 @@ export {
   type ErrorInterceptor,
 } from './adapters/http-adapter.js';
 
-// Worker Adapter
+// Worker Adapter (subprocess-based via child_process.fork)
 export {
   WorkerAdapter,
   defaultWorkerAdapter,
@@ -88,8 +88,9 @@ export {
   type TaskHandle,
   type PoolStats,
   type IWorkerAdapter,
+  type WorkerRequest,
+  type WorkerResponse,
   TaskCancelledError,
   TaskTimeoutError,
   WorkerNotInitializedError,
-  WorkerScriptRequiredError,
 } from './adapters/worker-adapter.js';

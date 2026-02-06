@@ -15,7 +15,7 @@ import {
   evictPodWithHistory,
   restartPodWithHistory,
 } from '../../supabase/pod-history-service.js';
-import { getPodQueries } from '../../supabase/pods.js';
+import { getPodQueries, getPodQueriesAdmin } from '../../supabase/pods.js';
 
 /**
  * Logger for pod handler
@@ -533,8 +533,28 @@ export async function handlePodStatusUpdate(
       await handlePodEvict(ws, { type: 'pod:evict', payload, correlationId });
       return;
     default:
-      // For other statuses, use direct update
-      const podQueries = getPodQueries();
+      // For other statuses, use direct update (admin to bypass RLS in WS context)
+      const podQueries = getPodQueriesAdmin();
+
+      // Guard against status regression from delayed runtime messages.
+      // If the pod is already in a terminal state, skip non-terminal updates
+      // (e.g. a late 'stopping' arriving after the pod is already 'stopped').
+      const terminalStatuses: PodStatus[] = ['stopped', 'failed', 'evicted'];
+      const currentResult = await podQueries.getPodById(payload.podId);
+      if (currentResult.data && terminalStatuses.includes(currentResult.data.status)
+        && !terminalStatuses.includes(payload.status)) {
+        requestLogger.debug('Ignoring stale status update for pod already in terminal state', {
+          podId: payload.podId,
+          currentStatus: currentResult.data.status,
+          incomingStatus: payload.status,
+        });
+        sendResponse(ws, 'pod:status:update:ack', {
+          podId: payload.podId,
+          status: currentResult.data.status,
+        }, correlationId);
+        return;
+      }
+
       const result = await podQueries.updatePodStatus(payload.podId, payload.status, {
         statusMessage: payload.message,
       });

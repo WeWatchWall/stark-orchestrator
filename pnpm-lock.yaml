@@ -59,9 +59,6 @@ importers:
       axios:
         specifier: ^1.7.0
         version: 1.13.2
-      workerpool:
-        specifier: ^9.2.0
-        version: 9.3.4
     devDependencies:
       '@types/node':
         specifier: ^20.14.0
@@ -150,9 +147,6 @@ importers:
       axios:
         specifier: ^1.7.0
         version: 1.13.2
-      workerpool:
-        specifier: ^9.2.0
-        version: 9.3.4
       ws:
         specifier: ^8.18.0
         version: 8.18.3
@@ -4688,9 +4682,6 @@ packages:
   word-wrap@1.2.5:
     resolution: {integrity: sha512-BN22B5eaMMI9UMtjrGd5g5eCYPpCPDUy0FJXbYsaT5zYxjFOckS53SQDE3pWkVoWpHXVb3BrYcEN4Twa55B5cA==}
     engines: {node: '>=0.10.0'}
-
-  workerpool@9.3.4:
-    resolution: {integrity: sha512-TmPRQYYSAnnDiEB0P/Ytip7bFGvqnSU6I2BcuSw7Hx+JSg/DsUi5ebYfc8GYaSdpuvOcEs6dXxPurOYpe9QFwg==}
 
   wrap-ansi@7.0.0:
     resolution: {integrity: sha512-YVGIj2kamLSTxw6NsZjoBxfSwsn0ycdesmc4p+Q21c5zPuZ1pl+NfxVdxPtdHvmNVOQ6XSYG4AUtyt/Fi7D16Q==}
@@ -9665,8 +9656,6 @@ snapshots:
       stackback: 0.0.2
 
   word-wrap@1.2.5: {}
-
-  workerpool@9.3.4: {}
 
   wrap-ansi@7.0.0:
     dependencies:

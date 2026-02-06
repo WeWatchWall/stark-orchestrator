@@ -23,8 +23,7 @@
     "@stark-o/shared": "workspace:*",
     "@zenfs/core": "^2.3.11",
     "@zenfs/dom": "^1.2.6",
-    "axios": "^1.7.0",
-    "workerpool": "^9.2.0"
+    "axios": "^1.7.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

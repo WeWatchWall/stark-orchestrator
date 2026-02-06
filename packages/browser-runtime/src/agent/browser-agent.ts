@@ -536,7 +536,12 @@ export class BrowserAgent {
       if (message.type.endsWith(':error')) {
         const errorPayload = message.payload as { code?: string; message?: string } | null;
         const errorMessage = errorPayload?.message ?? errorPayload?.code ?? 'Unknown error';
-        pending.reject(new Error(errorMessage));
+        const error = new Error(errorMessage) as Error & { code?: string };
+        // Preserve the error code from the server response for downstream classification
+        if (errorPayload?.code) {
+          error.code = errorPayload.code;
+        }
+        pending.reject(error);
       } else {
         pending.resolve(message.payload);
       }
@@ -1222,6 +1227,7 @@ export class BrowserAgent {
         errorObj.code === 'NOT_FOUND' ||
         errorObj.code === 'FORBIDDEN' ||
         errorMessage.includes('NOT_FOUND') ||
+        errorMessage.includes('Node not found') ||
         errorMessage.includes('does not belong');
       
       if (isPermanentFailure) {

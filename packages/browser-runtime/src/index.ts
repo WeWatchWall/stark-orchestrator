@@ -68,12 +68,11 @@ export {
   type BrowserHttpAdapterConfig,
 } from './adapters/fetch-adapter.js';
 
-// Worker adapter (Web Workers via Workerpool)
+// Worker adapter (native Web Workers)
 export {
   WorkerAdapter,
   createWorkerAdapter,
   defaultWorkerAdapter,
-  workerpool,
   type BrowserWorkerAdapterConfig,
 } from './adapters/worker-adapter.js';
 

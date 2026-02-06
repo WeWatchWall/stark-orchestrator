@@ -19,6 +19,7 @@ import {
   PodError,
   requiresMainThread,
   createPodLogSink,
+  formatLogArgs,
   type Logger,
   type Pack,
   type Pod,
@@ -528,7 +529,7 @@ export class PackExecutor {
           // Use queueMicrotask to yield control back to the event loop
           // This allows the caller to receive the ExecutionHandle before execution starts
           queueMicrotask(() => {
-            this.executeOnMainThread(bundleCode, context, args)
+            this.executeOnMainThread(bundleCode, context, args, state.logSink)
               .then((result) => {
                 resolve({
                   executionId: context.executionId,
@@ -546,13 +547,16 @@ export class PackExecutor {
         return mainThreadResult;
       }
 
-      // Create the worker function that will execute the pack
-      const workerFn = this.createWorkerFunction(bundleCode, context);
-
-      // Execute in Web Worker
-      const taskHandle = this.workerAdapter.execCancellable<unknown, [unknown[]]>(
-        workerFn,
-        [args],
+      // Execute in Web Worker. The worker script imports all dependencies
+      // (formatLogArgs, etc.) directly — no serialized function injection.
+      // Only bundleCode, context (metadata/state), and args are passed via postMessage.
+      // Strip non-serializable properties (lifecycle, onShutdown) — they use
+      // getters/closures and cannot survive structured clone.
+      const { lifecycle: _lc, onShutdown: _os, ...serializableContext } = context;
+      const taskHandle = this.workerAdapter.execTaskCancellable<unknown>(
+        bundleCode,
+        serializableContext,
+        args,
         { timeout: context.timeout }
       );
 
@@ -765,131 +769,6 @@ export class PackExecutor {
   }
 
   /**
-   * Create a worker function that executes the pack code
-   *
-   * The function is self-contained and serializable for worker execution.
-   * Note: Browser environment has more restrictions than Node.js
-   *
-   * IMPORTANT: This function must embed all data directly into the returned
-   * function body. Closure variables are NOT available when the function
-   * is serialized and sent to a Web Worker.
-   */
-  private createWorkerFunction(
-    bundleCode: string,
-    context: PackExecutionContext
-  ): (args: unknown[]) => Promise<unknown> {
-    // Serialize context and bundleCode into the function body
-    // so they are available when the function runs in the worker
-    const serializedContext = JSON.stringify(context);
-    const serializedBundleCode = JSON.stringify(bundleCode);
-
-    // Create a self-contained function string that embeds all data
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
-    const workerFn = new Function(
-      'args',
-      `
-      return (async function() {
-        // Reconstruct context and bundleCode from embedded data
-        const context = ${serializedContext};
-        const bundleCode = ${serializedBundleCode};
-        const env = context.env;
-        const podId = context.podId;
-
-        // Make environment variables available via a global object
-        // (since browser workers don't have process.env)
-        const globalScope = typeof self !== 'undefined' ? self : globalThis;
-        globalScope.__STARK_ENV__ = env;
-        globalScope.__STARK_CONTEXT__ = context;
-
-        // Patch console to route through pod log sink (prepend podId)
-        const originalConsole = {
-          log: console.log.bind(console),
-          info: console.info.bind(console),
-          warn: console.warn.bind(console),
-          error: console.error.bind(console),
-          debug: console.debug.bind(console),
-        };
-
-        const formatArgs = (argsArray) => {
-          return argsArray.map(arg => {
-            if (typeof arg === 'string') return arg;
-            if (arg instanceof Error) return arg.name + ': ' + arg.message;
-            try {
-              return JSON.stringify(arg);
-            } catch (e) {
-              return String(arg);
-            }
-          }).join(' ');
-        };
-
-        // Override console methods to prepend timestamp, pod ID and stream type
-        console.log = (...logArgs) => originalConsole.log('[' + new Date().toISOString() + '][' + podId + ':out]', formatArgs(logArgs));
-        console.info = (...logArgs) => originalConsole.log('[' + new Date().toISOString() + '][' + podId + ':out]', formatArgs(logArgs));
-        console.debug = (...logArgs) => originalConsole.log('[' + new Date().toISOString() + '][' + podId + ':out]', formatArgs(logArgs));
-        console.warn = (...logArgs) => originalConsole.error('[' + new Date().toISOString() + '][' + podId + ':err]', formatArgs(logArgs));
-        console.error = (...logArgs) => originalConsole.error('[' + new Date().toISOString() + '][' + podId + ':err]', formatArgs(logArgs));
-
-        try {
-          // Create a sandboxed module context for browser
-          // Note: More limited than Node.js - no require, no fs, etc.
-          const moduleExports = {};
-          const module = { exports: moduleExports };
-
-          // Execute the bundle code
-          // Using Function constructor for sandboxing (similar to eval but safer)
-          const moduleFactory = new Function(
-            'exports',
-            'module',
-            'context',
-            'args',
-            '__STARK_ENV__',
-            bundleCode + '\\n//# sourceURL=pack-' + context.packId + '-' + context.packVersion + '.js'
-          );
-
-          // Execute the bundle
-          moduleFactory(
-            moduleExports,
-            module,
-            context,
-            args,
-            env
-          );
-
-          // Get the entrypoint function
-          const entrypoint = (context.metadata && context.metadata.entrypoint) || 'default';
-          const packExports = module.exports;
-          const entrypointFn = packExports[entrypoint] || packExports.default;
-
-          if (typeof entrypointFn !== 'function') {
-            throw new Error(
-              "Pack entrypoint '" + entrypoint + "' is not a function. " +
-              "Available exports: " + Object.keys(packExports).join(', ')
-            );
-          }
-
-          // Execute the entrypoint
-          const result = await Promise.resolve(entrypointFn(context, ...args));
-          return result;
-        } finally {
-          // Restore original console methods
-          console.log = originalConsole.log;
-          console.info = originalConsole.info;
-          console.warn = originalConsole.warn;
-          console.error = originalConsole.error;
-          console.debug = originalConsole.debug;
-
-          // Clean up globals
-          delete globalScope.__STARK_ENV__;
-          delete globalScope.__STARK_CONTEXT__;
-        }
-      })();
-      `
-    ) as (args: unknown[]) => Promise<unknown>;
-
-    return workerFn;
-  }
-
-  /**
    * Execute a pack directly on the main thread (for root capability packs).
    * 
    * Root packs run on the main thread without Web Worker isolation, which is required for:
@@ -911,17 +790,20 @@ export class PackExecutor {
   private async executeOnMainThread(
     bundleCode: string,
     context: PackExecutionContext,
-    args: unknown[]
+    args: unknown[],
+    _logSink: PodLogSink
   ): Promise<unknown> {
     const env = context.env;
-    const podId = context.podId;
 
     // Make environment variables available via a global object
     const globalScope = typeof self !== 'undefined' ? self : globalThis;
     (globalScope as Record<string, unknown>).__STARK_ENV__ = env;
     (globalScope as Record<string, unknown>).__STARK_CONTEXT__ = context;
 
-    // Patch console to route through pod log sink (prepend podId)
+    // Patch console to route through pod log format.
+    // We patch directly using saved original references to avoid circular
+    // recursion (PodLogSink.write() calls console.log internally).
+    const podId = context.podId;
     const originalConsole = {
       log: console.log.bind(console),
       info: console.info.bind(console),
@@ -929,52 +811,36 @@ export class PackExecutor {
       error: console.error.bind(console),
       debug: console.debug.bind(console),
     };
-    
-    const formatArgs = (argsArray: unknown[]): string => {
-      return argsArray.map(arg => {
-        if (typeof arg === 'string') return arg;
-        if (arg instanceof Error) return `${arg.name}: ${arg.message}`;
-        try {
-          return JSON.stringify(arg);
-        } catch {
-          return String(arg);
-        }
-      }).join(' ');
-    };
 
-    // Override console methods to prepend timestamp, pod ID and stream type
-    console.log = (...logArgs: unknown[]) => originalConsole.log(`[${new Date().toISOString()}][${podId}:out]`, formatArgs(logArgs));
-    console.info = (...logArgs: unknown[]) => originalConsole.log(`[${new Date().toISOString()}][${podId}:out]`, formatArgs(logArgs));
-    console.debug = (...logArgs: unknown[]) => originalConsole.log(`[${new Date().toISOString()}][${podId}:out]`, formatArgs(logArgs));
-    console.warn = (...logArgs: unknown[]) => originalConsole.error(`[${new Date().toISOString()}][${podId}:err]`, formatArgs(logArgs));
-    console.error = (...logArgs: unknown[]) => originalConsole.error(`[${new Date().toISOString()}][${podId}:err]`, formatArgs(logArgs));
+    console.log = (...logArgs: unknown[]) =>
+      originalConsole.log(`[${new Date().toISOString()}][${podId}:out]`, formatLogArgs(logArgs));
+    console.info = (...logArgs: unknown[]) =>
+      originalConsole.log(`[${new Date().toISOString()}][${podId}:out]`, formatLogArgs(logArgs));
+    console.debug = (...logArgs: unknown[]) =>
+      originalConsole.log(`[${new Date().toISOString()}][${podId}:out]`, formatLogArgs(logArgs));
+    console.warn = (...logArgs: unknown[]) =>
+      originalConsole.error(`[${new Date().toISOString()}][${podId}:err]`, formatLogArgs(logArgs));
+    console.error = (...logArgs: unknown[]) =>
+      originalConsole.error(`[${new Date().toISOString()}][${podId}:err]`, formatLogArgs(logArgs));
 
     try {
-      // Create a sandboxed module context for browser
-      // Note: More limited than Node.js - no require, no fs, etc.
+      // Evaluate the pack bundle code
+      // The bundle is a fully-bundled CJS module — we provide exports/module
+      // so the bundle can attach its entrypoint(s). No sandboxing.
       const moduleExports: Record<string, unknown> = {};
       const module = { exports: moduleExports };
 
-      // Execute the bundle code
-      // Using Function constructor for sandboxing (similar to eval but safer)
       // eslint-disable-next-line @typescript-eslint/no-implied-eval
       const moduleFactory = new Function(
         'exports',
         'module',
         'context',
         'args',
-        '__STARK_ENV__',
         bundleCode + '\n//# sourceURL=pack-' + context.packId + '-' + context.packVersion + '.js'
       );
 
       // Execute the bundle
-      moduleFactory(
-        moduleExports,
-        module,
-        context,
-        args,
-        env
-      );
+      moduleFactory(moduleExports, module, context, args);
 
       // Get the entrypoint function
       const entrypoint = (context.metadata && (context.metadata.entrypoint as string)) || 'default';

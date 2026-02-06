@@ -22,6 +22,6 @@ export default defineConfig({
   },
   // Optimize dependencies for browser bundling
   optimizeDeps: {
-    include: ['workerpool', '@zenfs/core', '@zenfs/dom', 'axios'],
+    include: ['@zenfs/core', '@zenfs/dom', 'axios'],
   },
 });

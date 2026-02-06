@@ -623,7 +623,20 @@ export class DeploymentController {
 
       const podQueries = getPodQueriesAdmin();
       const nodeQueries = getNodeQueries();
-      const podsToRemove = currentPods.slice(0, toRemove);
+
+      // Exclude pods already being stopped to avoid sending duplicate stop commands
+      const alreadyStopping = currentPods.filter(p => p.status === 'stopping').length;
+      const actualToRemove = Math.max(0, toRemove - alreadyStopping);
+      const candidatePods = currentPods.filter(p => p.status !== 'stopping');
+      const podsToRemove = candidatePods.slice(0, actualToRemove);
+
+      if (podsToRemove.length === 0) {
+        logger.debug('Scale down already in progress, waiting for pods to terminate', {
+          deploymentName: deployment.name,
+          alreadyStopping,
+        });
+        return;
+      }
       
       for (const pod of podsToRemove) {
         await podQueries.updatePod(pod.id, { 

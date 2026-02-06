@@ -1,9 +1,10 @@
 // Stark Orchestrator - Node.js Runtime
-// Worker Adapter using Workerpool for sub-process management
+// Worker Adapter using child_process.fork() for sub-process management
 
-import workerpool from 'workerpool';
-import type { Pool, WorkerPoolOptions, Promise as WorkerPromise } from 'workerpool';
+import { fork, type ChildProcess } from 'node:child_process';
 import { cpus } from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import type {
   IWorkerAdapter,
   WorkerAdapterConfig,
@@ -16,7 +17,6 @@ import {
   TaskCancelledError,
   TaskTimeoutError,
   WorkerNotInitializedError,
-  WorkerScriptRequiredError,
 } from '@stark-o/shared';
 
 /**
@@ -24,22 +24,10 @@ import {
  */
 export interface NodeWorkerAdapterConfig extends WorkerAdapterConfig {
   /**
-   * Worker type: 'auto', 'thread', or 'process'.
-   * @default 'process'
-   */
-  workerType?: 'auto' | 'thread' | 'process';
-
-  /**
    * Maximum memory limit per worker in megabytes.
-   * Only applies when workerType is 'process'.
    * Sets --max-old-space-size for the sub-process.
    */
   maxMemoryMB?: number;
-
-  /**
-   * Additional options to pass to the underlying worker threads.
-   */
-  workerThreadOpts?: Record<string, unknown>;
 }
 
 // Re-export shared types for convenience
@@ -56,538 +44,469 @@ export {
   TaskCancelledError,
   TaskTimeoutError,
   WorkerNotInitializedError,
-  WorkerScriptRequiredError,
 } from '@stark-o/shared';
 
 /**
- * Internal task tracking info including the worker promise for force termination.
+ * Message sent from the parent to the worker subprocess.
  */
-interface PendingTaskInfo<T = unknown> {
-  cancel: () => void;
-  workerPromise: WorkerPromise<T>;
-  cancelled: boolean;
+export interface WorkerRequest {
+  type: 'execute';
+  taskId: string;
+  bundleCode: string;
+  context: unknown; // PackExecutionContext (serialized via IPC)
+  args: unknown[];
 }
 
 /**
- * Worker adapter wrapping Workerpool for sub-process management.
- * Provides a unified interface for executing tasks in sub-processes.
- *
- * This implementation uses Workerpool which manages a pool of sub-processes
- * for parallel task execution in Node.js environments.
+ * Message sent back from the worker subprocess to the parent.
+ */
+export interface WorkerResponse {
+  type: 'result' | 'error';
+  taskId: string;
+  value?: unknown;
+  error?: string;
+  errorStack?: string;
+}
+
+/**
+ * Internal tracking for a running subprocess task.
+ */
+interface SubprocessTask<T = unknown> {
+  taskId: string;
+  process: ChildProcess;
+  resolve: (result: TaskResult<T>) => void;
+  reject: (error: Error) => void;
+  cancelled: boolean;
+  startTime: number;
+  timeoutHandle?: ReturnType<typeof setTimeout>;
+}
+
+/**
+ * Worker adapter using Node.js child_process.fork() for sub-process management.
+ * 
+ * Each task spawns a dedicated subprocess that runs the worker script.
+ * The worker script imports all dependencies (like PodLogSink) directly
+ * rather than receiving serialized functions. Only pack bundle code and
+ * metadata state are passed as arguments via IPC.
  */
 export class WorkerAdapter implements IWorkerAdapter {
-  private readonly config: Required<Omit<NodeWorkerAdapterConfig, 'workerScript' | 'workerThreadOpts' | 'maxMemoryMB' | 'onError'>> &
-    Pick<NodeWorkerAdapterConfig, 'workerScript' | 'workerThreadOpts' | 'maxMemoryMB' | 'onError'>;
-  private pool: Pool | null = null;
+  private readonly config: Required<Omit<NodeWorkerAdapterConfig, 'workerScript' | 'maxMemoryMB' | 'onError'>> &
+    Pick<NodeWorkerAdapterConfig, 'workerScript' | 'maxMemoryMB' | 'onError'>;
   private initialized: boolean = false;
-  private readonly pendingTasks: Map<string, PendingTaskInfo> = new Map();
+  private readonly runningTasks: Map<string, SubprocessTask> = new Map();
   private taskIdCounter: number = 0;
+
+  /** Path to the built-in worker script (resolved at runtime) */
+  private workerScriptPath: string;
 
   constructor(config: NodeWorkerAdapterConfig = {}) {
     this.config = {
       minWorkers: config.minWorkers ?? 0,
       maxWorkers: config.maxWorkers ?? cpus().length,
       maxQueueSize: config.maxQueueSize ?? Infinity,
-      workerType: config.workerType ?? 'process',
-      taskTimeout: config.taskTimeout ?? 60000,
+      taskTimeout: config.taskTimeout ?? 0,
       workerTerminateTimeout: config.workerTerminateTimeout ?? 1000,
       maxMemoryMB: config.maxMemoryMB,
       workerScript: config.workerScript,
-      workerThreadOpts: config.workerThreadOpts,
       onError: config.onError,
     };
+
+    // Resolve the default worker script path relative to this file
+    const currentFilePath = fileURLToPath(import.meta.url);
+    const currentDir = dirname(currentFilePath);
+    this.workerScriptPath = config.workerScript ?? join(currentDir, '..', 'workers', 'pack-worker.js');
   }
 
   /**
-   * Initialize the worker pool.
-   * Must be called before executing any tasks.
+   * Initialize the worker adapter.
+   * For subprocess-based execution, this is a lightweight operation.
    */
   async initialize(): Promise<void> {
     if (this.initialized) {
       return;
     }
-
-    const poolOptions: WorkerPoolOptions = {
-      minWorkers: this.config.minWorkers,
-      maxWorkers: this.config.maxWorkers,
-      maxQueueSize: this.config.maxQueueSize,
-      workerType: this.config.workerType,
-      workerTerminateTimeout: this.config.workerTerminateTimeout,
-    };
-
-    // Add memory limit for sub-processes via forkOpts
-    if (this.config.maxMemoryMB && this.config.workerType === 'process') {
-      poolOptions.forkOpts = {
-        execArgv: [`--max-old-space-size=${this.config.maxMemoryMB}`],
-      };
-    }
-
-    // Add worker thread options if provided
-    if (this.config.workerThreadOpts) {
-      poolOptions.workerThreadOpts = this.config.workerThreadOpts;
-    }
-
-    // Create pool with or without a worker script
-    if (this.config.workerScript) {
-      this.pool = workerpool.pool(this.config.workerScript, poolOptions);
-    } else {
-      this.pool = workerpool.pool(poolOptions);
-    }
-
     this.initialized = true;
   }
 
   /**
-   * Execute a function in a worker thread.
-   * The function must be self-contained and serializable.
-   *
-   * @param fn - The function to execute
-   * @param args - Arguments to pass to the function
-   * @param options - Task execution options
-   * @returns Promise resolving to the task result
-   */
-  async exec<T, Args extends unknown[]>(
-    fn: (...args: Args) => T | Promise<T>,
-    args: Args = [] as unknown as Args,
-    options: TaskOptions = {}
-  ): Promise<TaskResult<T>> {
-    this.ensureInitialized();
-
-    const startTime = Date.now();
-    const taskTimeout = options.timeout ?? this.config.taskTimeout;
-
-    try {
-      const workerPromise = this.pool!.exec(fn, args);
-      const result = await this.withTimeout(workerPromise, taskTimeout);
-      return {
-        value: result as T,
-        duration: Date.now() - startTime,
-      };
-    } catch (error) {
-      this.handleError(error as Error);
-      throw error;
-    }
-  }
-
-  /**
-   * Execute a function in a worker thread with cancellation support.
-   *
-   * @param fn - The function to execute
-   * @param args - Arguments to pass to the function
-   * @param options - Task execution options
-   * @returns Task handle with promise and cancel function
-   */
-  execCancellable<T, Args extends unknown[]>(
-    fn: (...args: Args) => T | Promise<T>,
-    args: Args = [] as unknown as Args,
-    options: TaskOptions = {}
-  ): TaskHandle<T> {
-    this.ensureInitialized();
-
-    const taskId = this.generateTaskId();
-    const startTime = Date.now();
-    const taskTimeout = options.timeout ?? this.config.taskTimeout;
-    let cancelled = false;
-
-    const workerPromise = this.pool!.exec(fn, args) as WorkerPromise<T>;
-
-    const cancel = () => {
-      if (!cancelled) {
-        cancelled = true;
-        workerPromise.cancel();
-        const taskInfo = this.pendingTasks.get(taskId);
-        if (taskInfo) {
-          taskInfo.cancelled = true;
-        }
-        this.pendingTasks.delete(taskId);
-        options.onCancel?.();
-      }
-    };
-
-    const forceTerminate = async (): Promise<void> => {
-      if (!cancelled) {
-        cancelled = true;
-        const taskInfo = this.pendingTasks.get(taskId);
-        if (taskInfo) {
-          taskInfo.cancelled = true;
-        }
-        this.pendingTasks.delete(taskId);
-        options.onCancel?.();
-      }
-      // Force terminate all workers and reinitialize the pool
-      // This is the only reliable way to kill a running worker in workerpool
-      // The pool will automatically spawn new workers as needed
-      if (this.pool) {
-        await this.pool.terminate(true, 100);
-        // Reinitialize the pool
-        const poolOptions: WorkerPoolOptions = {
-          minWorkers: this.config.minWorkers,
-          maxWorkers: this.config.maxWorkers,
-          maxQueueSize: this.config.maxQueueSize,
-          workerType: this.config.workerType,
-          workerTerminateTimeout: this.config.workerTerminateTimeout,
-        };
-        // Add memory limit for sub-processes via forkOpts
-        if (this.config.maxMemoryMB && this.config.workerType === 'process') {
-          poolOptions.forkOpts = {
-            execArgv: [`--max-old-space-size=${this.config.maxMemoryMB}`],
-          };
-        }
-        if (this.config.workerThreadOpts) {
-          poolOptions.workerThreadOpts = this.config.workerThreadOpts;
-        }
-        if (this.config.workerScript) {
-          this.pool = workerpool.pool(this.config.workerScript, poolOptions);
-        } else {
-          this.pool = workerpool.pool(poolOptions);
-        }
-      }
-    };
-
-    this.pendingTasks.set(taskId, { cancel, workerPromise, cancelled: false });
-
-    // Apply timeout and wrap in TaskResult
-    const promise = this.withTimeout(workerPromise, taskTimeout)
-      .then((value) => {
-        this.pendingTasks.delete(taskId);
-        return {
-          value: value as T,
-          duration: Date.now() - startTime,
-        };
-      })
-      .catch((error) => {
-        this.pendingTasks.delete(taskId);
-        if (cancelled) {
-          throw new TaskCancelledError();
-        }
-        this.handleError(error as Error);
-        throw error;
-      });
-
-    return {
-      promise,
-      cancel,
-      forceTerminate,
-      isCancelled: () => cancelled,
-    };
-  }
-
-  /**
-   * Execute a method on a worker script.
-   * Requires the adapter to be initialized with a workerScript.
-   *
-   * @param method - The method name to call on the worker
-   * @param args - Arguments to pass to the method
-   * @param options - Task execution options
-   * @returns Promise resolving to the task result
-   */
-  async execMethod<T>(
-    method: string,
-    args: unknown[] = [],
-    options: TaskOptions = {}
-  ): Promise<TaskResult<T>> {
-    this.ensureInitialized();
-
-    if (!this.config.workerScript) {
-      throw new WorkerScriptRequiredError('execMethod');
-    }
-
-    const startTime = Date.now();
-    const taskTimeout = options.timeout ?? this.config.taskTimeout;
-
-    try {
-      const workerPromise = this.pool!.exec(method, args);
-      const result = await this.withTimeout(workerPromise, taskTimeout);
-      return {
-        value: result as T,
-        duration: Date.now() - startTime,
-      };
-    } catch (error) {
-      this.handleError(error as Error);
-      throw error;
-    }
-  }
-
-  /**
-   * Execute a method on a worker script with cancellation support.
-   *
-   * @param method - The method name to call on the worker
-   * @param args - Arguments to pass to the method
-   * @param options - Task execution options
-   * @returns Task handle with promise and cancel function
-   */
-  execMethodCancellable<T>(
-    method: string,
-    args: unknown[] = [],
-    options: TaskOptions = {}
-  ): TaskHandle<T> {
-    this.ensureInitialized();
-
-    if (!this.config.workerScript) {
-      throw new WorkerScriptRequiredError('execMethodCancellable');
-    }
-
-    const taskId = this.generateTaskId();
-    const startTime = Date.now();
-    const taskTimeout = options.timeout ?? this.config.taskTimeout;
-    let cancelled = false;
-
-    const workerPromise = this.pool!.exec(method, args) as WorkerPromise<T>;
-
-    const cancel = () => {
-      if (!cancelled) {
-        cancelled = true;
-        workerPromise.cancel();
-        const taskInfo = this.pendingTasks.get(taskId);
-        if (taskInfo) {
-          taskInfo.cancelled = true;
-        }
-        this.pendingTasks.delete(taskId);
-        options.onCancel?.();
-      }
-    };
-
-    const forceTerminate = async (): Promise<void> => {
-      if (!cancelled) {
-        cancelled = true;
-        const taskInfo = this.pendingTasks.get(taskId);
-        if (taskInfo) {
-          taskInfo.cancelled = true;
-        }
-        this.pendingTasks.delete(taskId);
-        options.onCancel?.();
-      }
-      // Force terminate all workers and reinitialize the pool
-      if (this.pool) {
-        await this.pool.terminate(true, 100);
-        // Reinitialize the pool
-        const poolOptions: WorkerPoolOptions = {
-          minWorkers: this.config.minWorkers,
-          maxWorkers: this.config.maxWorkers,
-          maxQueueSize: this.config.maxQueueSize,
-          workerType: this.config.workerType,
-          workerTerminateTimeout: this.config.workerTerminateTimeout,
-        };
-        if (this.config.workerThreadOpts) {
-          poolOptions.workerThreadOpts = this.config.workerThreadOpts;
-        }
-        if (this.config.workerScript) {
-          this.pool = workerpool.pool(this.config.workerScript, poolOptions);
-        } else {
-          this.pool = workerpool.pool(poolOptions);
-        }
-      }
-    };
-
-    this.pendingTasks.set(taskId, { cancel, workerPromise, cancelled: false });
-
-    const promise = this.withTimeout(workerPromise, taskTimeout)
-      .then((value) => {
-        this.pendingTasks.delete(taskId);
-        return {
-          value: value as T,
-          duration: Date.now() - startTime,
-        };
-      })
-      .catch((error) => {
-        this.pendingTasks.delete(taskId);
-        if (cancelled) {
-          throw new TaskCancelledError();
-        }
-        this.handleError(error as Error);
-        throw error;
-      });
-
-    return {
-      promise,
-      cancel,
-      forceTerminate,
-      isCancelled: () => cancelled,
-    };
-  }
-
-  /**
-   * Create a proxy for a worker script.
-   * Allows calling worker methods as if they were local async functions.
-   *
-   * @param options - Task execution options applied to all proxied calls
-   * @returns Proxy object for the worker script
-   */
-  async proxy<T extends Record<string, (...args: unknown[]) => unknown>>(
-    _options: TaskOptions = {}
-  ): Promise<T> {
-    this.ensureInitialized();
-
-    if (!this.config.workerScript) {
-      throw new WorkerScriptRequiredError('proxy');
-    }
-
-    const workerProxy = await this.pool!.proxy();
-
-    // Wrap the proxy to add timing and error handling
-    return new Proxy(workerProxy as T, {
-      get: (target, prop: string) => {
-        if (typeof target[prop] === 'function') {
-          return async (...args: unknown[]) => {
-            const startTime = Date.now();
-            try {
-              const result = await (target[prop] as (...args: unknown[]) => Promise<unknown>)(...args);
-              return {
-                value: result,
-                duration: Date.now() - startTime,
-              };
-            } catch (error) {
-              this.handleError(error as Error);
-              throw error;
-            }
-          };
-        }
-        return target[prop];
-      },
-    });
-  }
-
-  /**
-   * Get current pool statistics.
-   *
-   * @returns Pool statistics
-   */
-  getStats(): PoolStats {
-    this.ensureInitialized();
-
-    const stats = this.pool!.stats();
-
-    return {
-      totalWorkers: stats.totalWorkers,
-      busyWorkers: stats.busyWorkers,
-      idleWorkers: stats.idleWorkers,
-      pendingTasks: stats.pendingTasks,
-      activeTasks: stats.activeTasks,
-    };
-  }
-
-  /**
-   * Cancel all pending tasks.
-   */
-  cancelAll(): void {
-    for (const task of this.pendingTasks.values()) {
-      task.cancel();
-    }
-    this.pendingTasks.clear();
-  }
-
-  /**
-   * Terminate all workers and shut down the pool.
-   *
-   * @param force - If true, terminate immediately without waiting for pending tasks
-   * @param timeout - Timeout in milliseconds to wait for pending tasks
-   */
-  async terminate(force: boolean = false, timeout?: number): Promise<void> {
-    if (!this.pool) {
-      return;
-    }
-
-    // Cancel all pending tasks if forcing
-    if (force) {
-      this.cancelAll();
-    }
-
-    await this.pool.terminate(force, timeout);
-    this.pool = null;
-    this.initialized = false;
-  }
-
-  /**
-   * Check if the adapter is initialized.
+   * Check if the adapter has been initialized.
    */
   isInitialized(): boolean {
     return this.initialized;
   }
 
   /**
+   * Execute pack code in a subprocess.
+   * 
+   * Forks a new child process running the worker script, passes the
+   * bundle code + execution context as arguments via IPC message,
+   * and waits for the result.
+   *
+   * @param bundleCode - The pack's JavaScript bundle code
+   * @param context - The PackExecutionContext (serializable metadata/state)
+   * @param args - Additional arguments for the pack entrypoint
+   * @param options - Task execution options (timeout, etc.)
+   * @returns Promise resolving to the task result
+   */
+  async execTask<T>(
+    bundleCode: string,
+    context: unknown,
+    args: unknown[] = [],
+    options: TaskOptions = {}
+  ): Promise<TaskResult<T>> {
+    this.ensureInitialized();
+
+    const taskId = this.generateTaskId();
+    const startTime = Date.now();
+    const taskTimeout = options.timeout ?? this.config.taskTimeout;
+
+    return new Promise<TaskResult<T>>((resolve, reject) => {
+      const execArgv: string[] = [];
+      if (this.config.maxMemoryMB) {
+        execArgv.push(`--max-old-space-size=${this.config.maxMemoryMB}`);
+      }
+
+      const child = fork(this.workerScriptPath, [], {
+        execArgv,
+        stdio: ['pipe', 'inherit', 'inherit', 'ipc'],
+        serialization: 'advanced',
+      });
+
+      const task: SubprocessTask<T> = {
+        taskId,
+        process: child,
+        resolve,
+        reject,
+        cancelled: false,
+        startTime,
+      };
+      this.runningTasks.set(taskId, task as SubprocessTask);
+
+      // Set up timeout
+      if (taskTimeout > 0 && Number.isFinite(taskTimeout)) {
+        task.timeoutHandle = setTimeout(() => {
+          if (!task.cancelled) {
+            task.cancelled = true;
+            child.kill('SIGKILL');
+            this.runningTasks.delete(taskId);
+            reject(new TaskTimeoutError(taskTimeout));
+          }
+        }, taskTimeout);
+      }
+
+      child.on('message', (msg: WorkerResponse) => {
+        if (msg.taskId !== taskId) return;
+
+        if (task.timeoutHandle) clearTimeout(task.timeoutHandle);
+        this.runningTasks.delete(taskId);
+
+        if (task.cancelled) {
+          reject(new TaskCancelledError());
+          return;
+        }
+
+        if (msg.type === 'result') {
+          resolve({
+            value: msg.value as T,
+            duration: Date.now() - startTime,
+          });
+        } else {
+          const error = new Error(msg.error ?? 'Unknown worker error');
+          if (msg.errorStack) error.stack = msg.errorStack;
+          reject(error);
+        }
+      });
+
+      child.on('error', (error) => {
+        if (task.timeoutHandle) clearTimeout(task.timeoutHandle);
+        this.runningTasks.delete(taskId);
+        if (!task.cancelled) {
+          this.handleError(error);
+          reject(error);
+        }
+      });
+
+      child.on('exit', (code, signal) => {
+        if (task.timeoutHandle) clearTimeout(task.timeoutHandle);
+        // Only reject if we haven't already resolved/rejected
+        if (this.runningTasks.has(taskId)) {
+          this.runningTasks.delete(taskId);
+          if (!task.cancelled && code !== 0) {
+            const error = new Error(`Worker process exited with code ${code}, signal ${signal}`);
+            reject(error);
+          }
+        }
+      });
+
+      // Send the task to the subprocess
+      const request: WorkerRequest = {
+        type: 'execute',
+        taskId,
+        bundleCode,
+        context,
+        args,
+      };
+      child.send(request);
+    });
+  }
+
+  /**
+   * Execute pack code in a subprocess with cancellation support.
+   *
+   * @param bundleCode - The pack's JavaScript bundle code
+   * @param context - The PackExecutionContext (serializable metadata/state) 
+   * @param args - Additional arguments for the pack entrypoint
+   * @param options - Task execution options
+   * @returns Task handle with promise and cancel/forceTerminate functions
+   */
+  execTaskCancellable<T>(
+    bundleCode: string,
+    context: unknown,
+    args: unknown[] = [],
+    options: TaskOptions = {}
+  ): TaskHandle<T> {
+    this.ensureInitialized();
+
+    const taskId = this.generateTaskId();
+    const startTime = Date.now();
+    const taskTimeout = options.timeout ?? this.config.taskTimeout;
+    let cancelled = false;
+    let child: ChildProcess | null = null;
+
+    const promise = new Promise<TaskResult<T>>((resolve, reject) => {
+      const execArgv: string[] = [];
+      if (this.config.maxMemoryMB) {
+        execArgv.push(`--max-old-space-size=${this.config.maxMemoryMB}`);
+      }
+
+      child = fork(this.workerScriptPath, [], {
+        execArgv,
+        stdio: ['pipe', 'inherit', 'inherit', 'ipc'],
+        serialization: 'advanced',
+      });
+
+      const task: SubprocessTask<T> = {
+        taskId,
+        process: child,
+        resolve,
+        reject,
+        cancelled: false,
+        startTime,
+      };
+      this.runningTasks.set(taskId, task as SubprocessTask);
+
+      // Set up timeout
+      if (taskTimeout > 0 && Number.isFinite(taskTimeout)) {
+        task.timeoutHandle = setTimeout(() => {
+          if (!task.cancelled && !cancelled) {
+            task.cancelled = true;
+            cancelled = true;
+            child?.kill('SIGKILL');
+            this.runningTasks.delete(taskId);
+            reject(new TaskTimeoutError(taskTimeout));
+          }
+        }, taskTimeout);
+      }
+
+      child.on('message', (msg: WorkerResponse) => {
+        if (msg.taskId !== taskId) return;
+
+        if (task.timeoutHandle) clearTimeout(task.timeoutHandle);
+        this.runningTasks.delete(taskId);
+
+        if (cancelled || task.cancelled) {
+          reject(new TaskCancelledError());
+          return;
+        }
+
+        if (msg.type === 'result') {
+          resolve({
+            value: msg.value as T,
+            duration: Date.now() - startTime,
+          });
+        } else {
+          const error = new Error(msg.error ?? 'Unknown worker error');
+          if (msg.errorStack) error.stack = msg.errorStack;
+          reject(error);
+        }
+      });
+
+      child.on('error', (error) => {
+        if (task.timeoutHandle) clearTimeout(task.timeoutHandle);
+        this.runningTasks.delete(taskId);
+        if (!cancelled && !task.cancelled) {
+          this.handleError(error);
+          reject(error);
+        }
+      });
+
+      child.on('exit', (code, signal) => {
+        if (task.timeoutHandle) clearTimeout(task.timeoutHandle);
+        if (this.runningTasks.has(taskId)) {
+          this.runningTasks.delete(taskId);
+          if (!cancelled && !task.cancelled && code !== 0) {
+            const error = new Error(`Worker process exited with code ${code}, signal ${signal}`);
+            reject(error);
+          }
+        }
+      });
+
+      // Send the task to the subprocess
+      const request: WorkerRequest = {
+        type: 'execute',
+        taskId,
+        bundleCode,
+        context,
+        args,
+      };
+      child.send(request);
+    });
+
+    const cancel = (): void => {
+      if (!cancelled) {
+        cancelled = true;
+        const task = this.runningTasks.get(taskId);
+        if (task) {
+          task.cancelled = true;
+          if (task.timeoutHandle) clearTimeout(task.timeoutHandle);
+        }
+        // Send SIGTERM for graceful shutdown
+        child?.kill('SIGTERM');
+        this.runningTasks.delete(taskId);
+        options.onCancel?.();
+      }
+    };
+
+    const forceTerminate = async (): Promise<void> => {
+      if (!cancelled) {
+        cancelled = true;
+        options.onCancel?.();
+      }
+      const task = this.runningTasks.get(taskId);
+      if (task) {
+        task.cancelled = true;
+        if (task.timeoutHandle) clearTimeout(task.timeoutHandle);
+      }
+      // SIGKILL for immediate termination
+      child?.kill('SIGKILL');
+      this.runningTasks.delete(taskId);
+    };
+
+    return {
+      promise,
+      cancel,
+      forceTerminate,
+      isCancelled: () => cancelled,
+    };
+  }
+
+  // ============================================
+  // Legacy IWorkerAdapter interface methods
+  // (kept for interface compatibility, throw descriptive errors)
+  // ============================================
+
+  async exec<T, Args extends unknown[]>(
+    _fn: (...args: Args) => T | Promise<T>,
+    _args: Args = [] as unknown as Args,
+    _options: TaskOptions = {}
+  ): Promise<TaskResult<T>> {
+    throw new Error(
+      'WorkerAdapter.exec() with serialized functions is no longer supported. ' +
+      'Use execTask() with bundleCode and context instead.'
+    );
+  }
+
+  execCancellable<T, Args extends unknown[]>(
+    _fn: (...args: Args) => T | Promise<T>,
+    _args: Args = [] as unknown as Args,
+    _options: TaskOptions = {}
+  ): TaskHandle<T> {
+    throw new Error(
+      'WorkerAdapter.execCancellable() with serialized functions is no longer supported. ' +
+      'Use execTaskCancellable() with bundleCode and context instead.'
+    );
+  }
+
+  async execMethod<T>(
+    _method: string,
+    _args: unknown[] = [],
+    _options: TaskOptions = {}
+  ): Promise<TaskResult<T>> {
+    throw new Error(
+      'WorkerAdapter.execMethod() is no longer supported. ' +
+      'Use execTask() with bundleCode and context instead.'
+    );
+  }
+
+  execMethodCancellable<T>(
+    _method: string,
+    _args: unknown[] = [],
+    _options: TaskOptions = {}
+  ): TaskHandle<T> {
+    throw new Error(
+      'WorkerAdapter.execMethodCancellable() is no longer supported. ' +
+      'Use execTaskCancellable() with bundleCode and context instead.'
+    );
+  }
+
+  /**
+   * Get current pool statistics.
+   * Reports running subprocess counts as pool stats.
+   */
+  getStats(): PoolStats {
+    this.ensureInitialized();
+
+    const activeTasks = this.runningTasks.size;
+    return {
+      totalWorkers: activeTasks,
+      busyWorkers: activeTasks,
+      idleWorkers: 0,
+      pendingTasks: 0,
+      activeTasks,
+    };
+  }
+
+  /**
+   * Cancel all running tasks by killing their subprocesses.
+   */
+  cancelAll(): void {
+    for (const task of this.runningTasks.values()) {
+      task.cancelled = true;
+      if (task.timeoutHandle) clearTimeout(task.timeoutHandle);
+      task.process.kill('SIGTERM');
+    }
+    this.runningTasks.clear();
+  }
+
+  /**
+   * Terminate all workers and shut down.
+   *
+   * @param force - If true, use SIGKILL; otherwise SIGTERM
+   * @param _timeout - Unused (kept for interface compatibility)
+   */
+  async terminate(force: boolean = false, _timeout?: number): Promise<void> {
+    const signal = force ? 'SIGKILL' : 'SIGTERM';
+    for (const task of this.runningTasks.values()) {
+      task.cancelled = true;
+      if (task.timeoutHandle) clearTimeout(task.timeoutHandle);
+      task.process.kill(signal);
+    }
+    this.runningTasks.clear();
+    this.initialized = false;
+  }
+
+  /**
    * Get the number of available CPU cores.
-   * Useful for determining optimal worker pool size.
    */
   static getCpuCount(): number {
     return cpus().length;
   }
 
   /**
-   * Create a worker adapter from a script path.
-   * Helper factory method for common use case.
-   *
-   * @param scriptPath - Path to the worker script
-   * @param config - Additional configuration options
-   */
-  static fromScript(
-    scriptPath: string,
-    config: Omit<NodeWorkerAdapterConfig, 'workerScript'> = {}
-  ): WorkerAdapter {
-    return new WorkerAdapter({
-      ...config,
-      workerScript: scriptPath,
-    });
-  }
-
-  /**
-   * Create a worker adapter optimized for CPU-intensive tasks.
-   * Uses maximum workers and process-based isolation.
-   *
-   * @param config - Additional configuration options
-   */
-  static forCpuIntensive(config: Omit<NodeWorkerAdapterConfig, 'minWorkers' | 'maxWorkers' | 'workerType'> = {}): WorkerAdapter {
-    const cpuCount = cpus().length;
-    return new WorkerAdapter({
-      ...config,
-      minWorkers: Math.max(1, Math.floor(cpuCount / 2)),
-      maxWorkers: cpuCount,
-      workerType: 'thread',
-    });
-  }
-
-  /**
-   * Create a worker adapter optimized for I/O-bound tasks.
-   * Uses fewer workers with thread-based execution.
-   *
-   * @param config - Additional configuration options
-   */
-  static forIoBound(config: Omit<NodeWorkerAdapterConfig, 'minWorkers' | 'maxWorkers' | 'workerType'> = {}): WorkerAdapter {
-    const cpuCount = cpus().length;
-    return new WorkerAdapter({
-      ...config,
-      minWorkers: 0,
-      maxWorkers: Math.max(2, Math.floor(cpuCount / 4)),
-      workerType: 'thread',
-    });
-  }
-
-  /**
-   * Wrap a promise with a timeout.
-   * 
-   * @param promise - The promise to wrap
-   * @param timeout - Timeout in milliseconds (0 or Infinity means no timeout)
-   * @returns Promise that rejects if timeout is exceeded
-   */
-  private withTimeout<T>(promise: Promise<T>, timeout: number): Promise<T> {
-    // No timeout if 0 or Infinity
-    if (timeout <= 0 || !Number.isFinite(timeout)) {
-      return promise;
-    }
-    return Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        setTimeout(() => {
-          reject(new TaskTimeoutError(timeout));
-        }, timeout);
-      }),
-    ]);
-  }
-
-  /**
    * Ensure the adapter is initialized before operations.
    */
   private ensureInitialized(): void {
-    if (!this.initialized || !this.pool) {
+    if (!this.initialized) {
       throw new WorkerNotInitializedError();
     }
   }
@@ -611,12 +530,5 @@ export class WorkerAdapter implements IWorkerAdapter {
 
 /**
  * Default worker adapter instance.
- * Can be used directly or as a template for custom configurations.
  */
 export const defaultWorkerAdapter = new WorkerAdapter();
-
-/**
- * Export workerpool module for advanced usage.
- * Allows direct access to workerpool functionality when needed.
- */
-export { workerpool };
