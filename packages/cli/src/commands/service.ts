@@ -427,9 +427,9 @@ async function deleteHandler(name: string, options: { namespace?: string; force?
 
     // Delete it
     const response = await api.delete(`/api/services/${serviceId}`);
-    const result = (await response.json()) as ApiResponse<{ deleted: boolean }>;
 
-    if (!result.success) {
+    if (!response.ok) {
+      const result = (await response.json().catch(() => ({ success: false }))) as ApiResponse<{ deleted: boolean }>;
       error('Failed to delete service', result.error);
       process.exit(1);
     }

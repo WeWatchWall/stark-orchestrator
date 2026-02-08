@@ -384,3 +384,32 @@ export type {
   MetricsTimeRange,
   MetricsQueryOptions,
 } from './metrics.js';
+
+// Network types
+export type {
+  RegistryPodStatus,
+  ServiceRegistryEntry,
+  CachedTargetPod,
+  NetworkPolicyAction,
+  NetworkPolicy,
+  CreateNetworkPolicyInput,
+  ServiceRequest,
+  ServiceResponse,
+  PeerConnectionState,
+  WebRTCConfig,
+  RTCIceServerInit,
+  SignallingMessageType,
+  SignallingMessage,
+  RoutingRequest,
+  RoutingResponse,
+  ServiceCallOptions,
+  NetworkEventType,
+} from './network.js';
+
+export {
+  DEFAULT_CACHE_TTL,
+  DEFAULT_CONNECTION_TIMEOUT,
+  DEFAULT_SERVICE_CALL_TIMEOUT,
+  INTERNAL_URL_SUFFIX,
+  parseInternalUrl,
+} from './network.js';

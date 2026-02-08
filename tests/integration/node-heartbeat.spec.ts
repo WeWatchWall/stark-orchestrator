@@ -176,6 +176,18 @@ class InMemoryNodeStore {
     return { data: undefined, error: null };
   }
 
+  async markNodeSuspect(
+    id: string
+  ): Promise<{ data: void | null; error: { code: string; message: string } | null }> {
+    const node = this.nodes.get(id);
+    if (!node) {
+      return { data: null, error: { code: 'NOT_FOUND', message: 'Node not found' } };
+    }
+    node.status = 'suspect' as NodeStatus;
+    node.updatedAt = new Date();
+    return { data: undefined, error: null };
+  }
+
   async setNodeStatus(
     id: string,
     status: NodeStatus
@@ -225,7 +237,7 @@ class InMemoryNodeStore {
   getStaleNodes(timeoutMs: number = InMemoryNodeStore.HEARTBEAT_TIMEOUT_MS): Node[] {
     const now = Date.now();
     return Array.from(this.nodes.values()).filter((node) => {
-      if (node.status === 'offline') return false;
+      if (node.status === 'offline' || node.status === 'suspect') return false;
       if (!node.lastHeartbeat) return true;
       return now - node.lastHeartbeat.getTime() > timeoutMs;
     });
@@ -309,6 +321,7 @@ describe('Node Heartbeat Integration Tests', () => {
       updateNode: nodeStore.updateNode.bind(nodeStore),
       updateHeartbeat: nodeStore.updateHeartbeat.bind(nodeStore),
       clearConnectionId: nodeStore.clearConnectionId.bind(nodeStore),
+      markNodeSuspect: nodeStore.markNodeSuspect.bind(nodeStore),
       getNodeByName: vi.fn(),
       countNodes: vi.fn(),
       deleteNode: vi.fn(),

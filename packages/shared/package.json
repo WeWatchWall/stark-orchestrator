@@ -19,11 +19,13 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "zod": "^3.23.8",
-    "uuid": "^10.0.0"
+    "simple-peer": "^9.11.1",
+    "uuid": "^10.0.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
+    "@types/simple-peer": "^9.11.9",
     "@types/uuid": "^10.0.0",
     "typescript": "^5.5.0"
   },

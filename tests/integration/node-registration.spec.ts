@@ -137,6 +137,34 @@ class InMemoryNodeStore {
     return { data: node, error: null };
   }
 
+  async markNodeSuspect(
+    id: string
+  ): Promise<{ data: void | null; error: { code: string; message: string } | null }> {
+    const node = this.nodes.get(id);
+    if (!node) {
+      return { data: null, error: { code: 'NOT_FOUND', message: 'Node not found' } };
+    }
+    node.status = 'suspect' as NodeStatus;
+    node.updatedAt = new Date();
+    return { data: undefined, error: null };
+  }
+
+  async clearConnectionId(
+    nodeId: string
+  ): Promise<{ data: void | null; error: { code: string; message: string } | null }> {
+    const node = this.nodes.get(nodeId);
+    if (!node) {
+      return { data: null, error: { code: 'NOT_FOUND', message: 'Node not found' } };
+    }
+    if (node.connectionId) {
+      const connSet = this.nodesByConnection.get(node.connectionId);
+      connSet?.delete(node.id);
+    }
+    node.connectionId = undefined;
+    node.updatedAt = new Date();
+    return { data: undefined, error: null };
+  }
+
   async updateNode(
     id: string,
     updates: Partial<Node>
@@ -226,12 +254,13 @@ describe('Node Registration Integration Tests', () => {
       listNodes: nodeStore.listNodes.bind(nodeStore),
       setNodeStatus: nodeStore.setNodeStatus.bind(nodeStore),
       updateNode: nodeStore.updateNode.bind(nodeStore),
+      markNodeSuspect: nodeStore.markNodeSuspect.bind(nodeStore),
+      clearConnectionId: nodeStore.clearConnectionId.bind(nodeStore),
       // Add other methods as needed
       getNodeByName: vi.fn(),
       countNodes: vi.fn(),
       deleteNode: vi.fn(),
       updateHeartbeat: vi.fn(),
-      clearConnectionId: vi.fn().mockResolvedValue({ data: undefined, error: null }),
     } as any);
   });
 
@@ -538,7 +567,7 @@ describe('Node Registration Integration Tests', () => {
   });
 
   describe('Node Disconnect Flow', () => {
-    it('should mark nodes as offline when connection disconnects', async () => {
+    it('should mark nodes as suspect when connection disconnects', async () => {
       const ws = createMockWsConnection({ id: 'disconnect-conn' });
 
       // Register a node
@@ -554,12 +583,12 @@ describe('Node Registration Integration Tests', () => {
       // Simulate disconnect
       await handleNodeDisconnect(ws);
 
-      // Verify node is now offline
+      // Verify node is now suspect
       const updatedNodes = nodeStore.getAll();
-      expect(updatedNodes[0].status).toBe('offline');
+      expect(updatedNodes[0].status).toBe('suspect');
     });
 
-    it('should mark all nodes from connection as offline on disconnect', async () => {
+    it('should mark all nodes from connection as suspect on disconnect', async () => {
       const ws = createMockWsConnection({ id: 'multi-disconnect' });
 
       // Register multiple nodes
@@ -581,9 +610,9 @@ describe('Node Registration Integration Tests', () => {
       // Disconnect
       await handleNodeDisconnect(ws);
 
-      // Verify both offline
+      // Verify both suspect
       nodes = nodeStore.getAll();
-      expect(nodes.every((n) => n.status === 'offline')).toBe(true);
+      expect(nodes.every((n) => n.status === 'suspect')).toBe(true);
     });
 
     it('should not affect other connections when one disconnects', async () => {
@@ -609,7 +638,7 @@ describe('Node Registration Integration Tests', () => {
       const goesOffline = nodes.find((n) => n.name === 'goes-offline');
 
       expect(staysOnline?.status).toBe('online');
-      expect(goesOffline?.status).toBe('offline');
+      expect(goesOffline?.status).toBe('suspect');
     });
   });
 

@@ -25,6 +25,7 @@ import {
   type PodDeployPayload,
   type PodStopPayload,
   type LocalPodStatus,
+  type SignallingMessage,
 } from '@stark-o/shared';
 import { PodHandler, createPodHandler } from './pod-handler.js';
 import { PackExecutor } from '../executor/pack-executor.js';
@@ -219,6 +220,9 @@ export class NodeAgent {
     this.executor = new PackExecutor({
       bundleDir: this.config.bundleDir,
       orchestratorUrl: this.config.orchestratorUrl.replace(/^ws/, 'http').replace('/ws', ''),
+      // WebSocket URL for pod-to-orchestrator signaling (WebRTC)
+      orchestratorWsUrl: this.config.orchestratorUrl,
+      insecure: !this.config.validateSsl,
       authToken: this.authToken,
       maxMemoryMB: this.config.allocatable.memory,
       logger: this.config.logger,
@@ -541,6 +545,21 @@ export class NodeAgent {
               correlationId: message.correlationId,
             });
           }
+        }
+        break;
+      }
+
+      case 'network:signal': {
+        // Forward WebRTC signalling message to the appropriate pod's connection manager
+        const signal = message.payload as SignallingMessage;
+        if (signal && signal.targetPodId) {
+          this.config.logger.debug('Received WebRTC signal for pod', {
+            type: signal.type,
+            from: signal.sourcePodId,
+            to: signal.targetPodId,
+          });
+          // Emit event so the pod handler / WebRTC manager can pick it up
+          this.emit('pod:signal' as NodeAgentEvent, signal);
         }
         break;
       }

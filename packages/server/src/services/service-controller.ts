@@ -832,7 +832,7 @@ export class ServiceController {
 
     // For DaemonSet mode: immediately deploy to the target node
     if (targetNodeId && pod) {
-      await this.deployPodToNode(pod.id, targetNodeId, pack);
+      await this.deployPodToNode(pod.id, targetNodeId, pack, service.name);
     }
   }
 
@@ -843,7 +843,8 @@ export class ServiceController {
   private async deployPodToNode(
     podId: string,
     nodeId: string,
-    pack: Pack
+    pack: Pack,
+    serviceName?: string,
   ): Promise<void> {
     const connectionManager = getConnectionManager();
     if (!connectionManager) {
@@ -895,6 +896,7 @@ export class ServiceController {
       payload: {
         podId,
         nodeId,
+        serviceId: serviceName,
         pack: {
           id: pack.id,
           name: pack.name,

@@ -488,9 +488,9 @@ async function deleteHandler(
     }
 
     const response = await api.delete(`/api/packs/${pack.id}`);
-    const result = (await response.json()) as ApiResponse<{ deleted: boolean }>;
 
-    if (!result.success) {
+    if (!response.ok) {
+      const result = (await response.json().catch(() => ({ success: false }))) as ApiResponse<{ deleted: boolean }>;
       error('Failed to delete pack', result.error);
       process.exit(1);
     }

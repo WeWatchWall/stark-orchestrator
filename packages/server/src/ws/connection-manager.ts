@@ -20,7 +20,9 @@ import {
 } from './handlers/node-handler.js';
 import { routePodMessage } from './handlers/pod-handler.js';
 import { routeMetricsMessage } from './handlers/metrics-handler.js';
-import type { RegisterNodeInput, NodeHeartbeat, UserRole } from '@stark-o/shared';
+import { createNetworkWsHandlers, NETWORK_WS_TYPES } from './handlers/network-handler.js';
+import type { RegisterNodeInput, NodeHeartbeat, UserRole, SignallingMessage, RoutingRequest } from '@stark-o/shared';
+import { getServiceRegistry } from '@stark-o/shared';
 import { getSupabaseServiceClient } from '../supabase/client.js';
 import { getUserById } from '../supabase/auth.js';
 import { getChaosIntegration, isChaosIntegrationAttached } from '../chaos/integration.js';
@@ -157,8 +159,15 @@ const devAuthHandler: AuthHandler = async (token: string): Promise<AuthResult> =
  */
 export class ConnectionManager {
   private connections = new Map<string, ConnectionInfo>();
+  /** Reverse index: nodeId → connectionId */
+  private nodeToConnection = new Map<string, string>();
+  /** Reverse index: podId → connectionId (for direct pod connections) */
+  private podToConnection = new Map<string, string>();
+  /** Current connection being processed (for registration callbacks) */
+  private currentConnectionId: string | null = null;
   private pingInterval: NodeJS.Timeout | null = null;
   private readonly options: Required<ConnectionManagerOptions>;
+  private networkHandlers: ReturnType<typeof createNetworkWsHandlers> | null = null;
 
   constructor(options: ConnectionManagerOptions = {}) {
     this.options = {
@@ -178,10 +187,30 @@ export class ConnectionManager {
       this.handleConnection(ws, request);
     });
 
+    // Initialise network (signalling) handlers
+    this.networkHandlers = createNetworkWsHandlers({
+      sendToPod: (podId, message) => this.sendToPod(podId, message),
+      sendToNode: (nodeId, message) => this.sendToNodeId(nodeId, message),
+      registerPodConnection: (podId, serviceId) => this.registerPodConnection(podId, serviceId),
+    });
+
     // Start ping interval
     this.startPingInterval();
 
     logger.info('Connection manager attached to WebSocket server');
+  }
+
+  /**
+   * Register a pod's direct connection for WebRTC signaling.
+   */
+  private registerPodConnection(podId: string, _serviceId: string): void {
+    if (this.currentConnectionId) {
+      this.podToConnection.set(podId, this.currentConnectionId);
+      logger.debug('Pod registered for direct signaling', {
+        podId,
+        connectionId: this.currentConnectionId,
+      });
+    }
   }
 
   /**
@@ -411,6 +440,50 @@ export class ConnectionManager {
         break;
 
       default:
+        // Check if it's a network message (WebRTC signalling, routing, registry)
+        if (message.type.startsWith('network:')) {
+          if (this.options.requireAuth && !conn.isAuthenticated) {
+            this.sendMessage(conn.ws, {
+              type: `${message.type}:error`,
+              payload: { code: 'UNAUTHORIZED', message: 'Authentication required' },
+              correlationId: message.correlationId,
+            });
+            return;
+          }
+          if (this.networkHandlers) {
+            // Track current connection for pod registration
+            this.currentConnectionId = conn.id;
+            try {
+              switch (message.type) {
+                case NETWORK_WS_TYPES.SIGNAL:
+                  this.networkHandlers.handleSignalRelay(message as WsMessage<SignallingMessage>);
+                  return;
+                case NETWORK_WS_TYPES.ROUTE_REQUEST:
+                  this.networkHandlers.handleRoutingRequest(
+                    message as WsMessage<RoutingRequest>,
+                    (response) => this.sendMessage(conn.ws, response),
+                  );
+                  return;
+                case NETWORK_WS_TYPES.REGISTRY_HEARTBEAT:
+                  this.networkHandlers.handleRegistryHeartbeat(
+                    message as WsMessage<{ serviceId: string; podId: string; nodeId: string }>,
+                  );
+                  return;
+                case NETWORK_WS_TYPES.POD_REGISTER:
+                  this.networkHandlers.handlePodRegister(
+                    message as WsMessage<{ podId: string; serviceId: string }>,
+                    (response) => this.sendMessage(conn.ws, response),
+                  );
+                  return;
+                default:
+                  break; // fall through to unknown
+              }
+            } finally {
+              this.currentConnectionId = null;
+            }
+          }
+        }
+
         // Check if it's a pod message
         if (message.type.startsWith('pod:')) {
           // Require authentication for pod operations
@@ -644,6 +717,7 @@ export class ConnectionManager {
     const conn = this.connections.get(connectionId);
     if (conn) {
       conn.nodeIds.add(nodeId);
+      this.nodeToConnection.set(nodeId, connectionId);
     }
   }
 
@@ -655,6 +729,7 @@ export class ConnectionManager {
     if (conn) {
       conn.nodeIds.delete(nodeId);
     }
+    this.nodeToConnection.delete(nodeId);
   }
 
   /**
@@ -686,6 +761,48 @@ export class ConnectionManager {
 
     this.sendMessage(conn.ws, message);
     return true;
+  }
+
+  /**
+   * Send a message to a specific node by its nodeId (not connectionId).
+   * Uses the nodeToConnection reverse index.
+   */
+  sendToNodeId(nodeId: string, message: WsMessage): boolean {
+    const connectionId = this.nodeToConnection.get(nodeId);
+    if (!connectionId) return false;
+    return this.sendToConnection(connectionId, message);
+  }
+
+  /**
+   * Send a message to a pod.
+   *
+   * First tries direct pod connection (pod subprocess connected directly),
+   * then falls back to routing through the node agent hosting the pod.
+   */
+  sendToPod(podId: string, message: WsMessage): boolean {
+    // First: check for direct pod connection (pod subprocess connected directly)
+    const directConnectionId = this.podToConnection.get(podId);
+    if (directConnectionId) {
+      const sent = this.sendToConnection(directConnectionId, message);
+      if (sent) {
+        logger.debug('Message sent to pod via direct connection', { podId });
+        return true;
+      }
+      // Connection may have closed, clean up stale entry
+      this.podToConnection.delete(podId);
+    }
+
+    // Fallback: route through node agent
+    const registry = getServiceRegistry();
+    const snapshot = registry.snapshot();
+    for (const entries of Object.values(snapshot)) {
+      const entry = entries.find((e) => e.podId === podId);
+      if (entry && entry.nodeId !== 'direct') {
+        return this.sendToNodeId(entry.nodeId, message);
+      }
+    }
+    logger.warn('sendToPod failed — pod not found', { podId });
+    return false;
   }
 }
 

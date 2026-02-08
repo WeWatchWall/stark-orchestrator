@@ -47,6 +47,10 @@ export interface PackExecutorConfig {
   orchestratorUrl?: string;
   /** Auth token for bundle downloads */
   authToken?: string;
+  /** Orchestrator WebSocket URL for pod networking (e.g., wss://localhost/ws) */
+  orchestratorWsUrl?: string;
+  /** Skip TLS verification for orchestrator WebSocket (dev only) */
+  insecure?: boolean;
   /** Worker adapter configuration */
   workerConfig?: WorkerAdapterConfig;
   /** File system adapter configuration */
@@ -103,13 +107,15 @@ interface ExecutionState {
  */
 export class PackExecutor {
   private readonly config: Required<
-    Omit<PackExecutorConfig, 'workerConfig' | 'fsConfig' | 'httpConfig' | 'orchestratorUrl' | 'authToken' | 'maxMemoryMB' | 'logger'>
+    Omit<PackExecutorConfig, 'workerConfig' | 'fsConfig' | 'httpConfig' | 'orchestratorUrl' | 'authToken' | 'orchestratorWsUrl' | 'insecure' | 'maxMemoryMB' | 'logger'>
   > & {
     workerConfig?: WorkerAdapterConfig;
     fsConfig?: FsAdapterConfig;
     httpConfig?: HttpAdapterConfig;
     orchestratorUrl?: string;
     authToken?: string;
+    orchestratorWsUrl?: string;
+    insecure?: boolean;
     maxMemoryMB?: number;
     logger: Logger;
   };
@@ -125,6 +131,8 @@ export class PackExecutor {
       bundleDir: config.bundleDir ?? process.cwd(),
       orchestratorUrl: config.orchestratorUrl,
       authToken: config.authToken,
+      orchestratorWsUrl: config.orchestratorWsUrl,
+      insecure: config.insecure,
       workerConfig: config.workerConfig,
       fsConfig: config.fsConfig,
       httpConfig: config.httpConfig,
@@ -235,6 +243,8 @@ export class PackExecutor {
       env?: Record<string, string>;
       timeout?: number;
       args?: unknown[];
+      /** Service ID for network policy checks (required for inter-service comm) */
+      serviceId?: string;
     } = {}
   ): ExecutionHandle {
     this.ensureInitialized();
@@ -287,6 +297,15 @@ export class PackExecutor {
     };
 
     // Create execution context with lifecycle facts
+    // serviceId is required for inter-service networking — can come from options or pod metadata
+    const serviceId = options.serviceId ?? (pod.metadata?.serviceId as string | undefined);
+    if (!serviceId) {
+      this.config.logger.warn('No serviceId provided — inter-service networking will be disabled', {
+        podId: pod.id,
+        packId: pack.id,
+      });
+    }
+
     const context: PackExecutionContext = {
       executionId,
       podId: pod.id,
@@ -311,6 +330,8 @@ export class PackExecutor {
       onShutdown: (handler: ShutdownHandler) => {
         shutdownHandlers.push(handler);
       },
+      // Networking: service ID for policy checks
+      serviceId,
     };
 
     this.config.logger.info('Starting pack execution', {
@@ -565,10 +586,17 @@ export class PackExecutor {
       // and args are passed via IPC.
       // Strip non-serializable properties (lifecycle, onShutdown) — they use
       // getters/closures and cannot survive structured clone over IPC.
+      // Add networking config for direct pod-to-orchestrator WebRTC signaling.
       const { lifecycle: _lc, onShutdown: _os, ...serializableContext } = context;
+      const workerContext = {
+        ...serializableContext,
+        // Networking: pod connects directly to orchestrator for signaling
+        orchestratorUrl: this.config.orchestratorWsUrl,
+        insecure: this.config.insecure,
+      };
       const taskHandle = this.workerAdapter.execTaskCancellable<unknown>(
         bundleCode,
-        serializableContext,
+        workerContext,
         args,
         { timeout: context.timeout }
       );

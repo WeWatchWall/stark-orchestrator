@@ -112,6 +112,7 @@ describe('WebSocket Node Handlers', () => {
     updateHeartbeat: ReturnType<typeof vi.fn>;
     setNodeStatus: ReturnType<typeof vi.fn>;
     clearConnectionId: ReturnType<typeof vi.fn>;
+    markNodeSuspect: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -129,6 +130,7 @@ describe('WebSocket Node Handlers', () => {
       updateHeartbeat: vi.fn(),
       setNodeStatus: vi.fn(),
       clearConnectionId: vi.fn(),
+      markNodeSuspect: vi.fn(),
     };
 
     vi.mocked(getNodeQueries).mockReturnValue(mockNodeQueries as any);
@@ -588,12 +590,12 @@ describe('WebSocket Node Handlers', () => {
   });
 
   describe('handleNodeDisconnect', () => {
-    it('should mark node as offline when connection closes', async () => {
+    it('should mark node as suspect when connection closes', async () => {
       mockNodeQueries.listNodes.mockResolvedValue({
         data: [sampleNode],
         error: null,
       });
-      mockNodeQueries.setNodeStatus.mockResolvedValue({ data: null, error: null });
+      mockNodeQueries.markNodeSuspect.mockResolvedValue({ data: undefined, error: null });
       mockNodeQueries.clearConnectionId.mockResolvedValue({ data: null, error: null });
 
       const ws = createMockWebSocket();
@@ -606,25 +608,25 @@ describe('WebSocket Node Handlers', () => {
         }),
       );
 
-      expect(mockNodeQueries.setNodeStatus).toHaveBeenCalledWith(sampleNode.id, 'offline');
+      expect(mockNodeQueries.markNodeSuspect).toHaveBeenCalledWith(sampleNode.id);
     });
 
-    it('should mark multiple nodes as offline for the same connection', async () => {
+    it('should mark multiple nodes as suspect for the same connection', async () => {
       const node2 = { ...sampleNode, id: '22222222-2222-4222-8222-222222222222', name: 'test-node-2' };
       mockNodeQueries.listNodes.mockResolvedValue({
         data: [sampleNode, node2],
         error: null,
       });
-      mockNodeQueries.setNodeStatus.mockResolvedValue({ data: null, error: null });
+      mockNodeQueries.markNodeSuspect.mockResolvedValue({ data: undefined, error: null });
       mockNodeQueries.clearConnectionId.mockResolvedValue({ data: null, error: null });
 
       const ws = createMockWebSocket();
 
       await handleNodeDisconnect(ws);
 
-      expect(mockNodeQueries.setNodeStatus).toHaveBeenCalledTimes(2);
-      expect(mockNodeQueries.setNodeStatus).toHaveBeenCalledWith(sampleNode.id, 'offline');
-      expect(mockNodeQueries.setNodeStatus).toHaveBeenCalledWith(node2.id, 'offline');
+      expect(mockNodeQueries.markNodeSuspect).toHaveBeenCalledTimes(2);
+      expect(mockNodeQueries.markNodeSuspect).toHaveBeenCalledWith(sampleNode.id);
+      expect(mockNodeQueries.markNodeSuspect).toHaveBeenCalledWith(node2.id);
     });
 
     it('should clear connection ID when node disconnects', async () => {
@@ -632,7 +634,7 @@ describe('WebSocket Node Handlers', () => {
         data: [sampleNode],
         error: null,
       });
-      mockNodeQueries.setNodeStatus.mockResolvedValue({ data: null, error: null });
+      mockNodeQueries.markNodeSuspect.mockResolvedValue({ data: undefined, error: null });
       mockNodeQueries.clearConnectionId.mockResolvedValue({ data: null, error: null });
 
       const ws = createMockWebSocket();

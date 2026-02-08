@@ -8,7 +8,7 @@
 import { Router, Request, Response } from 'express';
 import type { RuntimeTag, RegisterPackInput, UpdatePackInput, PackVisibility, Capability } from '@stark-o/shared';
 import { validateRegisterPackInput, validateUpdatePackInput, createServiceLogger, generateCorrelationId, grantCapabilities } from '@stark-o/shared';
-import { getPackQueries, getPackQueriesAdmin } from '../supabase/packs.js';
+import { getPackQueriesAdmin } from '../supabase/packs.js';
 import {
   authMiddleware,
   abilityMiddleware,
@@ -229,10 +229,10 @@ async function registerPack(req: Request, res: Response): Promise<void> {
     }
 
     // Check for duplicate pack name+version
-    // Use regular client for reads, admin client for writes (since we've already verified permissions via RBAC middleware)
-    const packQueries = getPackQueries();
+    // Use admin client for both reads and writes — RLS blocks the anon client from seeing private packs,
+    // but permissions are already verified via RBAC middleware before reaching this handler.
     const packQueriesAdmin = getPackQueriesAdmin();
-    const existsResult = await packQueries.packExists(input.name, input.version);
+    const existsResult = await packQueriesAdmin.packExists(input.name, input.version);
     
     if (existsResult.error) {
       sendError(res, 'INTERNAL_ERROR', 'Failed to check pack existence', 500);
@@ -380,7 +380,7 @@ async function listPacks(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const packQueries = getPackQueries();
+    const packQueries = getPackQueriesAdmin();
 
     // Get total count for pagination
     const countResult = await packQueries.countPacks({
@@ -456,7 +456,7 @@ async function getPackById(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const packQueries = getPackQueries();
+    const packQueries = getPackQueriesAdmin();
     const result = await packQueries.getPackById(id);
 
     if (result.error) {
@@ -512,7 +512,7 @@ async function listPackVersions(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const packQueries = getPackQueries();
+    const packQueries = getPackQueriesAdmin();
     const result = await packQueries.listPackVersions(name);
 
     if (result.error) {
@@ -570,11 +570,10 @@ async function updatePack(req: Request, res: Response): Promise<void> {
     }
 
     const input = req.body as UpdatePackInput;
-    const packQueries = getPackQueries();
     const packQueriesAdmin = getPackQueriesAdmin();
 
     // Check pack exists and user owns it
-    const existingResult = await packQueries.getPackById(id);
+    const existingResult = await packQueriesAdmin.getPackById(id);
     if (existingResult.error || !existingResult.data) {
       sendError(res, 'NOT_FOUND', 'Pack not found', 404);
       return;
@@ -632,11 +631,10 @@ async function deletePack(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const packQueries = getPackQueries();
     const packQueriesAdmin = getPackQueriesAdmin();
 
     // Check pack exists and user owns it
-    const existingResult = await packQueries.getPackById(id);
+    const existingResult = await packQueriesAdmin.getPackById(id);
     if (existingResult.error || !existingResult.data) {
       sendError(res, 'NOT_FOUND', 'Pack not found', 404);
       return;

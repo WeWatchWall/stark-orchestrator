@@ -17,6 +17,7 @@ import { createServiceCommand } from './commands/service.js';
 import { createNamespaceCommand } from './commands/namespace.js';
 import { createServerConfigCommand } from './commands/server-config.js';
 import { createChaosCommand } from './commands/chaos.js';
+import { createNetworkCommand } from './commands/network.js';
 
 /**
  * CLI version from package.json
@@ -91,6 +92,7 @@ function createProgram(): Command {
   program.addCommand(createNamespaceCommand());
   program.addCommand(createServerConfigCommand());
   program.addCommand(createChaosCommand());
+  program.addCommand(createNetworkCommand());
 
   // Add config command for managing CLI settings
   program

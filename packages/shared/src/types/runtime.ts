@@ -72,6 +72,7 @@ export type AgentEventHandler<E extends string = AgentEvent> = (event: E, data?:
 export interface PodDeployPayload {
   podId: string;
   nodeId: string;
+  serviceId?: string;
   pack: {
     id: string;
     name: string;
@@ -208,6 +209,53 @@ export interface PackExecutionContext {
    * ```
    */
   onShutdown: (handler: ShutdownHandler) => void;
+
+  /**
+   * The service ID for this pod (set by the runtime when networking is enabled).
+   * Used by HTTP interceptors for policy checking and routing.
+   */
+  serviceId?: string;
+
+  /**
+   * Browser-only: register inbound request handlers.
+   *
+   * In Node.js, use standard HTTP servers (Express, Fastify, Koa, etc.) —
+   * Stark intercepts `http.createServer` automatically and routes WebRTC
+   * requests to the pack's server. No explicit handler registration needed.
+   *
+   * In the browser (Web Workers), there is no `http.createServer`, so packs
+   * must use `context.listen` to register handlers explicitly.
+   *
+   * @example
+   * ```typescript
+   * // Browser pack:
+   * context.listen.handle('/greet', async (method, path, body) => {
+   *   return { status: 200, body: { message: 'Hello!' } };
+   * });
+   *
+   * context.listen.handle('/echo', async (method, path, body) => {
+   *   return { status: 200, body: { echo: body } };
+   * });
+   *
+   * context.listen.setDefault(async (method, path) => {
+   *   return { status: 404, body: { error: `Not found: ${method} ${path}` } };
+   * });
+   * ```
+   */
+  listen?: {
+    handle: (pathPrefix: string, handler: (
+      method: string,
+      path: string,
+      body: unknown,
+      headers?: Record<string, string>,
+    ) => Promise<{ status: number; body?: unknown; headers?: Record<string, string> }>) => void;
+    setDefault: (handler: (
+      method: string,
+      path: string,
+      body: unknown,
+      headers?: Record<string, string>,
+    ) => Promise<{ status: number; body?: unknown; headers?: Record<string, string> }>) => void;
+  };
 }
 
 /**

@@ -116,6 +116,9 @@ export {
   type PodConsole,
 } from './logging/pod-log-sink.js';
 
+// Network (policy engine, service registry, pod cache)
+export * from './network/index.js';
+
 // Utilities
 export {
   generateUUID,

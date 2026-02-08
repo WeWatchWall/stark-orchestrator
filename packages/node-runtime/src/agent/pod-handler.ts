@@ -138,13 +138,16 @@ export class PodHandler {
         incarnation: 1,
         grantedCapabilities: pack.grantedCapabilities ?? [],
         createdBy: 'system',
-        metadata: {},
+        metadata: { ...(payload.serviceId ? { serviceId: payload.serviceId } : {}) },
         createdAt: new Date(),
         updatedAt: new Date(),
       };
 
       // Execute the pack
-      const executionHandle = this.config.executor.execute(packObj, podObj);
+      // Pass serviceId to enable WebRTC networking for inter-service communication
+      const executionHandle = this.config.executor.execute(packObj, podObj, {
+        serviceId: payload.serviceId,
+      });
       state.executionHandle = executionHandle;
       state.startedAt = new Date();
 

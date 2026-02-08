@@ -186,7 +186,10 @@ describe('createPodConsole', () => {
     const podConsole = createPodConsole(sink);
 
     podConsole.log('hello', 'world', 123);
-    expect(consoleSpy.log).toHaveBeenCalledWith('[pod-456:out]', 'hello world 123');
+    expect(consoleSpy.log).toHaveBeenCalledWith(
+      expect.stringMatching(/^\[.*\]\[pod-456:out\]$/),
+      'hello world 123',
+    );
   });
 
   it('formats objects as JSON', () => {
@@ -194,7 +197,10 @@ describe('createPodConsole', () => {
     const podConsole = createPodConsole(sink);
 
     podConsole.log({ key: 'value' });
-    expect(consoleSpy.log).toHaveBeenCalledWith('[pod-456:out]', '{"key":"value"}');
+    expect(consoleSpy.log).toHaveBeenCalledWith(
+      expect.stringMatching(/^\[.*\]\[pod-456:out\]$/),
+      '{"key":"value"}',
+    );
   });
 
   it('formats errors with name and message', () => {
@@ -202,7 +208,10 @@ describe('createPodConsole', () => {
     const podConsole = createPodConsole(sink);
 
     podConsole.error(new Error('test error'));
-    expect(consoleSpy.error).toHaveBeenCalledWith('[pod-456:err]', 'Error: test error');
+    expect(consoleSpy.error).toHaveBeenCalledWith(
+      expect.stringMatching(/^\[.*\]\[pod-456:err\]$/),
+      'Error: test error',
+    );
   });
 
   it('handles circular references gracefully', () => {

@@ -9,7 +9,7 @@ import { Router, Request, Response } from 'express';
 import type { ServiceStatus, CreateServiceInput } from '@stark-o/shared';
 import { validateCreateServiceInput, validateUpdateServiceInput, createServiceLogger, generateCorrelationId } from '@stark-o/shared';
 import { getServiceQueriesAdmin, getServiceQueries } from '../supabase/services.js';
-import { getPackQueries } from '../supabase/packs.js';
+import { getPackQueriesAdmin } from '../supabase/packs.js';
 import {
   authMiddleware,
   abilityMiddleware,
@@ -107,7 +107,7 @@ async function createService(req: Request, res: Response): Promise<void> {
     }
 
     // Resolve pack ID from packId or packName
-    const packQueries = getPackQueries();
+    const packQueries = getPackQueriesAdmin();
     let packId = input.packId;
     let packVersion = input.packVersion;
 

@@ -43,6 +43,7 @@
     "@stark-o/shared": "workspace:*",
     "@zenfs/core": "^2.4.4",
     "axios": "^1.7.0",
+    "wrtc": "^0.4.7",
     "ws": "^8.18.0"
   },
   "devDependencies": {
