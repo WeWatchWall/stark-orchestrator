@@ -641,15 +641,8 @@ export class NodeAgent {
           this.authToken = storedToken;
           this.config.logger.info('Using stored node credentials');
           
-          // Update executor with the token
-          this.executor = new PackExecutor({
-            bundleDir: this.config.bundleDir,
-            orchestratorUrl: this.config.orchestratorUrl.replace(/^ws/, 'http').replace('/ws', ''),
-            authToken: this.authToken,
-            maxMemoryMB: this.config.allocatable.memory,
-            logger: this.config.logger,
-          });
-          await this.executor.initialize();
+          // Update the executor's auth token in-place (preserves running pods)
+          this.executor.updateAuthToken(this.authToken);
         }
       }
 
@@ -1330,15 +1323,8 @@ export class NodeAgent {
     this.stateStore.saveCredentials(credentials);
     this.authToken = credentials.accessToken;
     
-    // Update the executor with the new auth token
-    this.executor = new PackExecutor({
-      bundleDir: this.config.bundleDir,
-      orchestratorUrl: this.config.orchestratorUrl.replace(/^ws/, 'http').replace('/ws', ''),
-      authToken: this.authToken,
-      maxMemoryMB: this.config.allocatable.memory,
-      logger: this.config.logger,
-    });
-    await this.executor.initialize();
+    // Update the executor's auth token in-place (preserves running pods)
+    this.executor.updateAuthToken(this.authToken);
 
     this.config.logger.info('Saved node credentials', { userId: credentials.userId, email: credentials.email });
   }
@@ -1363,15 +1349,8 @@ export class NodeAgent {
   async setAuthToken(token: string): Promise<void> {
     this.authToken = token;
     
-    // Update the executor with the new auth token
-    this.executor = new PackExecutor({
-      bundleDir: this.config.bundleDir,
-      orchestratorUrl: this.config.orchestratorUrl.replace(/^ws/, 'http').replace('/ws', ''),
-      authToken: this.authToken,
-      maxMemoryMB: this.config.allocatable.memory,
-      logger: this.config.logger,
-    });
-    await this.executor.initialize();
+    // Update the executor's auth token in-place (preserves running pods)
+    this.executor.updateAuthToken(this.authToken);
   }
 }
 

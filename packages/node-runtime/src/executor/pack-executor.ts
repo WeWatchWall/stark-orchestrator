@@ -170,6 +170,17 @@ export class PackExecutor {
   }
 
   /**
+   * Update the auth token on the existing HTTP adapter without
+   * recreating the executor or disrupting running pods.
+   */
+  updateAuthToken(token: string): void {
+    this.config.authToken = token;
+    if (this.httpAdapter) {
+      this.httpAdapter.setAuthToken(token);
+    }
+  }
+
+  /**
    * Initialize the pack executor.
    * Must be called before executing any packs.
    */

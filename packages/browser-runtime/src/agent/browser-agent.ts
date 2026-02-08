@@ -922,23 +922,8 @@ export class BrowserAgent {
       this.authToken = storedToken;
       this.logger.info('Using stored credentials');
 
-      // Update the executor with the stored auth token
-      this.executor = new PackExecutor({
-        bundlePath: this.config.bundlePath,
-        orchestratorUrl: this.getHttpBaseUrl(),
-        authToken: this.authToken,
-      });
-
-      // Initialize the new executor so metrics collection works
-      await this.executor.initialize();
-
-      // Re-initialize the pod handler with the new executor
-      this.podHandler = createPodHandler({
-        executor: this.executor,
-        onStatusChange: (podId, status, message) => {
-          this.handlePodStatusChange(podId, status, message);
-        },
-      });
+      // Update the executor's auth token in-place (preserves running pods)
+      this.executor.updateAuthToken(this.authToken);
       return;
     }
 
@@ -1624,26 +1609,9 @@ export class BrowserAgent {
         this.stateStore.saveCredentials(newCredentials);
       }
 
-      // Update auth token
+      // Update auth token in-place (preserves running pods)
       this.authToken = newCredentials.accessToken;
-
-      // Update the executor with the new auth token
-      this.executor = new PackExecutor({
-        bundlePath: this.config.bundlePath,
-        orchestratorUrl: this.getHttpBaseUrl(),
-        authToken: this.authToken,
-      });
-
-      // Initialize the new executor so metrics collection works
-      await this.executor.initialize();
-
-      // Re-initialize the pod handler with the new executor
-      this.podHandler = createPodHandler({
-        executor: this.executor,
-        onStatusChange: (podId, status, message) => {
-          this.handlePodStatusChange(podId, status, message);
-        },
-      });
+      this.executor.updateAuthToken(this.authToken);
 
       this.logger.info('Access token refreshed successfully', {
         userId: newCredentials.userId,
