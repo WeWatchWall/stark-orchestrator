@@ -74,6 +74,20 @@ export class ServiceController {
    * This prevents lost reconciles when orphaned pods are stopped mid-cycle.
    */
   private pendingReconcile = false;
+  /**
+   * Timestamp of last completed reconcile cycle.
+   * Used to debounce triggerReconcile() calls that arrive shortly after
+   * a cycle already ran (e.g. reconnect handler + interval timer racing).
+   */
+  private lastReconcileAt = 0;
+  /** Minimum gap in ms between reconcile cycles triggered externally */
+  private static readonly RECONCILE_DEBOUNCE_MS = 3000;
+  /**
+   * Per-service lock set. While a service ID is in this set, no other
+   * reconcile pass can create pods for it. Prevents the triggered-reconcile
+   * vs interval-reconcile race from double-creating pods.
+   */
+  private reconcilingServices = new Set<string>();
 
   constructor(config: ServiceControllerConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -140,6 +154,7 @@ export class ServiceController {
       logger.error('Error in reconcile cycle', error instanceof Error ? error : undefined);
     } finally {
       this.isProcessing = false;
+      this.lastReconcileAt = Date.now();
       
       // If a reconcile was requested while we were processing, run again immediately.
       // This ensures orphaned pod cleanup triggers a fresh reconcile with updated data.
@@ -453,6 +468,29 @@ export class ServiceController {
    * Reconcile a single service
    */
   private async reconcileService(service: Service): Promise<void> {
+    // Per-service lock: skip if another reconcile pass is already handling this service.
+    // This prevents the triggered-reconcile vs interval-reconcile race from both
+    // seeing 0 active pods and each creating replacement pods.
+    if (this.reconcilingServices.has(service.id)) {
+      logger.debug('Skipping service — already being reconciled by another pass', {
+        serviceName: service.name,
+        serviceId: service.id,
+      });
+      return;
+    }
+    this.reconcilingServices.add(service.id);
+
+    try {
+      await this.reconcileServiceInner(service);
+    } finally {
+      this.reconcilingServices.delete(service.id);
+    }
+  }
+
+  /**
+   * Inner reconciliation logic for a single service (called under per-service lock)
+   */
+  private async reconcileServiceInner(service: Service): Promise<void> {
     const podQueries = getPodQueriesAdmin();
 
     // Get current pods for this service
@@ -891,9 +929,21 @@ export class ServiceController {
   }
 
   /**
-   * Trigger an immediate reconciliation cycle
+   * Trigger an immediate reconciliation cycle.
+   * Debounced: if a reconcile completed within RECONCILE_DEBOUNCE_MS, the call
+   * is coalesced into a pending flag so the next interval picks it up instead
+   * of racing with pod creation from the just-finished cycle.
    */
   async triggerReconcile(): Promise<void> {
+    const elapsed = Date.now() - this.lastReconcileAt;
+    if (elapsed < ServiceController.RECONCILE_DEBOUNCE_MS) {
+      logger.debug('Debouncing triggerReconcile — recent cycle completed', {
+        elapsedMs: elapsed,
+        debounceMs: ServiceController.RECONCILE_DEBOUNCE_MS,
+      });
+      this.pendingReconcile = true;
+      return;
+    }
     await this.runReconcileLoop();
   }
 

@@ -82,7 +82,12 @@ export async function schedulePodWithHistory(
   const result = await podQueries.schedulePod(podId, nodeId);
 
   if (result.error) {
-    logger.error('Failed to schedule pod', undefined, { podId, nodeId, error: result.error });
+    if ((result.error as unknown as string) === 'POD_NOT_PENDING') {
+      // Another code path already scheduled this pod — expected race resolution, not an error
+      logger.debug('Pod already scheduled by another path, skipping', { podId, nodeId });
+    } else {
+      logger.error('Failed to schedule pod', undefined, { podId, nodeId, error: result.error });
+    }
     return result;
   }
 

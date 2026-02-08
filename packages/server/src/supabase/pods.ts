@@ -465,10 +465,35 @@ export class PodQueries {
   }
 
   /**
-   * Schedules a pod to a specific node
+   * Schedules a pod to a specific node.
+   * Only transitions pods that are currently in 'pending' status.
+   * Returns { data: null, error: 'POD_NOT_PENDING' } if the pod has
+   * already been scheduled by another code path (prevents double-deploy).
    */
   async schedulePod(id: string, nodeId: string): Promise<PodResult<Pod>> {
-    return this.updatePodStatus(id, 'scheduled', { nodeId });
+    const updates: Record<string, unknown> = {
+      status: 'scheduled',
+      node_id: nodeId,
+      scheduled_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await this.client
+      .from('pods')
+      .update(updates)
+      .eq('id', id)
+      .eq('status', 'pending')
+      .select()
+      .single();
+
+    if (error) {
+      // PostgREST returns PGRST116 when .single() matches 0 rows
+      if (error.code === 'PGRST116') {
+        return { data: null, error: 'POD_NOT_PENDING' as unknown as typeof error };
+      }
+      return { data: null, error };
+    }
+
+    return { data: rowToPod(data as PodRow), error: null };
   }
 
   /**
