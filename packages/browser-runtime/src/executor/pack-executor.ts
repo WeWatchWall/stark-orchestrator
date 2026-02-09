@@ -59,8 +59,18 @@ export interface PackExecutorConfig {
   bundlePath?: string;
   /** Orchestrator URL for downloading bundles (optional) */
   orchestratorUrl?: string;
+  /** Orchestrator WebSocket URL for signaling (used for inter-service networking) */
+  orchestratorWsUrl?: string;
   /** Auth token for bundle downloads */
   authToken?: string;
+  /**
+   * URL to the pack-worker.js script bundle.
+   * When set, enables full WebRTC networking and fetch() interception for *.internal URLs.
+   * Without this, the inline worker is used which does NOT support inter-service communication.
+   * 
+   * Example: '/assets/pack-worker.js' or 'https://cdn.example.com/pack-worker.js'
+   */
+  workerScriptUrl?: string;
   /** Worker adapter configuration */
   workerConfig?: BrowserWorkerAdapterConfig;
   /** Storage adapter configuration */
@@ -115,12 +125,14 @@ interface ExecutionState {
  */
 export class PackExecutor {
   private readonly config: Required<
-    Omit<PackExecutorConfig, 'workerConfig' | 'storageConfig' | 'httpConfig' | 'orchestratorUrl' | 'authToken' | 'logger'>
+    Omit<PackExecutorConfig, 'workerConfig' | 'storageConfig' | 'httpConfig' | 'orchestratorUrl' | 'orchestratorWsUrl' | 'workerScriptUrl' | 'authToken' | 'logger'>
   > & {
     workerConfig?: BrowserWorkerAdapterConfig;
     storageConfig?: BrowserStorageConfig;
     httpConfig?: BrowserHttpAdapterConfig;
     orchestratorUrl?: string;
+    orchestratorWsUrl?: string;
+    workerScriptUrl?: string;
     authToken?: string;
     logger: Logger;
   };
@@ -135,12 +147,15 @@ export class PackExecutor {
     this.config = {
       bundlePath: config.bundlePath ?? '/packs',
       orchestratorUrl: config.orchestratorUrl,
+      orchestratorWsUrl: config.orchestratorWsUrl,
+      workerScriptUrl: config.workerScriptUrl,
       authToken: config.authToken,
       workerConfig: config.workerConfig,
       storageConfig: config.storageConfig,
       httpConfig: config.httpConfig,
       defaultTimeout: config.defaultTimeout ?? 0,
       maxConcurrent: config.maxConcurrent ?? 4, // Lower default for browsers
+      gracefulShutdownTimeout: config.gracefulShutdownTimeout ?? 5000,
       logger: config.logger ?? createServiceLogger({
         component: 'pack-executor',
         service: 'stark-browser-runtime',
@@ -148,16 +163,22 @@ export class PackExecutor {
     };
 
     // Initialize worker adapter with configured or default settings
+    // If workerScriptUrl is set, the full pack-worker with WebRTC networking is used
+    // Otherwise, falls back to inline worker without networking support
     this.workerAdapter = new WorkerAdapter({
       maxWorkers: this.config.maxConcurrent,
       maxQueueSize: this.config.maxConcurrent * 2,
       taskTimeout: this.config.defaultTimeout,
+      workerScriptUrl: this.config.workerScriptUrl,
       ...this.config.workerConfig,
       onError: (error): void => {
         this.config.logger.error('Worker pool error', error);
         this.config.workerConfig?.onError?.(error);
       },
     });
+    
+    // Networking mode logging is deferred to initialize() to avoid warnings
+    // when the default executor is created at module load time but never used
 
     // Initialize storage adapter for IndexedDB
     this.storageAdapter = new StorageAdapter({
@@ -205,6 +226,20 @@ export class PackExecutor {
       defaultTimeout: this.config.defaultTimeout,
     });
 
+    // Log networking mode (deferred from constructor to avoid warnings when
+    // default executor is created at module load but never used)
+    if (this.config.workerScriptUrl) {
+      this.config.logger.info('Worker networking mode: FULL (pack-worker bundle)', {
+        workerScriptUrl: this.config.workerScriptUrl,
+        orchestratorWsUrl: this.config.orchestratorWsUrl ?? '(not set)',
+      });
+    } else {
+      this.config.logger.warn('Worker networking mode: INLINE (no WebRTC support)', {
+        reason: 'workerScriptUrl not configured',
+        hint: 'Set workerScriptUrl to enable inter-service networking',
+      });
+    }
+
     await Promise.all([
       this.workerAdapter.initialize(),
       this.storageAdapter.initialize(),
@@ -223,6 +258,14 @@ export class PackExecutor {
    */
   isInitialized(): boolean {
     return this.initialized;
+  }
+  
+  /**
+   * Get the worker adapter for external configuration.
+   * Used by BrowserAgent to set up the network proxy handler.
+   */
+  getWorkerAdapter(): WorkerAdapter {
+    return this.workerAdapter;
   }
 
   /**
@@ -249,6 +292,8 @@ export class PackExecutor {
       env?: Record<string, string>;
       timeout?: number;
       args?: unknown[];
+      /** Service ID for network policy checks (required for inter-service comm) */
+      serviceId?: string;
     } = {}
   ): ExecutionHandle {
     this.ensureInitialized();
@@ -273,6 +318,15 @@ export class PackExecutor {
     const executionId = generateUUID();
     const timeout = options.timeout ?? pack.metadata?.timeout ?? this.config.defaultTimeout;
     const startedAt = new Date();
+
+    // serviceId is required for inter-service networking — can come from options or pod metadata
+    const serviceId = options.serviceId ?? (pod.metadata?.serviceId as string | undefined);
+    if (!serviceId) {
+      this.config.logger.warn('No serviceId provided — inter-service networking will be disabled', {
+        podId: pod.id,
+        packId: pack.id,
+      });
+    }
 
     // Create shutdown handlers registry for this execution
     const shutdownHandlers: ShutdownHandler[] = [];
@@ -318,6 +372,7 @@ export class PackExecutor {
         ...pack.metadata,
         ...pod.metadata,
       },
+      serviceId,
       lifecycle,
       onShutdown: (handler: ShutdownHandler) => {
         shutdownHandlers.push(handler);
@@ -564,9 +619,24 @@ export class PackExecutor {
       // Strip non-serializable properties (lifecycle, onShutdown) — they use
       // getters/closures and cannot survive structured clone.
       const { lifecycle: _lc, onShutdown: _os, ...serializableContext } = context;
+      
+      // Add networking config for pack-worker
+      const workerContext = {
+        ...serializableContext,
+        // Networking: pod connects directly to orchestrator for signaling
+        orchestratorUrl: this.config.orchestratorWsUrl,
+      };
+      
+      this.config.logger.debug('Sending context to worker', {
+        podId: context.podId,
+        serviceId: workerContext.serviceId,
+        orchestratorUrl: workerContext.orchestratorUrl ?? '(not configured)',
+        hasNetworking: !!(workerContext.serviceId && workerContext.orchestratorUrl),
+      });
+      
       const taskHandle = this.workerAdapter.execTaskCancellable<unknown>(
         bundleCode,
-        serializableContext,
+        workerContext,
         args,
         { timeout: context.timeout }
       );

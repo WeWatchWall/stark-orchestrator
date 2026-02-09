@@ -96,6 +96,7 @@ function rowToPod(row: PodRow): Pod {
     packId: row.pack_id,
     packVersion: row.pack_version,
     nodeId: row.node_id,
+    serviceId: row.service_id ?? undefined,
     status: row.status,
     statusMessage: row.status_message ?? undefined,
     terminationReason: row.termination_reason ?? undefined,

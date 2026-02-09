@@ -225,12 +225,17 @@ export const INTERNAL_URL_SUFFIX = '.internal';
 
 /**
  * Parse a virtual internal URL into serviceId and path.
- * Input:  `http://my-service.internal/api/users`
+ * Input:  `http://my-service.internal/api/users` or `https://my-service.internal/api/users`
  * Output: `{ serviceId: 'my-service', path: '/api/users' }`
  */
 export function parseInternalUrl(url: string): { serviceId: string; path: string } | null {
-  // Support both http:// and plain forms
-  const normalised = url.startsWith('http://') ? url.slice(7) : url;
+  // Support http://, https://, and plain forms
+  let normalised = url;
+  if (normalised.startsWith('https://')) {
+    normalised = normalised.slice(8);
+  } else if (normalised.startsWith('http://')) {
+    normalised = normalised.slice(7);
+  }
   const suffixIdx = normalised.indexOf(INTERNAL_URL_SUFFIX);
   if (suffixIdx === -1) return null;
 

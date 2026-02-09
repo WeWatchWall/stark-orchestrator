@@ -325,12 +325,17 @@ export class SchedulerService {
 
     const pod = podResult.data;
 
+    // Get service name from pod labels (set by service-controller when creating pod)
+    // The registry uses service NAME for routing, not UUID
+    const serviceName = pod.labels?.['stark.io/service'] as string | undefined;
+
     // Send pod:deploy message to the node
     const sent = this.connectionManager.sendToConnection(connectionId, {
       type: 'pod:deploy',
       payload: {
         podId,
         nodeId,
+        serviceId: serviceName,
         pack: {
           id: pack.id,
           name: pack.name,

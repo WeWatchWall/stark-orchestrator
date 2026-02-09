@@ -102,3 +102,23 @@ export {
   WorkerNotInitializedError,
   WorkerScriptRequiredError,
 } from '@stark-o/shared';
+
+// Browser Pod Network Stack (WebSocket + WebRTC networking)
+export {
+  BrowserPodNetworkStack,
+  type BrowserPodNetworkConfig,
+} from './network/index.js';
+
+// Main thread network manager (for WebRTC, since workers don't have RTCPeerConnection)
+export { MainThreadNetworkManager, type MainThreadNetworkManagerConfig } from './network/main-thread-network-manager.js';
+
+// Worker network proxy (runs in workers, proxies to main thread)
+export { WorkerNetworkProxy, type NetworkProxyToMain, type NetworkProxyFromMain } from './network/worker-network-proxy.js';
+
+// Re-export shared network utilities for browser packs
+export {
+  StarkBrowserListener,
+  interceptFetch,
+  restoreFetch,
+  isInternalUrl,
+} from '@stark-o/shared';

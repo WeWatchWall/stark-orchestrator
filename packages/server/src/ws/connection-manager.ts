@@ -163,6 +163,8 @@ export class ConnectionManager {
   private nodeToConnection = new Map<string, string>();
   /** Reverse index: podId → connectionId (for direct pod connections) */
   private podToConnection = new Map<string, string>();
+  /** Reverse index: connectionId → Set of podIds (for cleanup on disconnect) */
+  private connectionToPods = new Map<string, Set<string>>();
   /** Current connection being processed (for registration callbacks) */
   private currentConnectionId: string | null = null;
   private pingInterval: NodeJS.Timeout | null = null;
@@ -206,6 +208,15 @@ export class ConnectionManager {
   private registerPodConnection(podId: string, _serviceId: string): void {
     if (this.currentConnectionId) {
       this.podToConnection.set(podId, this.currentConnectionId);
+      
+      // Track pod for cleanup when connection closes
+      let pods = this.connectionToPods.get(this.currentConnectionId);
+      if (!pods) {
+        pods = new Set();
+        this.connectionToPods.set(this.currentConnectionId, pods);
+      }
+      pods.add(podId);
+      
       logger.debug('Pod registered for direct signaling', {
         podId,
         connectionId: this.currentConnectionId,
@@ -594,6 +605,25 @@ export class ConnectionManager {
       code,
       reason: reason.toString(),
     });
+
+    // Clean up browser pods registered on this connection
+    const pods = this.connectionToPods.get(connectionId);
+    if (pods && pods.size > 0) {
+      logger.debug('Cleaning up browser pods on connection close', {
+        connectionId,
+        podCount: pods.size,
+        podIds: Array.from(pods),
+      });
+      for (const podId of pods) {
+        // Unregister from ServiceRegistry
+        if (this.networkHandlers) {
+          this.networkHandlers.handlePodDisconnected(podId);
+        }
+        // Clean up pod-to-connection mapping
+        this.podToConnection.delete(podId);
+      }
+      this.connectionToPods.delete(connectionId);
+    }
 
     // Call node disconnect handler to clean up any registered nodes
     const wsConnection = this.createWsConnection(conn);

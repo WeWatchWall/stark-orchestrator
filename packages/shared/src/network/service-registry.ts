@@ -63,6 +63,29 @@ export class ServiceRegistry {
   }
 
   /**
+   * Remove all pods belonging to a specific node.
+   * Used when a node reconnects to clear stale pod entries.
+   */
+  unregisterPodsOnNode(nodeId: string): string[] {
+    const removedPods: string[] = [];
+    for (const [serviceId, entries] of this.registry) {
+      // Find all pods on this node
+      const toRemove = entries.filter((e) => e.nodeId === nodeId);
+      for (const entry of toRemove) {
+        removedPods.push(entry.podId);
+        const idx = entries.indexOf(entry);
+        if (idx !== -1) {
+          entries.splice(idx, 1);
+        }
+      }
+      if (entries.length === 0) {
+        this.registry.delete(serviceId);
+      }
+    }
+    return removedPods;
+  }
+
+  /**
    * Update a pod's status.
    */
   updatePodStatus(serviceId: string, podId: string, status: RegistryPodStatus): void {

@@ -1,7 +1,7 @@
 /**
- * Pod Network Stack
+ * Pod Network Stack (Browser Runtime)
  *
- * Direct-to-orchestrator networking for pod subprocesses.
+ * Direct-to-orchestrator networking for pod Web Workers.
  * Each pod establishes its own WebSocket to the orchestrator for signaling,
  * then uses WebRTC for all inter-pod data traffic.
  *
@@ -10,18 +10,21 @@
  * - Pod ↔ Pod: WebRTC data channels (all service traffic)
  * - Orchestrator never touches data after handshake
  *
- * @module @stark-o/node-runtime/network/pod-network-stack
+ * Browser-specific differences from Node.js runtime:
+ * - Uses native WebSocket API (not 'ws' package)
+ * - Uses native WebRTC (no 'wrtc' polyfill needed)
+ * - Uses StarkBrowserListener for inbound requests (no http.createServer)
+ *
+ * @module @stark-o/browser-runtime/network/pod-network-stack
  */
 
-import WebSocket from 'ws';
-import wrtc from 'wrtc';
 import {
   WebRTCConnectionManager,
   ServiceCaller,
   createSimplePeerFactory,
   interceptFetch,
   restoreFetch,
-  StarkServerInterceptor,
+  StarkBrowserListener,
   PodRequestRouter,
   type SignalSender,
   type OrchestratorRouter,
@@ -37,38 +40,36 @@ import type {
 
 // ── Configuration ───────────────────────────────────────────────────────────
 
-export interface PodNetworkConfig {
+export interface BrowserPodNetworkConfig {
   /** Pod's unique ID */
   podId: string;
   /** Service this pod belongs to */
   serviceId: string;
   /** Orchestrator WebSocket URL (e.g., wss://localhost/ws) */
   orchestratorUrl: string;
-  /** Skip TLS verification (for dev) */
-  insecure?: boolean;
   /** Connection timeout in ms (default: 10000) */
   connectionTimeout?: number;
   /** Logger function */
   log?: (level: 'debug' | 'info' | 'warn' | 'error', msg: string, data?: Record<string, unknown>) => void;
 }
 
-// ── Pod Network Stack ───────────────────────────────────────────────────────
+// ── Browser Pod Network Stack ───────────────────────────────────────────────
 
 /**
- * Complete networking stack for a pod subprocess.
+ * Complete networking stack for a pod running in a browser Web Worker.
  *
  * Handles:
  * 1. WebSocket connection to orchestrator (signaling + routing)
  * 2. WebRTC connections to peer pods (data)
  * 3. Fetch interception for transparent *.internal routing
- * 4. Inbound request handling via StarkServerInterceptor
+ * 4. Inbound request handling via StarkBrowserListener
  */
-export class PodNetworkStack {
-  private readonly config: Required<Omit<PodNetworkConfig, 'log'>> & { log: NonNullable<PodNetworkConfig['log']> };
+export class BrowserPodNetworkStack {
+  private readonly config: Required<Omit<BrowserPodNetworkConfig, 'log'>> & { log: NonNullable<BrowserPodNetworkConfig['log']> };
   private ws: WebSocket | null = null;
   private connectionManager: WebRTCConnectionManager | null = null;
   private serviceCaller: ServiceCaller | null = null;
-  private serverInterceptor: StarkServerInterceptor | null = null;
+  private browserListener: StarkBrowserListener | null = null;
   private requestRouter: PodRequestRouter | null = null;
   private connected = false;
   private pendingRoutes: Map<string, {
@@ -77,12 +78,11 @@ export class PodNetworkStack {
   }> = new Map();
   private routeCounter = 0;
 
-  constructor(config: PodNetworkConfig) {
+  constructor(config: BrowserPodNetworkConfig) {
     this.config = {
       podId: config.podId,
       serviceId: config.serviceId,
       orchestratorUrl: config.orchestratorUrl,
-      insecure: config.insecure ?? false,
       connectionTimeout: config.connectionTimeout ?? 10_000,
       log: config.log ?? ((level, msg, data) => {
         const prefix = `[${new Date().toISOString()}][${config.podId}:net:${level}]`;
@@ -111,14 +111,14 @@ export class PodNetworkStack {
       });
     };
 
-
+    // Browser uses native WebRTC — no wrtc polyfill needed
     this.connectionManager = new WebRTCConnectionManager({
       localPodId: this.config.podId,
       signalSender,
       onMessage: (fromPodId, data) => {
         this.handleIncomingData(fromPodId, data);
       },
-      peerFactory: createSimplePeerFactory({ wrtc }),
+      peerFactory: createSimplePeerFactory(), // No wrtc needed in browser
       config: {
         connectionTimeout: this.config.connectionTimeout,
         trickleICE: true,
@@ -134,7 +134,10 @@ export class PodNetworkStack {
     // 4. Set up request router for inbound traffic
     this.requestRouter = new PodRequestRouter();
 
-    // 5. Set up service caller
+    // 5. Set up browser listener (for explicit handler registration)
+    this.browserListener = new StarkBrowserListener(this.requestRouter);
+
+    // 6. Set up service caller
     this.serviceCaller = new ServiceCaller({
       podId: this.config.podId,
       serviceId: this.config.serviceId,
@@ -142,10 +145,10 @@ export class PodNetworkStack {
       orchestratorRouter,
     });
 
-    // 6. Intercept fetch() for transparent *.internal routing
+    // 7. Intercept fetch() for transparent *.internal routing
     interceptFetch(this.serviceCaller);
 
-    // 7. Register pod with orchestrator
+    // 8. Register pod with orchestrator
     this.sendToOrchestrator({
       type: 'network:pod:register',
       payload: {
@@ -156,53 +159,19 @@ export class PodNetworkStack {
   }
 
   /**
-   * Install HTTP server interceptor for inbound requests.
-   * Call this BEFORE the pack code runs to capture http.createServer calls.
+   * Get the browser listener for registering inbound request handlers.
+   * This is the browser equivalent of http.createServer() interception.
+   *
+   * @example
+   * ```ts
+   * const listen = stack.getBrowserListener();
+   * listen.handle('/echo', async (method, path, body) => {
+   *   return { status: 200, body: { message: 'Hello!' } };
+   * });
+   * ```
    */
-  installServerInterceptor(httpModule: typeof import('http')): void {
-    if (!this.requestRouter) {
-      throw new Error('Network stack not initialized — call init() first');
-    }
-    this.serverInterceptor = new StarkServerInterceptor(this.requestRouter);
-    // Cast is safe: Node's http module implements the required interface
-    this.serverInterceptor.install(httpModule as unknown as Parameters<typeof this.serverInterceptor.install>[0]);
-  }
-
-  /**
-   * Install HTTPS server interceptor for inbound requests.
-   * Call this BEFORE the pack code runs to capture https.createServer calls.
-   */
-  installHttpsServerInterceptor(httpsModule: typeof import('https')): void {
-    if (!this.serverInterceptor) {
-      throw new Error('HTTP server interceptor not installed — call installServerInterceptor() first');
-    }
-    // Cast is safe: Node's https module implements the required interface
-    this.serverInterceptor.installHttps(httpsModule as unknown as Parameters<typeof this.serverInterceptor.installHttps>[0]);
-  }
-
-  /**
-   * Register a request handler for inbound traffic (non-HTTP server packs).
-   */
-  registerHandler(pathPrefix: string, handler: (req: ServiceRequest) => Promise<ServiceResponse>): void {
-    if (!this.requestRouter) {
-      throw new Error('Network stack not initialized — call init() first');
-    }
-    this.requestRouter.handle(pathPrefix, async (method: string, path: string, body: unknown, headers?: Record<string, string>) => {
-      // Wrap into ServiceRequest for handler
-      const req: ServiceRequest = {
-        requestId: `inbound-${Date.now()}`,
-        sourcePodId: 'unknown',
-        sourceServiceId: 'unknown',
-        targetPodId: this.config.podId,
-        targetServiceId: this.config.serviceId,
-        method: method as ServiceRequest['method'],
-        path,
-        body,
-        headers,
-      };
-      const res = await handler(req);
-      return { status: res.status, body: res.body, headers: res.headers };
-    });
+  getBrowserListener(): StarkBrowserListener | null {
+    return this.browserListener;
   }
 
   /**
@@ -239,12 +208,19 @@ export class PodNetworkStack {
   }
 
   /**
+   * Check if WebSocket is connected to orchestrator.
+   */
+  isConnected(): boolean {
+    return this.connected;
+  }
+
+  /**
    * Log diagnostic information about the network stack state.
    * Call this to debug connectivity issues.
    */
   dumpDiagnostics(): void {
     this.config.log('info', '═══════════════════════════════════════════════════════════════');
-    this.config.log('info', '📊 [Diagnostics] Pod Network Stack State');
+    this.config.log('info', '📊 [Diagnostics] Browser Pod Network Stack State');
     this.config.log('info', '═══════════════════════════════════════════════════════════════');
     
     // Basic info
@@ -283,10 +259,9 @@ export class PodNetworkStack {
       this.config.log('warn', '📡 WebRTC Connection Manager not initialized');
     }
 
-    // Server interceptor state
-    this.config.log('info', '🖥️ Server Interceptor', {
-      installed: !!this.serverInterceptor,
-      hasCapturedServers: this.serverInterceptor?.hasCapturedServers ?? false,
+    // Browser listener state
+    this.config.log('info', '🖥️ Browser Listener', {
+      initialized: !!this.browserListener,
     });
 
     // Service caller
@@ -305,46 +280,48 @@ export class PodNetworkStack {
         reject(new Error(`Connection to orchestrator timed out after ${this.config.connectionTimeout}ms`));
       }, this.config.connectionTimeout);
 
-      const wsOptions: WebSocket.ClientOptions = {};
-      if (this.config.insecure) {
-        wsOptions.rejectUnauthorized = false;
-      }
+      // Browser uses native WebSocket API
+      this.ws = new WebSocket(this.config.orchestratorUrl);
 
-      this.ws = new WebSocket(this.config.orchestratorUrl, wsOptions);
-
-      this.ws.on('open', () => {
+      this.ws.onopen = () => {
         clearTimeout(timeout);
         this.connected = true;
+        this.config.log('info', '✅ Connected to orchestrator');
         resolve();
-      });
+      };
 
-      this.ws.on('message', (data) => {
+      this.ws.onmessage = (event) => {
         try {
-          const message = JSON.parse(data.toString()) as WsMessage;
+          const data = typeof event.data === 'string' ? event.data : '';
+          const message = JSON.parse(data) as WsMessage;
           this.handleOrchestratorMessage(message);
         } catch (err) {
           this.config.log('warn', 'Failed to parse orchestrator message', {
             error: err instanceof Error ? err.message : String(err),
           });
         }
-      });
+      };
 
-      this.ws.on('error', (err) => {
-        this.config.log('error', 'WebSocket error', { error: err.message });
+      this.ws.onerror = (event) => {
+        this.config.log('error', 'WebSocket error', { event: String(event) });
         if (!this.connected) {
           clearTimeout(timeout);
-          reject(err);
+          reject(new Error('WebSocket connection failed'));
         }
-      });
+      };
 
-      this.ws.on('close', (_code, _reason) => {
+      this.ws.onclose = (event) => {
         this.connected = false;
+        this.config.log('info', 'WebSocket closed', {
+          code: event.code,
+          reason: event.reason,
+        });
         // Reject pending routes
         for (const [id, pending] of this.pendingRoutes) {
           pending.reject(new Error('Connection closed'));
           this.pendingRoutes.delete(id);
         }
-      });
+      };
     });
   }
 
@@ -469,31 +446,11 @@ export class PodNetworkStack {
     let response: ServiceResponse;
 
     try {
-      // Dispatch via server interceptor (if HTTP server captured) or request router
-      if (this.serverInterceptor?.hasCapturedServers) {
-        // Forward to captured HTTP server via loopback
-        const http = await import('http');
-        const result = await this.serverInterceptor.dispatch(
-          request,
-          http as unknown as Parameters<typeof this.serverInterceptor.dispatch>[1]
-        );
-        response = result;
-      } else if (this.requestRouter) {
-        // Use explicit handlers
-        const result = await this.requestRouter.dispatch(
-          request.method,
-          request.path,
-          request.body,
-          request.headers,
-        );
-        response = {
-          requestId: request.requestId,
-          status: result.status,
-          body: result.body,
-          headers: result.headers,
-        };
+      // Dispatch via browser listener (explicit handler registration)
+      if (this.browserListener) {
+        response = await this.browserListener.dispatch(request);
       } else {
-        this.config.log('warn', '⚠️ [Dispatch] No handler available for request', {
+        this.config.log('warn', '⚠️ [Dispatch] No browser listener available for request', {
           requestId: request.requestId,
           method: request.method,
           path: request.path,

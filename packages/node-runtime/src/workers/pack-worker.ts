@@ -13,6 +13,7 @@
  */
 
 import http from 'http';
+import https from 'https';
 import {
   formatLogArgs,
 } from '@stark-o/shared';
@@ -140,6 +141,8 @@ async function executePack(request: WorkerRequest): Promise<void> {
       // 4. Install HTTP server interceptor BEFORE pack code runs
       // This captures any http.createServer() calls made by the pack
       networkStack.installServerInterceptor(http);
+      // Also install HTTPS server interceptor for https.createServer() calls
+      networkStack.installHttpsServerInterceptor(https);
 
       originalConsole.log(`[${new Date().toISOString()}][${podId}:net:info]`, '✅ WebRTC networking initialized — fetch() is now intercepted for *.internal');
     } catch (err) {

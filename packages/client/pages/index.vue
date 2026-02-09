@@ -26,6 +26,9 @@ onMounted(async () => {
     nodeName: 'production-browser-1',
     runtimeType: 'browser',
     debug: true,
+    // Enable full WebRTC networking for inter-service communication
+    // The pack-worker.js is built by @stark-o/browser-runtime
+    workerScriptUrl: '/_nuxt/pack-worker.js',
     // autoRegister defaults to true - will auto-register if public registration is enabled
   });
 

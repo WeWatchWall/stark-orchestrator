@@ -33,6 +33,11 @@ describe('parseInternalUrl', () => {
     expect(result).toEqual({ serviceId: 'users-service', path: '/api/users/123' });
   });
 
+  it('parses a full https:// internal URL', () => {
+    const result = parseInternalUrl('https://users-service.internal/api/users/123');
+    expect(result).toEqual({ serviceId: 'users-service', path: '/api/users/123' });
+  });
+
   it('parses without http:// prefix', () => {
     const result = parseInternalUrl('auth.internal/validate');
     expect(result).toEqual({ serviceId: 'auth', path: '/validate' });
@@ -40,6 +45,11 @@ describe('parseInternalUrl', () => {
 
   it('handles root path', () => {
     const result = parseInternalUrl('http://my-svc.internal/');
+    expect(result).toEqual({ serviceId: 'my-svc', path: '/' });
+  });
+
+  it('handles https root path', () => {
+    const result = parseInternalUrl('https://my-svc.internal/');
     expect(result).toEqual({ serviceId: 'my-svc', path: '/' });
   });
 

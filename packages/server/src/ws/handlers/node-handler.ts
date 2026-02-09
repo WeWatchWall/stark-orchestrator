@@ -6,7 +6,7 @@
  */
 
 import type { RegisterNodeInput, NodeHeartbeat, UserRole } from '@stark-o/shared';
-import { validateRegisterNodeInput, createServiceLogger } from '@stark-o/shared';
+import { validateRegisterNodeInput, createServiceLogger, getServiceRegistry } from '@stark-o/shared';
 import { getNodeQueries } from '../../supabase/nodes.js';
 import { getPodQueriesAdmin } from '../../supabase/pods.js';
 import { getConnectionManager, sendToNode } from '../../services/connection-service.js';
@@ -389,6 +389,19 @@ export async function handleNodeReconnect(
       correlationId,
     );
     return;
+  }
+
+  // Clear stale pods from the service registry before reconnect.
+  // When a node reconnects, any pods from previous sessions are stale and should not
+  // be returned for routing requests until they re-register.
+  const serviceRegistry = getServiceRegistry();
+  const clearedPods = serviceRegistry.unregisterPodsOnNode(payload.nodeId);
+  if (clearedPods.length > 0) {
+    logger.info('Cleared stale pods from service registry on node reconnect', {
+      nodeId: payload.nodeId,
+      clearedCount: clearedPods.length,
+      clearedPodIds: clearedPods,
+    });
   }
 
   // Reconnect the node - update connection ID, set online, and optionally update capabilities

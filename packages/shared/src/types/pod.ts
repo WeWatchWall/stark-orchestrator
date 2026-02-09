@@ -147,6 +147,8 @@ export interface Pod {
   packVersion: string;
   /** Assigned node ID (null if pending) */
   nodeId: string | null;
+  /** Service ID that owns this pod (for service-based pods) */
+  serviceId?: string;
   /** Current status */
   status: PodStatus;
   /** Status message (for errors) */

@@ -21,6 +21,7 @@ import {
   type PodDeployPayload,
   type PodStopPayload,
   type WsMessage,
+  type SignallingMessage,
 } from '@stark-o/shared';
 import { PodHandler, createPodHandler } from './pod-handler.js';
 import { PackExecutor } from '../executor/pack-executor.js';
@@ -30,6 +31,7 @@ import {
   type RegisteredBrowserNode,
   type BrowserNodeCredentials,
 } from './browser-state-store.js';
+import { MainThreadNetworkManager } from '../network/main-thread-network-manager.js';
 
 /**
  * Browser agent configuration
@@ -65,6 +67,15 @@ export interface BrowserAgentConfig {
   maxReconnectAttempts?: number;
   /** Base path for pack bundles in storage (default: '/packs') */
   bundlePath?: string;
+  /**
+   * URL to the pack-worker.js script bundle.
+   * When set, enables full WebRTC networking and fetch() interception for *.internal URLs.
+   * Without this, the inline worker is used which does NOT support inter-service communication.
+   * 
+   * The pack-worker.js is built as part of @stark-o/browser-runtime and should be served
+   * by your web server. Example: '/assets/pack-worker.js'
+   */
+  workerScriptUrl?: string;
   /** Enable debug logging to console (default: false) */
   debug?: boolean;
   /** Enable persistent storage of node registration (default: true) */
@@ -193,9 +204,10 @@ function createBrowserLogger(component: string, debug: boolean): BrowserLogger {
  * - Persistent storage of node state for resumption
  */
 export class BrowserAgent {
-  private readonly config: Required<Omit<BrowserAgentConfig, 'debug' | 'bundlePath' | 'authToken' | 'autoRegister'>> & { 
+  private readonly config: Required<Omit<BrowserAgentConfig, 'debug' | 'bundlePath' | 'workerScriptUrl' | 'authToken' | 'autoRegister'>> & { 
     debug: boolean;
     bundlePath: string;
+    workerScriptUrl?: string;
     autoRegister: boolean;
   };
   private authToken: string;
@@ -228,6 +240,8 @@ export class BrowserAgent {
   };
   private executor: PackExecutor;
   private podHandler: PodHandler;
+  /** Main thread network manager for WebRTC connections (workers don't have RTCPeerConnection access) */
+  private networkManager: MainThreadNetworkManager | null = null;
 
   constructor(config: BrowserAgentConfig) {
     const debug = config.debug ?? false;
@@ -246,6 +260,7 @@ export class BrowserAgent {
       reconnectDelay: config.reconnectDelay ?? 5000,
       maxReconnectAttempts: config.maxReconnectAttempts ?? 10,
       bundlePath: config.bundlePath ?? '/packs',
+      workerScriptUrl: config.workerScriptUrl,
       debug,
       autoRegister: config.autoRegister ?? true,
       persistState: config.persistState ?? true,
@@ -275,6 +290,8 @@ export class BrowserAgent {
     this.executor = new PackExecutor({
       bundlePath: this.config.bundlePath,
       orchestratorUrl: this.config.orchestratorUrl.replace(/^ws/, 'http').replace('/ws', ''),
+      orchestratorWsUrl: this.config.orchestratorUrl, // Original WS URL for inter-service networking
+      workerScriptUrl: this.config.workerScriptUrl, // Enables full pack-worker with WebRTC
       authToken: this.authToken,
     });
 
@@ -657,6 +674,22 @@ export class BrowserAgent {
         break;
       }
 
+      case 'network:signal': {
+        // Handle WebRTC signaling message from orchestrator
+        // Forward to main thread network manager which handles actual WebRTC connections
+        const signal = message.payload as SignallingMessage;
+        console.log('[BrowserAgent] 📨 Received network:signal from server:', signal?.type, 'from:', signal?.sourcePodId?.slice(0,8), 'to:', signal?.targetPodId?.slice(0,8));
+        if (this.networkManager) {
+          this.networkManager.handleSignal(signal);
+        } else {
+          console.warn('[BrowserAgent] ⚠️ No network manager initialized!');
+          this.logger.debug('Received network:signal but no network manager initialized', {
+            hasWorkerScriptUrl: !!this.config.workerScriptUrl,
+          });
+        }
+        break;
+      }
+
       default:
         this.logger.debug('Unhandled message type', { type: message.type });
     }
@@ -979,6 +1012,8 @@ export class BrowserAgent {
     this.executor = new PackExecutor({
       bundlePath: this.config.bundlePath,
       orchestratorUrl: this.getHttpBaseUrl(),
+      orchestratorWsUrl: this.config.orchestratorUrl,
+      workerScriptUrl: this.config.workerScriptUrl,
       authToken: this.authToken,
     });
 
@@ -1014,6 +1049,43 @@ export class BrowserAgent {
       this.state = 'authenticated';
       this.emit('authenticated');
       this.logger.info('Authenticated successfully');
+      
+      // Initialize network manager for WebRTC connections if workerScriptUrl is configured
+      // Workers don't have access to RTCPeerConnection, so main thread manages connections
+      if (this.config.workerScriptUrl && this.ws && !this.networkManager) {
+        this.logger.info('Initializing main thread network manager for WebRTC');
+        
+        // Get the worker adapter to wire up push callback
+        const workerAdapter = this.executor.getWorkerAdapter();
+        if (!workerAdapter) {
+          this.logger.warn('Cannot initialize network manager - no worker adapter');
+        } else {
+          this.networkManager = new MainThreadNetworkManager({
+            // Use a getter so the network manager always uses the current WebSocket after reconnects
+            getWebSocket: () => this.ws,
+            nodeId: this.nodeId ?? `browser-node-${this.config.nodeName}`,
+            pushToWorker: workerAdapter.pushMessageToWorker.bind(workerAdapter),
+            logger: this.logger,
+          });
+        
+          // Wire up the network proxy handler to the executor's worker adapter
+          if (workerAdapter.setNetworkProxyHandler) {
+            workerAdapter.setNetworkProxyHandler(
+              this.networkManager.handleProxyRequest.bind(this.networkManager)
+            );
+            this.logger.info('Network proxy handler wired up to worker adapter');
+          }
+          
+          // Wire up signal forward handler for signals received by workers' direct WebSocket connections
+          // Workers forward signals to main thread since WebRTC is not available in workers
+          if (workerAdapter.setSignalForwardHandler) {
+            workerAdapter.setSignalForwardHandler(
+              this.networkManager.handleSignal.bind(this.networkManager)
+            );
+            this.logger.info('Signal forward handler wired up to worker adapter');
+          }
+        }
+      }
 
       // If we have an existing nodeId (either from reconnect or from stored state), reconnect instead of registering
       if (this.nodeId) {
@@ -1779,6 +1851,8 @@ export class BrowserAgent {
     this.executor = new PackExecutor({
       bundlePath: this.config.bundlePath,
       orchestratorUrl: this.getHttpBaseUrl(),
+      orchestratorWsUrl: this.config.orchestratorUrl,
+      workerScriptUrl: this.config.workerScriptUrl,
       authToken: this.authToken,
     });
 
@@ -1809,6 +1883,8 @@ export class BrowserAgent {
     this.executor = new PackExecutor({
       bundlePath: this.config.bundlePath,
       orchestratorUrl: this.getHttpBaseUrl(),
+      orchestratorWsUrl: this.config.orchestratorUrl,
+      workerScriptUrl: this.config.workerScriptUrl,
       authToken: this.authToken,
     });
   }

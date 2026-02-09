@@ -14,6 +14,21 @@ import {
   TaskTimeoutError,
   WorkerNotInitializedError,
 } from '@stark-o/shared';
+import type { NetworkProxyToMain, NetworkProxyFromMain } from '../network/worker-network-proxy.js';
+import type { SignallingMessage } from '@stark-o/shared';
+
+/**
+ * Callback for handling network proxy requests from workers.
+ * The main thread manages WebRTC connections since workers don't have access to RTCPeerConnection.
+ * 
+ * @param workerId - The taskId of the worker making the request (for multiplexing)
+ * @param message - The network proxy message from the worker
+ * @returns Promise resolving to response message(s) to send back
+ */
+export type NetworkProxyHandler = (
+  workerId: string,
+  message: NetworkProxyToMain,
+) => Promise<NetworkProxyFromMain | NetworkProxyFromMain[] | void>;
 
 /**
  * Extended configuration options for the browser worker adapter.
@@ -25,6 +40,19 @@ export interface BrowserWorkerAdapterConfig extends WorkerAdapterConfig {
    * own dependencies (PodLogSink, etc.) directly via the bundle.
    */
   workerScriptUrl?: string;
+  
+  /**
+   * Handler for network proxy requests from workers.
+   * WebRTC is not available in Web Workers, so the main thread manages connections.
+   */
+  networkProxyHandler?: NetworkProxyHandler;
+  
+  /**
+   * Handler for forwarded WebRTC signals from workers.
+   * Workers receive signals on their direct orchestrator WebSocket connection,
+   * but need to forward them to the main thread for handling.
+   */
+  signalForwardHandler?: (signal: SignallingMessage) => void;
 }
 
 // Re-export shared types for convenience
@@ -98,14 +126,20 @@ function getHardwareConcurrency(): number {
  * code and metadata state are passed as messages.
  */
 export class WorkerAdapter implements IWorkerAdapter {
-  private readonly config: Required<Omit<BrowserWorkerAdapterConfig, 'workerScript' | 'workerScriptUrl' | 'onError'>> &
-    Pick<BrowserWorkerAdapterConfig, 'workerScript' | 'workerScriptUrl' | 'onError'>;
+  private readonly config: Required<Omit<BrowserWorkerAdapterConfig, 'workerScript' | 'workerScriptUrl' | 'onError' | 'networkProxyHandler' | 'signalForwardHandler'>> &
+    Pick<BrowserWorkerAdapterConfig, 'workerScript' | 'workerScriptUrl' | 'onError' | 'networkProxyHandler' | 'signalForwardHandler'>;
   private initialized: boolean = false;
   private readonly runningTasks: Map<string, WebWorkerTask> = new Map();
   private taskIdCounter: number = 0;
 
   /** URL to the worker script */
   private workerScriptUrl: string;
+  
+  /** Handler for network proxy requests from workers */
+  private networkProxyHandler?: NetworkProxyHandler;
+  
+  /** Handler for forwarded WebRTC signals from workers */
+  private signalForwardHandler?: (signal: SignallingMessage) => void;
 
   constructor(config: BrowserWorkerAdapterConfig = {}) {
     this.config = {
@@ -117,10 +151,46 @@ export class WorkerAdapter implements IWorkerAdapter {
       workerScript: config.workerScript,
       workerScriptUrl: config.workerScriptUrl,
       onError: config.onError,
+      networkProxyHandler: config.networkProxyHandler,
+      signalForwardHandler: config.signalForwardHandler,
     };
 
     // Use workerScriptUrl or workerScript (legacy alias)
     this.workerScriptUrl = config.workerScriptUrl ?? config.workerScript ?? '';
+    this.networkProxyHandler = config.networkProxyHandler;
+    this.signalForwardHandler = config.signalForwardHandler;
+  }
+  
+  /**
+   * Set the network proxy handler for relaying WebRTC requests from workers.
+   * Called by PackExecutor/BrowserAgent when setting up networking.
+   */
+  setNetworkProxyHandler(handler: NetworkProxyHandler): void {
+    this.networkProxyHandler = handler;
+    this.config.networkProxyHandler = handler;
+  }
+  
+  /**
+   * Set the signal forward handler for processing WebRTC signals from workers.
+   * Workers receive signals on their direct orchestrator WebSocket but cannot
+   * handle WebRTC (browser limitation), so they forward to main thread.
+   */
+  setSignalForwardHandler(handler: (signal: SignallingMessage) => void): void {
+    this.signalForwardHandler = handler;
+    this.config.signalForwardHandler = handler;
+  }
+  
+  /**
+   * Push a network message to a specific worker.
+   * Used by MainThreadNetworkManager to send incoming WebRTC messages to workers.
+   */
+  pushMessageToWorker(workerId: string, message: NetworkProxyFromMain): void {
+    const task = this.runningTasks.get(workerId);
+    if (task?.worker) {
+      task.worker.postMessage(message);
+    } else {
+      console.warn('[WorkerAdapter] Cannot push message to worker - not found', { workerId });
+    }
   }
 
   /**
@@ -168,8 +238,9 @@ export class WorkerAdapter implements IWorkerAdapter {
       let worker: Worker;
 
       if (this.workerScriptUrl) {
-        // Use the pre-built worker script URL
-        worker = new Worker(this.workerScriptUrl, { type: 'module' });
+        // Use the pre-built worker script URL (IIFE format, classic worker)
+        // Classic workers have WebRTC support, module workers may not
+        worker = new Worker(this.workerScriptUrl);
       } else {
         // Create an inline worker from the pack-worker-inline code
         // This is a fallback when no workerScriptUrl is configured
@@ -202,9 +273,28 @@ export class WorkerAdapter implements IWorkerAdapter {
         }, taskTimeout);
       }
 
-      worker.onmessage = (event: MessageEvent<BrowserWorkerResponse>) => {
+      worker.onmessage = (event: MessageEvent<BrowserWorkerResponse | NetworkProxyToMain>) => {
         const msg = event.data;
-        if (msg.taskId !== taskId) return;
+        
+        // Handle network proxy messages from worker
+        if (msg && typeof msg === 'object' && 'type' in msg && 
+            typeof msg.type === 'string' && msg.type.startsWith('network:proxy:')) {
+          this.handleNetworkProxyMessage(taskId, worker, msg as NetworkProxyToMain);
+          return;
+        }
+        
+        // Handle forwarded WebRTC signals from worker
+        // Workers receive signals on their direct orchestrator WebSocket but forward to main thread
+        if (msg && typeof msg === 'object' && 'type' in msg && msg.type === 'network:signal:forward') {
+          if (this.signalForwardHandler && 'payload' in msg) {
+            this.signalForwardHandler(msg.payload as SignallingMessage);
+          }
+          return;
+        }
+        
+        // Handle task result/error messages
+        const taskMsg = msg as BrowserWorkerResponse;
+        if (taskMsg.taskId !== taskId) return;
 
         if (task.timeoutHandle) clearTimeout(task.timeoutHandle);
         this.runningTasks.delete(taskId);
@@ -215,14 +305,14 @@ export class WorkerAdapter implements IWorkerAdapter {
           return;
         }
 
-        if (msg.type === 'result') {
+        if (taskMsg.type === 'result') {
           resolve({
-            value: msg.value as T,
+            value: taskMsg.value as T,
             duration: Date.now() - startTime,
           });
         } else {
-          const error = new Error(msg.error ?? 'Unknown worker error');
-          if (msg.errorStack) error.stack = msg.errorStack;
+          const error = new Error(taskMsg.error ?? 'Unknown worker error');
+          if (taskMsg.errorStack) error.stack = taskMsg.errorStack;
           reject(error);
         }
       };
@@ -275,7 +365,9 @@ export class WorkerAdapter implements IWorkerAdapter {
 
     const promise = new Promise<TaskResult<T>>((resolve, reject) => {
       if (this.workerScriptUrl) {
-        worker = new Worker(this.workerScriptUrl, { type: 'module' });
+        // Use the pre-built worker script URL (IIFE format, classic worker)
+        // Classic workers have WebRTC support, module workers may not
+        worker = new Worker(this.workerScriptUrl);
       } else {
         const blob = new Blob(
           [getInlineWorkerCode()],
@@ -307,9 +399,28 @@ export class WorkerAdapter implements IWorkerAdapter {
         }, taskTimeout);
       }
 
-      worker.onmessage = (event: MessageEvent<BrowserWorkerResponse>) => {
+      worker.onmessage = (event: MessageEvent<BrowserWorkerResponse | NetworkProxyToMain>) => {
         const msg = event.data;
-        if (msg.taskId !== taskId) return;
+        
+        // Handle network proxy messages from worker
+        if (msg && typeof msg === 'object' && 'type' in msg && 
+            typeof msg.type === 'string' && msg.type.startsWith('network:proxy:')) {
+          this.handleNetworkProxyMessage(taskId, worker!, msg as NetworkProxyToMain);
+          return;
+        }
+        
+        // Handle forwarded WebRTC signals from worker
+        // Workers receive signals on their direct orchestrator WebSocket but forward to main thread
+        if (msg && typeof msg === 'object' && 'type' in msg && msg.type === 'network:signal:forward') {
+          if (this.signalForwardHandler && 'payload' in msg) {
+            this.signalForwardHandler(msg.payload as SignallingMessage);
+          }
+          return;
+        }
+        
+        // Handle task result/error messages
+        const taskMsg = msg as BrowserWorkerResponse;
+        if (taskMsg.taskId !== taskId) return;
 
         if (task.timeoutHandle) clearTimeout(task.timeoutHandle);
         this.runningTasks.delete(taskId);
@@ -320,14 +431,14 @@ export class WorkerAdapter implements IWorkerAdapter {
           return;
         }
 
-        if (msg.type === 'result') {
+        if (taskMsg.type === 'result') {
           resolve({
-            value: msg.value as T,
+            value: taskMsg.value as T,
             duration: Date.now() - startTime,
           });
         } else {
-          const error = new Error(msg.error ?? 'Unknown worker error');
-          if (msg.errorStack) error.stack = msg.errorStack;
+          const error = new Error(taskMsg.error ?? 'Unknown worker error');
+          if (taskMsg.errorStack) error.stack = taskMsg.errorStack;
           reject(error);
         }
       };
@@ -515,17 +626,68 @@ export class WorkerAdapter implements IWorkerAdapter {
       this.config.onError(error);
     }
   }
+  
+  /**
+   * Handle network proxy messages from workers.
+   * Workers don't have access to WebRTC, so they send proxy requests to the main thread.
+   */
+  private handleNetworkProxyMessage(
+    workerId: string,
+    worker: Worker,
+    message: NetworkProxyToMain
+  ): void {
+    if (!this.networkProxyHandler) {
+      // No network proxy configured - send error back to worker
+      const errorResponse: NetworkProxyFromMain = {
+        type: 'network:proxy:error',
+        correlationId: message.correlationId,
+        targetPodId: message.targetPodId,
+        error: 'Network proxy not configured in main thread',
+      };
+      worker.postMessage(errorResponse);
+      return;
+    }
+    
+    // Forward to the network proxy handler (managed by BrowserAgent)
+    this.networkProxyHandler(workerId, message)
+      .then((responses) => {
+        if (responses) {
+          const responseArray = Array.isArray(responses) ? responses : [responses];
+          for (const response of responseArray) {
+            worker.postMessage(response);
+          }
+        }
+      })
+      .catch((error) => {
+        const errorResponse: NetworkProxyFromMain = {
+          type: 'network:proxy:error',
+          correlationId: message.correlationId,
+          targetPodId: message.targetPodId,
+          error: error instanceof Error ? error.message : String(error),
+        };
+        worker.postMessage(errorResponse);
+      });
+  }
 }
 
 /**
  * Returns inline worker code as a string for use when no workerScriptUrl is configured.
  * This code is self-contained and handles message-based pack execution inside a Web Worker.
  * It includes its own formatLogArgs and console patching (mirroring PodLogSink format).
+ * 
+ * ⚠️ WARNING: This inline worker does NOT support WebRTC networking!
+ * For inter-service communication (fetch to *.internal), you must:
+ * 1. Build the pack-worker.ts as a separate bundle
+ * 2. Configure workerScriptUrl in WorkerAdapterConfig
  */
 function getInlineWorkerCode(): string {
   return `
 // Inline pack worker for Stark Browser Runtime
 // This code runs inside a Web Worker
+//
+// ⚠️ IMPORTANT: Inline worker does NOT support WebRTC networking!
+// fetch() calls to *.internal will FAIL with CORS/security errors.
+// To enable networking, configure workerScriptUrl to use the full pack-worker bundle.
 
 function formatLogArgs(args) {
   return args.map(function(arg) {
@@ -543,6 +705,22 @@ self.onmessage = async function(event) {
   var bundleCode = msg.bundleCode;
   var context = msg.context;
   var args = msg.args;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL DEBUG: Log context and networking status
+  // ═══════════════════════════════════════════════════════════════════════════
+  console.log('[STARK-WORKER-INLINE] ═══════════════════════════════════════════════════════');
+  console.log('[STARK-WORKER-INLINE] Pack worker (INLINE MODE) received execute request');
+  console.log('[STARK-WORKER-INLINE] Context keys:', Object.keys(context));
+  console.log('[STARK-WORKER-INLINE] ─────────────────────────────────────────────────────────');
+  console.log('[STARK-WORKER-INLINE] NETWORKING CONFIG CHECK:');
+  console.log('[STARK-WORKER-INLINE]   podId:', context.podId);
+  console.log('[STARK-WORKER-INLINE]   serviceId:', context.serviceId || '❌ MISSING');
+  console.log('[STARK-WORKER-INLINE]   orchestratorUrl:', context.orchestratorUrl || '❌ MISSING');
+  console.warn('[STARK-WORKER-INLINE] ⚠️ INLINE WORKER MODE - WebRTC networking is NOT available!');
+  console.warn('[STARK-WORKER-INLINE] fetch() calls to *.internal URLs will FAIL with security errors.');
+  console.warn('[STARK-WORKER-INLINE] To enable networking, configure workerScriptUrl in browser-runtime.');
+  console.log('[STARK-WORKER-INLINE] ═══════════════════════════════════════════════════════');
 
   // Patch console to route through pod log sink format
   var podId = context.podId;

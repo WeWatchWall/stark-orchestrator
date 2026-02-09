@@ -79,25 +79,23 @@ export class StarkServerInterceptor {
   private primaryServer: HttpServerLike | null = null;
   /** Fallback router for when no HTTP server is available */
   private router: PodRequestRouter;
-  /** Original createServer function */
-  private _originalCreateServer: ((...args: unknown[]) => HttpServerLike) | null = null;
+  /** Original createServer function for http module */
+  private _originalHttpCreateServer: ((...args: unknown[]) => HttpServerLike) | null = null;
+  /** Original createServer function for https module */
+  private _originalHttpsCreateServer: ((...args: unknown[]) => HttpServerLike) | null = null;
 
   constructor(router: PodRequestRouter) {
     this.router = router;
   }
 
   /**
-   * Patch `http.createServer` and `server.listen` to capture HTTP servers
-   * started by pack code. Call this BEFORE the pack code runs.
+   * Create a wrapped createServer function that captures servers.
    */
-  install(httpModule: HttpModuleLike): void {
-    if (this._originalCreateServer) return; // already installed
-
-    this._originalCreateServer = httpModule.createServer.bind(httpModule);
+  private wrapCreateServer(
+    originalCreateServer: (...args: unknown[]) => HttpServerLike
+  ): (...args: unknown[]) => HttpServerLike {
     const self = this;
-    const originalCreateServer = this._originalCreateServer;
-
-    httpModule.createServer = function (...args: unknown[]): HttpServerLike {
+    return function (...args: unknown[]): HttpServerLike {
       const server = originalCreateServer(...args);
 
       // Wrap listen() to capture the server immediately
@@ -125,16 +123,48 @@ export class StarkServerInterceptor {
   }
 
   /**
+   * Patch `http.createServer` and `server.listen` to capture HTTP servers
+   * started by pack code. Call this BEFORE the pack code runs.
+   */
+  install(httpModule: HttpModuleLike): void {
+    if (this._originalHttpCreateServer) return; // already installed
+
+    this._originalHttpCreateServer = httpModule.createServer.bind(httpModule);
+    httpModule.createServer = this.wrapCreateServer(this._originalHttpCreateServer);
+  }
+
+  /**
+   * Patch `https.createServer` to capture HTTPS servers.
+   * Call this in addition to install() if you want to capture HTTPS servers.
+   */
+  installHttps(httpsModule: HttpModuleLike): void {
+    if (this._originalHttpsCreateServer) return; // already installed
+
+    this._originalHttpsCreateServer = httpsModule.createServer.bind(httpsModule);
+    httpsModule.createServer = this.wrapCreateServer(this._originalHttpsCreateServer);
+  }
+
+  /**
    * Restore the original `http.createServer` function.
    */
   uninstall(httpModule: HttpModuleLike): void {
-    if (this._originalCreateServer) {
-      httpModule.createServer = this._originalCreateServer;
-      this._originalCreateServer = null;
+    if (this._originalHttpCreateServer) {
+      httpModule.createServer = this._originalHttpCreateServer;
+      this._originalHttpCreateServer = null;
     }
     this.capturedServers.clear();
     this.allServers.clear();
     this.primaryServer = null;
+  }
+
+  /**
+   * Restore the original `https.createServer` function.
+   */
+  uninstallHttps(httpsModule: HttpModuleLike): void {
+    if (this._originalHttpsCreateServer) {
+      httpsModule.createServer = this._originalHttpsCreateServer;
+      this._originalHttpsCreateServer = null;
+    }
   }
 
   /**
