@@ -20,6 +20,11 @@ import type {
   CreateNetworkPolicyInput,
   RoutingRequest,
 } from '@stark-o/shared';
+import {
+  createNetworkPolicy,
+  deleteNetworkPolicy,
+  deleteNetworkPolicyByPair,
+} from '../supabase/index.js';
 
 const logger = createServiceLogger(
   { level: 'debug', service: 'stark-orchestrator' },
@@ -54,7 +59,30 @@ async function createPolicyHandler(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const policy = getNetworkPolicyEngine().addPolicy(input);
+  // Persist to database first
+  const dbResult = await createNetworkPolicy(input);
+  if (dbResult.error) {
+    reqLogger.error('Failed to persist network policy', undefined, {
+      error: dbResult.error.message,
+      source: input.sourceService,
+      target: input.targetService,
+    });
+    res.status(500).json({
+      success: false,
+      error: { code: 'DB_ERROR', message: `Failed to persist network policy: ${dbResult.error.message}` },
+    });
+    return;
+  }
+
+  // Sync to in-memory engine using the DB policy (with UUID)
+  const policy = dbResult.data!;
+  getNetworkPolicyEngine().syncPolicies([
+    ...getNetworkPolicyEngine().listPolicies().filter(
+      p => !(p.sourceService === policy.sourceService && p.targetService === policy.targetService)
+    ),
+    policy,
+  ]);
+
   reqLogger.info('Network policy created', {
     policyId: policy.id,
     source: policy.sourceService,
@@ -74,14 +102,30 @@ async function deletePolicyHandler(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const removed = getNetworkPolicyEngine().removePolicy(id);
-  if (!removed) {
+  // Delete from database first
+  const dbResult = await deleteNetworkPolicy(id);
+  if (dbResult.error) {
+    logger.error('Failed to delete network policy from DB', undefined, {
+      policyId: id,
+      error: dbResult.error.message,
+    });
+    res.status(500).json({
+      success: false,
+      error: { code: 'DB_ERROR', message: `Failed to delete network policy: ${dbResult.error.message}` },
+    });
+    return;
+  }
+
+  if (!dbResult.data?.deleted) {
     res.status(404).json({
       success: false,
       error: { code: 'NOT_FOUND', message: `Network policy '${id}' not found` },
     });
     return;
   }
+
+  // Remove from in-memory engine
+  getNetworkPolicyEngine().removePolicy(id);
 
   logger.info('Network policy deleted', { policyId: id });
   res.json({ success: true, data: { id, deleted: true } });
@@ -97,14 +141,31 @@ async function deletePolicyByPairHandler(req: Request, res: Response): Promise<v
     return;
   }
 
-  const removed = getNetworkPolicyEngine().removePolicyByPair(sourceService, targetService);
-  if (!removed) {
+  // Delete from database first
+  const dbResult = await deleteNetworkPolicyByPair(sourceService, targetService);
+  if (dbResult.error) {
+    logger.error('Failed to delete network policy from DB', undefined, {
+      sourceService,
+      targetService,
+      error: dbResult.error.message,
+    });
+    res.status(500).json({
+      success: false,
+      error: { code: 'DB_ERROR', message: `Failed to delete network policy: ${dbResult.error.message}` },
+    });
+    return;
+  }
+
+  if (!dbResult.data?.deleted) {
     res.status(404).json({
       success: false,
       error: { code: 'NOT_FOUND', message: `No network policy found for ${sourceService} → ${targetService}` },
     });
     return;
   }
+
+  // Remove from in-memory engine
+  getNetworkPolicyEngine().removePolicyByPair(sourceService, targetService);
 
   logger.info('Network policy removed by pair', { sourceService, targetService });
   res.json({ success: true, data: { sourceService, targetService, deleted: true } });

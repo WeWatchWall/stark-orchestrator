@@ -15,7 +15,7 @@ import cors, { CorsOptions } from 'cors';
 import { WebSocketServer } from 'ws';
 import httpProxy from 'http-proxy';
 import selfsigned from 'selfsigned';
-import { createServiceLogger } from '@stark-o/shared';
+import { createServiceLogger, getNetworkPolicyEngine } from '@stark-o/shared';
 import { createApiRouter } from './api/router.js';
 import { createConnectionManager, type ConnectionManagerOptions } from './ws/connection-manager.js';
 import { createSchedulerService } from './services/scheduler-service.js';
@@ -23,6 +23,7 @@ import { getServiceController } from './services/service-controller.js';
 import { createNodeHealthService } from './services/node-health-service.js';
 import { setConnectionManager } from './services/connection-service.js';
 import { bootstrapChaosMode } from './chaos/bootstrap.js';
+import { loadAllNetworkPolicies } from './supabase/index.js';
 
 // ============================================================================
 // Configuration
@@ -453,12 +454,30 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
             });
 
             // Start HTTPS server on external interface
-            httpsServer.listen(finalConfig.port, finalConfig.host, () => {
+            httpsServer.listen(finalConfig.port, finalConfig.host, async () => {
               logger.info('HTTPS server started', {
                 url: `https://${finalConfig.host}:${finalConfig.port}`,
                 wsUrl: `wss://${finalConfig.host}:${finalConfig.port}${finalConfig.wsPath}`,
                 nodeEnv: finalConfig.nodeEnv,
               });
+
+              // Load network policies from database and sync to in-memory engine
+              try {
+                const policies = await loadAllNetworkPolicies();
+                if (policies.length > 0) {
+                  getNetworkPolicyEngine().syncPolicies(policies);
+                  logger.info('Network policies loaded from database', {
+                    count: policies.length,
+                  });
+                } else {
+                  logger.info('No network policies found in database');
+                }
+              } catch (err) {
+                logger.warn('Failed to load network policies from database', {
+                  error: err instanceof Error ? err.message : 'Unknown error',
+                });
+                // Continue startup even if policy loading fails
+              }
 
               // Start the scheduler service after server is running
               schedulerService.start();

@@ -210,3 +210,18 @@ export {
   emitNodeLost,
   emitNodeRecovered,
 } from './events.js';
+
+// Network policy queries (persistent inter-service communication rules)
+export {
+  type NetworkPolicyResult,
+  NetworkPolicyQueries,
+  getNetworkPolicyQueries,
+  resetNetworkPolicyQueries,
+  createNetworkPolicy,
+  getNetworkPolicyById,
+  getNetworkPolicyByPair,
+  listNetworkPolicies,
+  deleteNetworkPolicy,
+  deleteNetworkPolicyByPair,
+  loadAllNetworkPolicies,
+} from './network-policies.js';
