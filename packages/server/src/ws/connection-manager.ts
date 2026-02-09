@@ -62,6 +62,8 @@ export interface ConnectionInfo {
   lastActivity: Date;
   /** Whether the connection is authenticated */
   isAuthenticated: boolean;
+  /** Connection type: 'agent' for node agents (Supabase JWT), 'pod' for pod subprocesses (pod token) */
+  connectionType?: 'agent' | 'pod';
 }
 
 /**
@@ -204,6 +206,7 @@ export class ConnectionManager {
 
   /**
    * Register a pod's direct connection for WebRTC signaling.
+   * Also marks the connection as authenticated (pod tokens are validated by the network handler).
    */
   private registerPodConnection(podId: string, _serviceId: string): void {
     if (this.currentConnectionId) {
@@ -216,6 +219,20 @@ export class ConnectionManager {
         this.connectionToPods.set(this.currentConnectionId, pods);
       }
       pods.add(podId);
+
+      // Mark the connection as authenticated — the pod token has been validated
+      // by handlePodRegister before this method is called. This allows subsequent
+      // network:signal and network:route:request messages to pass the auth gate.
+      const conn = this.connections.get(this.currentConnectionId);
+      if (conn && !conn.isAuthenticated) {
+        conn.isAuthenticated = true;
+        conn.userId = podId; // Use podId as the identity for pod connections
+        conn.connectionType = 'pod'; // Restrict to network:* messages only
+        logger.debug('Pod connection marked as authenticated via pod token', {
+          podId,
+          connectionId: this.currentConnectionId,
+        });
+      }
       
       logger.debug('Pod registered for direct signaling', {
         podId,
@@ -412,8 +429,8 @@ export class ConnectionManager {
         break;
 
       case 'node:register':
-        // Require authentication for node registration
-        if (this.options.requireAuth && !conn.isAuthenticated) {
+        // Require authentication for node registration (agents only, not pod connections)
+        if (this.options.requireAuth && (!conn.isAuthenticated || conn.connectionType === 'pod')) {
           this.sendMessage(conn.ws, {
             type: 'node:register:error',
             payload: { code: 'UNAUTHORIZED', message: 'Authentication required' },
@@ -425,8 +442,8 @@ export class ConnectionManager {
         break;
 
       case 'node:reconnect':
-        // Require authentication for node reconnection
-        if (this.options.requireAuth && !conn.isAuthenticated) {
+        // Require authentication for node reconnection (agents only, not pod connections)
+        if (this.options.requireAuth && (!conn.isAuthenticated || conn.connectionType === 'pod')) {
           this.sendMessage(conn.ws, {
             type: 'node:reconnect:error',
             payload: { code: 'UNAUTHORIZED', message: 'Authentication required' },
@@ -438,8 +455,8 @@ export class ConnectionManager {
         break;
 
       case 'node:heartbeat':
-        // Require authentication for heartbeat
-        if (this.options.requireAuth && !conn.isAuthenticated) {
+        // Require authentication for heartbeat (agents only, not pod connections)
+        if (this.options.requireAuth && (!conn.isAuthenticated || conn.connectionType === 'pod')) {
           this.sendMessage(conn.ws, {
             type: 'node:heartbeat:error',
             payload: { code: 'UNAUTHORIZED', message: 'Authentication required' },
@@ -453,7 +470,10 @@ export class ConnectionManager {
       default:
         // Check if it's a network message (WebRTC signalling, routing, registry)
         if (message.type.startsWith('network:')) {
-          if (this.options.requireAuth && !conn.isAuthenticated) {
+          // Pod registration has its own pod-token auth — exempt from connection-level auth.
+          // All other network messages require connection-level auth.
+          const isPodRegister = message.type === NETWORK_WS_TYPES.POD_REGISTER;
+          if (!isPodRegister && this.options.requireAuth && !conn.isAuthenticated) {
             this.sendMessage(conn.ws, {
               type: `${message.type}:error`,
               payload: { code: 'UNAUTHORIZED', message: 'Authentication required' },
@@ -467,22 +487,30 @@ export class ConnectionManager {
             try {
               switch (message.type) {
                 case NETWORK_WS_TYPES.SIGNAL:
-                  this.networkHandlers.handleSignalRelay(message as WsMessage<SignallingMessage>);
+                  this.networkHandlers.handleSignalRelay(
+                    message as WsMessage<SignallingMessage>,
+                    conn.userId,
+                    conn.connectionType,
+                  );
                   return;
                 case NETWORK_WS_TYPES.ROUTE_REQUEST:
                   this.networkHandlers.handleRoutingRequest(
                     message as WsMessage<RoutingRequest>,
                     (response) => this.sendMessage(conn.ws, response),
+                    conn.userId,
+                    conn.connectionType,
                   );
                   return;
                 case NETWORK_WS_TYPES.REGISTRY_HEARTBEAT:
                   this.networkHandlers.handleRegistryHeartbeat(
                     message as WsMessage<{ serviceId: string; podId: string; nodeId: string }>,
+                    conn.userId,
+                    conn.connectionType,
                   );
                   return;
                 case NETWORK_WS_TYPES.POD_REGISTER:
                   this.networkHandlers.handlePodRegister(
-                    message as WsMessage<{ podId: string; serviceId: string }>,
+                    message as WsMessage<{ podId: string; serviceId: string; authToken?: string }>,
                     (response) => this.sendMessage(conn.ws, response),
                   );
                   return;
@@ -497,8 +525,8 @@ export class ConnectionManager {
 
         // Check if it's a pod message
         if (message.type.startsWith('pod:')) {
-          // Require authentication for pod operations
-          if (this.options.requireAuth && !conn.isAuthenticated) {
+          // Require authentication for pod operations (agents only, not pod connections)
+          if (this.options.requireAuth && (!conn.isAuthenticated || conn.connectionType === 'pod')) {
             this.sendMessage(conn.ws, {
               type: `${message.type}:error`,
               payload: { code: 'UNAUTHORIZED', message: 'Authentication required' },
@@ -515,8 +543,8 @@ export class ConnectionManager {
 
         // Check if it's a metrics message
         if (message.type.startsWith('metrics:')) {
-          // Require authentication for metrics operations
-          if (this.options.requireAuth && !conn.isAuthenticated) {
+          // Require authentication for metrics operations (agents only, not pod connections)
+          if (this.options.requireAuth && (!conn.isAuthenticated || conn.connectionType === 'pod')) {
             this.sendMessage(conn.ws, {
               type: `${message.type}:error`,
               payload: { code: 'UNAUTHORIZED', message: 'Authentication required' },
@@ -560,6 +588,7 @@ export class ConnectionManager {
         conn.isAuthenticated = true;
         conn.userId = result.userId;
         conn.userRoles = result.userRoles;
+        conn.connectionType = 'agent'; // Full agent access
 
         logger.info('Connection authenticated', {
           connectionId: conn.id,

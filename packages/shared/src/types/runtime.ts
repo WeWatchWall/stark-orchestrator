@@ -73,6 +73,12 @@ export interface PodDeployPayload {
   podId: string;
   nodeId: string;
   serviceId?: string;
+  /** Pod authentication token for data plane (network) connections */
+  podToken?: string;
+  /** Refresh token for automatic token renewal */
+  podRefreshToken?: string;
+  /** Token expiration timestamp (ISO string) */
+  podTokenExpiresAt?: string;
   pack: {
     id: string;
     name: string;
@@ -215,6 +221,25 @@ export interface PackExecutionContext {
    * Used by HTTP interceptors for policy checking and routing.
    */
   serviceId?: string;
+
+  /**
+   * Pod authentication token for orchestrator registration.
+   * Used to prevent pod spoofing by verifying the pod's identity.
+   * @internal Set by the runtime, not intended for pack code use.
+   */
+  authToken?: string;
+
+  /**
+   * Pod refresh token for automatic token renewal.
+   * @internal Set by the runtime, not intended for pack code use.
+   */
+  refreshToken?: string;
+
+  /**
+   * Pod token expiration timestamp (ISO 8601).
+   * @internal Set by the runtime, not intended for pack code use.
+   */
+  tokenExpiresAt?: string;
 
   /**
    * Browser-only: register inbound request handlers.

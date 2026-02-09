@@ -245,6 +245,12 @@ export class PackExecutor {
       args?: unknown[];
       /** Service ID for network policy checks (required for inter-service comm) */
       serviceId?: string;
+      /** Pod authentication token for data plane connections */
+      podToken?: string;
+      /** Refresh token for automatic token renewal */
+      podRefreshToken?: string;
+      /** Token expiration timestamp (ISO string) */
+      podTokenExpiresAt?: string;
     } = {}
   ): ExecutionHandle {
     this.ensureInitialized();
@@ -332,6 +338,10 @@ export class PackExecutor {
       },
       // Networking: service ID for policy checks
       serviceId,
+      // Authentication: pod token for data plane auth (prevents spoofing)
+      authToken: options.podToken,
+      refreshToken: options.podRefreshToken,
+      tokenExpiresAt: options.podTokenExpiresAt,
     };
 
     this.config.logger.info('Starting pack execution', {
@@ -593,6 +603,7 @@ export class PackExecutor {
         // Networking: pod connects directly to orchestrator for signaling
         orchestratorUrl: this.config.orchestratorWsUrl,
         insecure: this.config.insecure,
+        // Note: authToken, refreshToken, tokenExpiresAt are already in serializableContext from context
       };
       const taskHandle = this.workerAdapter.execTaskCancellable<unknown>(
         bundleCode,

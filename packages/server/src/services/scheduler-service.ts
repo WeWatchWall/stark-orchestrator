@@ -12,6 +12,7 @@ import { isRuntimeCompatible } from '@stark-o/shared';
 import { getPodQueriesAdmin, getPackQueriesAdmin, getNodeQueries } from '../supabase/index.js';
 import { schedulePodWithHistory } from '../supabase/pod-history-service.js';
 import type { ConnectionManager } from '../ws/connection-manager.js';
+import { generatePodToken } from './pod-auth-service.js';
 
 /**
  * Logger for scheduler service
@@ -329,6 +330,16 @@ export class SchedulerService {
     // The registry uses service NAME for routing, not UUID
     const serviceName = pod.labels?.['stark.io/service'] as string | undefined;
 
+    // Generate pod authentication token for data plane
+    // This prevents pod spoofing - only pods with valid tokens can register
+    const podTokenResult = generatePodToken(
+      podId,
+      nodeId,
+      serviceName ?? '',  // Service ID (empty string if no service)
+      pod.incarnation,
+      pod.createdBy,
+    );
+
     // Send pod:deploy message to the node
     const sent = this.connectionManager.sendToConnection(connectionId, {
       type: 'pod:deploy',
@@ -336,6 +347,9 @@ export class SchedulerService {
         podId,
         nodeId,
         serviceId: serviceName,
+        podToken: podTokenResult.token,
+        podRefreshToken: podTokenResult.refreshToken,
+        podTokenExpiresAt: podTokenResult.expiresAt,
         pack: {
           id: pack.id,
           name: pack.name,

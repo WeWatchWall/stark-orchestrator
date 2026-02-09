@@ -40,6 +40,12 @@ import type {
 
 // ── Configuration ───────────────────────────────────────────────────────────
 
+/** Token refresh threshold: 15 minutes before expiration */
+export const TOKEN_REFRESH_THRESHOLD_MS = 15 * 60 * 1000;
+
+/** Token refresh check interval: every 60 seconds */
+const TOKEN_REFRESH_CHECK_INTERVAL_MS = 60 * 1000;
+
 export interface BrowserPodNetworkConfig {
   /** Pod's unique ID */
   podId: string;
@@ -49,9 +55,39 @@ export interface BrowserPodNetworkConfig {
   orchestratorUrl: string;
   /** Connection timeout in ms (default: 10000) */
   connectionTimeout?: number;
+  /** Authentication token (required for authenticated connections) */
+  authToken?: string;
+  /** Refresh token for token renewal */
+  refreshToken?: string;
+  /** Token expiration timestamp (ISO string) */
+  tokenExpiresAt?: string;
+  /** Reconnect delay in milliseconds (default: 5000) */
+  reconnectDelay?: number;
+  /** Maximum reconnect attempts (default: 10, -1 for infinite) */
+  maxReconnectAttempts?: number;
+  /** Enable automatic reconnection (default: true) */
+  autoReconnect?: boolean;
+  /** Enable automatic token refresh (default: true) */
+  autoTokenRefresh?: boolean;
+  /** Callback when authentication fails */
+  onAuthFailed?: (error: Error) => void;
+  /** Callback when token is refreshed */
+  onTokenRefreshed?: (newToken: string, newRefreshToken?: string, expiresAt?: string) => void;
+  /** Callback for connection state changes */
+  onStateChange?: (state: BrowserNetworkStackState) => void;
   /** Logger function */
   log?: (level: 'debug' | 'info' | 'warn' | 'error', msg: string, data?: Record<string, unknown>) => void;
 }
+
+/** Connection state for the browser network stack */
+export type BrowserNetworkStackState =
+  | 'disconnected'
+  | 'connecting'
+  | 'connected'
+  | 'authenticating'
+  | 'authenticated'
+  | 'registered'
+  | 'reconnecting';
 
 // ── Browser Pod Network Stack ───────────────────────────────────────────────
 
@@ -60,23 +96,43 @@ export interface BrowserPodNetworkConfig {
  *
  * Handles:
  * 1. WebSocket connection to orchestrator (signaling + routing)
- * 2. WebRTC connections to peer pods (data)
- * 3. Fetch interception for transparent *.internal routing
- * 4. Inbound request handling via StarkBrowserListener
+ * 2. Authentication with the orchestrator
+ * 3. Automatic reconnection with exponential backoff
+ * 4. Token refresh for long-running pods
+ * 5. WebRTC connections to peer pods (data)
+ * 6. Fetch interception for transparent *.internal routing
+ * 7. Inbound request handling via StarkBrowserListener
  */
 export class BrowserPodNetworkStack {
-  private readonly config: Required<Omit<BrowserPodNetworkConfig, 'log'>> & { log: NonNullable<BrowserPodNetworkConfig['log']> };
+  private readonly config: Required<Omit<BrowserPodNetworkConfig, 'log' | 'onAuthFailed' | 'onTokenRefreshed' | 'onStateChange' | 'authToken' | 'refreshToken' | 'tokenExpiresAt'>> & { 
+    log: NonNullable<BrowserPodNetworkConfig['log']>;
+    onAuthFailed?: BrowserPodNetworkConfig['onAuthFailed'];
+    onTokenRefreshed?: BrowserPodNetworkConfig['onTokenRefreshed'];
+    onStateChange?: BrowserPodNetworkConfig['onStateChange'];
+  };
+  private authToken: string | null = null;
+  private refreshToken: string | null = null;
+  private tokenExpiresAt: string | null = null;
   private ws: WebSocket | null = null;
   private connectionManager: WebRTCConnectionManager | null = null;
   private serviceCaller: ServiceCaller | null = null;
   private browserListener: StarkBrowserListener | null = null;
   private requestRouter: PodRequestRouter | null = null;
   private connected = false;
+  private authenticated = false;
+  private state: BrowserNetworkStackState = 'disconnected';
   private pendingRoutes: Map<string, {
     resolve: (res: RoutingResponse) => void;
     reject: (err: Error) => void;
   }> = new Map();
   private routeCounter = 0;
+  private reconnectAttempts = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private tokenRefreshTimer: ReturnType<typeof setInterval> | null = null;
+  private isShuttingDown = false;
+  private isRefreshingToken = false;
+  private initPromiseResolve: (() => void) | null = null;
+  private initPromiseReject: ((err: Error) => void) | null = null;
 
   constructor(config: BrowserPodNetworkConfig) {
     this.config = {
@@ -84,6 +140,13 @@ export class BrowserPodNetworkStack {
       serviceId: config.serviceId,
       orchestratorUrl: config.orchestratorUrl,
       connectionTimeout: config.connectionTimeout ?? 10_000,
+      reconnectDelay: config.reconnectDelay ?? 5_000,
+      maxReconnectAttempts: config.maxReconnectAttempts ?? 10,
+      autoReconnect: config.autoReconnect ?? true,
+      autoTokenRefresh: config.autoTokenRefresh ?? true,
+      onAuthFailed: config.onAuthFailed,
+      onTokenRefreshed: config.onTokenRefreshed,
+      onStateChange: config.onStateChange,
       log: config.log ?? ((level, msg, data) => {
         const prefix = `[${new Date().toISOString()}][${config.podId}:net:${level}]`;
         if (data) {
@@ -93,17 +156,60 @@ export class BrowserPodNetworkStack {
         }
       }),
     };
+    this.authToken = config.authToken ?? null;
+    this.refreshToken = config.refreshToken ?? null;
+    this.tokenExpiresAt = config.tokenExpiresAt ?? null;
+  }
+
+  /**
+   * Get the current connection state
+   */
+  getState(): BrowserNetworkStackState {
+    return this.state;
+  }
+
+  /**
+   * Update the state and notify listeners
+   */
+  private setState(newState: BrowserNetworkStackState): void {
+    if (this.state !== newState) {
+      this.state = newState;
+      this.config.log('debug', `State changed to: ${newState}`);
+      this.config.onStateChange?.(newState);
+    }
+  }
+
+  /**
+   * Update authentication credentials (e.g., after token refresh)
+   */
+  updateAuthCredentials(authToken: string, refreshToken?: string, expiresAt?: string): void {
+    this.authToken = authToken;
+    if (refreshToken !== undefined) {
+      this.refreshToken = refreshToken;
+    }
+    if (expiresAt !== undefined) {
+      this.tokenExpiresAt = expiresAt;
+    }
+    this.config.log('info', 'Auth credentials updated');
   }
 
   /**
    * Initialize the network stack.
-   * Opens WebSocket to orchestrator, sets up WebRTC manager, patches fetch.
+   * Opens WebSocket to orchestrator, authenticates, sets up WebRTC manager, patches fetch.
    */
   async init(): Promise<void> {
-    // 1. Connect to orchestrator
+    this.isShuttingDown = false;
+    this.reconnectAttempts = 0;
+
+    // 1. Connect to orchestrator (includes authentication)
     await this.connectToOrchestrator();
 
-    // 2. Set up WebRTC connection manager
+    // 2. Start token refresh timer if enabled and we have credentials
+    if (this.config.autoTokenRefresh && this.refreshToken) {
+      this.startTokenRefresh();
+    }
+
+    // 3. Set up WebRTC connection manager
     const signalSender: SignalSender = (message: SignallingMessage) => {
       this.sendToOrchestrator({
         type: 'network:signal',
@@ -126,18 +232,18 @@ export class BrowserPodNetworkStack {
       },
     });
 
-    // 3. Set up orchestrator router (for routing requests via WS)
+    // 4. Set up orchestrator router (for routing requests via WS)
     const orchestratorRouter: OrchestratorRouter = (request: RoutingRequest) => {
       return this.requestRouteFromOrchestrator(request);
     };
 
-    // 4. Set up request router for inbound traffic
+    // 5. Set up request router for inbound traffic
     this.requestRouter = new PodRequestRouter();
 
-    // 5. Set up browser listener (for explicit handler registration)
+    // 6. Set up browser listener (for explicit handler registration)
     this.browserListener = new StarkBrowserListener(this.requestRouter);
 
-    // 6. Set up service caller
+    // 7. Set up service caller
     this.serviceCaller = new ServiceCaller({
       podId: this.config.podId,
       serviceId: this.config.serviceId,
@@ -145,17 +251,21 @@ export class BrowserPodNetworkStack {
       orchestratorRouter,
     });
 
-    // 7. Intercept fetch() for transparent *.internal routing
+    // 8. Intercept fetch() for transparent *.internal routing
     interceptFetch(this.serviceCaller);
 
-    // 8. Register pod with orchestrator
+    // 9. Register pod with orchestrator
     this.sendToOrchestrator({
       type: 'network:pod:register',
       payload: {
         podId: this.config.podId,
         serviceId: this.config.serviceId,
+        authToken: this.authToken ?? undefined,
       },
     });
+
+    this.setState('registered');
+    this.config.log('info', '✅ Browser network stack initialized and registered');
   }
 
   /**
@@ -178,6 +288,14 @@ export class BrowserPodNetworkStack {
    * Shut down the network stack cleanly.
    */
   async shutdown(): Promise<void> {
+    this.isShuttingDown = true;
+
+    // Stop token refresh
+    this.stopTokenRefresh();
+
+    // Cancel pending reconnection
+    this.cancelReconnect();
+
     // Restore fetch
     restoreFetch();
 
@@ -191,6 +309,9 @@ export class BrowserPodNetworkStack {
     }
 
     this.connected = false;
+    this.authenticated = false;
+    this.setState('disconnected');
+    this.config.log('info', 'Browser network stack shut down');
   }
 
   /**
@@ -215,6 +336,13 @@ export class BrowserPodNetworkStack {
   }
 
   /**
+   * Check if authenticated with orchestrator.
+   */
+  isAuthenticated(): boolean {
+    return this.authenticated;
+  }
+
+  /**
    * Log diagnostic information about the network stack state.
    * Call this to debug connectivity issues.
    */
@@ -228,6 +356,17 @@ export class BrowserPodNetworkStack {
       podId: this.config.podId,
       serviceId: this.config.serviceId,
       orchestratorUrl: this.config.orchestratorUrl,
+    });
+
+    // Connection state
+    this.config.log('info', '📡 Connection State', {
+      state: this.state,
+      connected: this.connected,
+      authenticated: this.authenticated,
+      reconnectAttempts: this.reconnectAttempts,
+      hasAuthToken: !!this.authToken,
+      hasRefreshToken: !!this.refreshToken,
+      tokenExpiresAt: this.tokenExpiresAt,
     });
 
     // WebSocket state
@@ -276,6 +415,8 @@ export class BrowserPodNetworkStack {
 
   private connectToOrchestrator(): Promise<void> {
     return new Promise((resolve, reject) => {
+      this.setState('connecting');
+
       const timeout = setTimeout(() => {
         reject(new Error(`Connection to orchestrator timed out after ${this.config.connectionTimeout}ms`));
       }, this.config.connectionTimeout);
@@ -283,11 +424,24 @@ export class BrowserPodNetworkStack {
       // Browser uses native WebSocket API
       this.ws = new WebSocket(this.config.orchestratorUrl);
 
-      this.ws.onopen = () => {
+      // Store resolve/reject for authentication flow
+      this.initPromiseResolve = () => {
         clearTimeout(timeout);
-        this.connected = true;
-        this.config.log('info', '✅ Connected to orchestrator');
         resolve();
+      };
+      this.initPromiseReject = (err: Error) => {
+        clearTimeout(timeout);
+        reject(err);
+      };
+
+      this.ws.onopen = () => {
+        this.connected = true;
+        this.setState('connected');
+        this.config.log('info', '✅ WebSocket connected to orchestrator');
+        // Pod authentication happens via network:pod:register (with pod token),
+        // NOT via auth:authenticate (which is for Supabase JWT control-plane agents).
+        // Resolve immediately so init() can proceed to send network:pod:register.
+        this.initPromiseResolve?.();
       };
 
       this.ws.onmessage = (event) => {
@@ -311,18 +465,250 @@ export class BrowserPodNetworkStack {
       };
 
       this.ws.onclose = (event) => {
-        this.connected = false;
-        this.config.log('info', 'WebSocket closed', {
-          code: event.code,
-          reason: event.reason,
-        });
-        // Reject pending routes
-        for (const [id, pending] of this.pendingRoutes) {
-          pending.reject(new Error('Connection closed'));
-          this.pendingRoutes.delete(id);
-        }
+        this.handleClose(event.code, event.reason);
       };
     });
+  }
+
+  /**
+   * Handle WebSocket close
+   */
+  private handleClose(code: number, reason: string): void {
+    this.config.log('info', 'WebSocket closed', { code, reason });
+    
+    this.connected = false;
+    this.authenticated = false;
+    
+    // Reject pending routes
+    for (const [id, pending] of this.pendingRoutes) {
+      pending.reject(new Error('Connection closed'));
+      this.pendingRoutes.delete(id);
+    }
+
+    // If we were in the middle of initial connection, reject
+    if (this.initPromiseReject && this.state !== 'registered') {
+      this.initPromiseReject(new Error(`Connection closed: ${code} ${reason}`));
+      this.initPromiseResolve = null;
+      this.initPromiseReject = null;
+    }
+
+    this.setState('disconnected');
+
+    // Attempt reconnection if enabled and not shutting down
+    if (this.config.autoReconnect && !this.isShuttingDown) {
+      this.scheduleReconnect();
+    }
+  }
+
+  /**
+   * Schedule a reconnection attempt with exponential backoff
+   */
+  private scheduleReconnect(): void {
+    if (this.isShuttingDown) return;
+
+    if (
+      this.config.maxReconnectAttempts !== -1 &&
+      this.reconnectAttempts >= this.config.maxReconnectAttempts
+    ) {
+      this.config.log('error', 'Max reconnect attempts reached, giving up', {
+        attempts: this.reconnectAttempts,
+        maxAttempts: this.config.maxReconnectAttempts,
+      });
+      return;
+    }
+
+    this.reconnectAttempts++;
+    // Linear backoff capped at 5x base delay (same as control plane)
+    const delay = this.config.reconnectDelay * Math.min(this.reconnectAttempts, 5);
+
+    this.config.log('info', 'Scheduling reconnect', {
+      attempt: this.reconnectAttempts,
+      maxAttempts: this.config.maxReconnectAttempts,
+      delay,
+    });
+
+    this.setState('reconnecting');
+
+    this.reconnectTimer = setTimeout(async () => {
+      this.reconnectTimer = null;
+      try {
+        await this.reconnect();
+      } catch (error) {
+        this.config.log('error', 'Reconnect failed', { 
+          error: error instanceof Error ? error.message : String(error) 
+        });
+        this.scheduleReconnect();
+      }
+    }, delay);
+  }
+
+  /**
+   * Cancel pending reconnection
+   */
+  private cancelReconnect(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  /**
+   * Reconnect to orchestrator and re-register
+   */
+  private async reconnect(): Promise<void> {
+    this.config.log('info', 'Attempting reconnect...');
+
+    await this.connectToOrchestrator();
+
+    // Re-register with orchestrator
+    this.sendToOrchestrator({
+      type: 'network:pod:register',
+      payload: {
+        podId: this.config.podId,
+        serviceId: this.config.serviceId,
+        authToken: this.authToken ?? undefined,
+      },
+    });
+
+    this.setState('registered');
+    this.reconnectAttempts = 0; // Reset on successful reconnection
+    this.config.log('info', '✅ Reconnected and re-registered');
+  }
+
+  // ── Token Refresh ─────────────────────────────────────────────────────────
+
+  /**
+   * Start the token refresh timer
+   */
+  private startTokenRefresh(): void {
+    this.stopTokenRefresh();
+
+    // Check immediately if we need to refresh
+    void this.checkAndRefreshToken();
+
+    // Then check periodically
+    this.tokenRefreshTimer = setInterval(() => {
+      void this.checkAndRefreshToken();
+    }, TOKEN_REFRESH_CHECK_INTERVAL_MS);
+
+    this.config.log('debug', 'Token refresh timer started');
+  }
+
+  /**
+   * Stop the token refresh timer
+   */
+  private stopTokenRefresh(): void {
+    if (this.tokenRefreshTimer) {
+      clearInterval(this.tokenRefreshTimer);
+      this.tokenRefreshTimer = null;
+    }
+  }
+
+  /**
+   * Check if token needs refresh and refresh if necessary
+   */
+  private async checkAndRefreshToken(): Promise<void> {
+    if (this.isShuttingDown || this.isRefreshingToken) {
+      return;
+    }
+
+    // Check if we should refresh based on time remaining
+    if (!this.shouldRefreshToken()) {
+      return;
+    }
+
+    if (!this.refreshToken) {
+      this.config.log('warn', 'Token needs refresh but no refresh token available');
+      return;
+    }
+
+    await this.refreshTokenNow();
+  }
+
+  /**
+   * Check if we should refresh the token
+   */
+  private shouldRefreshToken(): boolean {
+    if (!this.tokenExpiresAt) {
+      return false;
+    }
+
+    const expiresAt = new Date(this.tokenExpiresAt).getTime();
+    const now = Date.now();
+    const timeRemaining = expiresAt - now;
+
+    return timeRemaining > 0 && timeRemaining <= TOKEN_REFRESH_THRESHOLD_MS;
+  }
+
+  /**
+   * Refresh the access token using the refresh token
+   */
+  private async refreshTokenNow(): Promise<boolean> {
+    if (this.isRefreshingToken || !this.refreshToken) {
+      return false;
+    }
+
+    this.isRefreshingToken = true;
+    this.config.log('info', 'Refreshing access token...');
+
+    try {
+      const httpUrl = this.config.orchestratorUrl
+        .replace(/^wss:\/\//, 'https://')
+        .replace(/^ws:\/\//, 'http://')
+        .replace(/\/ws\/?$/, '');
+
+      const response = await fetch(`${httpUrl}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken: this.refreshToken }),
+      });
+
+      interface RefreshResponse {
+        success: boolean;
+        data?: {
+          accessToken: string;
+          refreshToken?: string;
+          expiresAt: string;
+        };
+        error?: { code: string; message: string };
+      }
+
+      const result = await response.json() as RefreshResponse;
+
+      if (!result.success || !result.data) {
+        this.config.log('error', 'Token refresh failed', {
+          error: result.error?.message ?? 'Unknown error',
+        });
+        return false;
+      }
+
+      // Update credentials
+      this.authToken = result.data.accessToken;
+      if (result.data.refreshToken) {
+        this.refreshToken = result.data.refreshToken;
+      }
+      this.tokenExpiresAt = result.data.expiresAt;
+
+      // Notify callback
+      this.config.onTokenRefreshed?.(
+        result.data.accessToken,
+        result.data.refreshToken,
+        result.data.expiresAt
+      );
+
+      this.config.log('info', 'Access token refreshed successfully', {
+        expiresAt: this.tokenExpiresAt,
+      });
+
+      return true;
+    } catch (error) {
+      this.config.log('error', 'Token refresh error', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    } finally {
+      this.isRefreshingToken = false;
+    }
   }
 
   private sendToOrchestrator(message: WsMessage): void {
@@ -339,6 +725,27 @@ export class BrowserPodNetworkStack {
 
   private handleOrchestratorMessage(message: WsMessage): void {
     switch (message.type) {
+      case 'network:pod:register:ack': {
+        // Pod registration confirmed by orchestrator
+        this.authenticated = true;
+        this.config.log('info', '✅ Pod registered and authenticated with orchestrator');
+        break;
+      }
+
+      case 'network:pod:register:error': {
+        // Pod registration rejected
+        const payload = message.payload as { code?: string; message?: string };
+        const error = new Error(payload.message ?? 'Pod registration failed');
+        this.config.log('error', '❌ Pod registration failed', { 
+          code: payload.code, 
+          message: payload.message 
+        });
+        
+        // Notify callback
+        this.config.onAuthFailed?.(error);
+        break;
+      }
+
       case 'network:signal': {
         // Incoming WebRTC signaling from another pod
         const signal = message.payload as SignallingMessage;

@@ -17,6 +17,7 @@ import { getPodQueriesAdmin } from '../supabase/pods.js';
 import { getNodeQueries } from '../supabase/nodes.js';
 import { getPackQueriesAdmin } from '../supabase/packs.js';
 import { getConnectionManager, sendToNode } from './connection-service.js';
+import { generatePodToken } from './pod-auth-service.js';
 
 /**
  * Logger for service controller
@@ -890,6 +891,15 @@ export class ServiceController {
 
     const pod = podResult.data;
 
+    // Generate pod authentication token for data plane
+    const podTokenResult = generatePodToken(
+      podId,
+      nodeId,
+      serviceName ?? '',
+      pod.incarnation,
+      pod.createdBy,
+    );
+
     // Send pod:deploy message to the node
     const sent = connectionManager.sendToConnection(node.connectionId, {
       type: 'pod:deploy',
@@ -897,6 +907,9 @@ export class ServiceController {
         podId,
         nodeId,
         serviceId: serviceName,
+        podToken: podTokenResult.token,
+        podRefreshToken: podTokenResult.refreshToken,
+        podTokenExpiresAt: podTokenResult.expiresAt,
         pack: {
           id: pack.id,
           name: pack.name,

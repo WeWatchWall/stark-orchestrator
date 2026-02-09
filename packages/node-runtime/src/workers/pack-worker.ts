@@ -43,6 +43,13 @@ interface WorkerRequest {
     orchestratorUrl?: string;
     /** Skip TLS verification for orchestrator connection */
     insecure?: boolean;
+    // ── Authentication ──
+    /** Pod authentication token for data plane connections */
+    authToken?: string;
+    /** Refresh token for automatic token renewal */
+    refreshToken?: string;
+    /** Token expiration timestamp (ISO string) */
+    tokenExpiresAt?: string;
   };
   args: unknown[];
 }
@@ -125,6 +132,10 @@ async function executePack(request: WorkerRequest): Promise<void> {
         serviceId: context.serviceId,
         orchestratorUrl: context.orchestratorUrl,
         insecure: context.insecure,
+        // Authentication credentials for data plane
+        authToken: context.authToken,
+        refreshToken: context.refreshToken,
+        tokenExpiresAt: context.tokenExpiresAt,
         log: (level, msg, data) => {
           const logFn = level === 'error' ? originalConsole.error : originalConsole.log;
           const prefix = `[${new Date().toISOString()}][${podId}:net:${level}]`;

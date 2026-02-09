@@ -185,8 +185,12 @@ export class PodHandler {
       };
 
       // Execute the pack — pass serviceId to enable WebRTC networking for inter-service communication
+      // Also pass pod auth tokens for secure registration with orchestrator
       const executionHandle = this.config.executor.execute(packObj, podObj, {
         serviceId: payload.serviceId,
+        podToken: payload.podToken,
+        podRefreshToken: payload.podRefreshToken,
+        podTokenExpiresAt: payload.podTokenExpiresAt,
       });
       state.executionHandle = executionHandle;
       state.startedAt = new Date();

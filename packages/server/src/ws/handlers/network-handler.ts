@@ -26,6 +26,7 @@ import type {
   RoutingRequest,
   RoutingResponse,
 } from '@stark-o/shared';
+import { validatePodToken } from '../../services/pod-auth-service.js';
 
 const logger = createServiceLogger(
   { level: 'debug', service: 'stark-orchestrator' },
@@ -55,11 +56,27 @@ export function createNetworkWsHandlers(connectionManager: NetworkConnectionMana
     /**
      * Handle a WebRTC signalling relay message.
      * Forwards the signal to the target pod via the connection manager.
+     * For pod connections, validates that sourcePodId matches the authenticated identity.
+     * Agent connections are trusted to relay on behalf of any pod they manage.
      */
-    handleSignalRelay(message: WsMessage<SignallingMessage>): void {
+    handleSignalRelay(
+      message: WsMessage<SignallingMessage>,
+      connUserId?: string,
+      connectionType?: 'agent' | 'pod',
+    ): void {
       const signal = message.payload;
       if (!signal || !signal.targetPodId || !signal.sourcePodId) {
         logger.warn('Invalid signalling message — missing targetPodId or sourcePodId');
+        return;
+      }
+
+      // For pod connections, verify the sender isn't spoofing another pod's identity.
+      // Agent connections (node agents, browser agents) relay on behalf of their managed pods.
+      if (connectionType === 'pod' && connUserId && connUserId !== signal.sourcePodId) {
+        logger.warn('Signal relay rejected — sourcePodId mismatch with connection identity', {
+          sourcePodId: signal.sourcePodId,
+          connUserId,
+        });
         return;
       }
 
@@ -87,16 +104,35 @@ export function createNetworkWsHandlers(connectionManager: NetworkConnectionMana
     /**
      * Handle a routing request from a pod (via WebSocket instead of HTTP).
      * Returns a routing response to the requesting pod.
+     * For pod connections, validates that callerPodId matches the authenticated identity.
+     * Agent connections are trusted to route on behalf of any pod they manage.
      */
     handleRoutingRequest(
       message: WsMessage<RoutingRequest>,
       sendResponse: (response: WsMessage<RoutingResponse | { error: string }>) => void,
+      connUserId?: string,
+      connectionType?: 'agent' | 'pod',
     ): void {
       const request = message.payload;
       if (!request || !request.callerPodId || !request.targetServiceId) {
         sendResponse({
           type: 'network:route:response',
           payload: { error: 'Invalid routing request' },
+          correlationId: message.correlationId,
+        });
+        return;
+      }
+
+      // For pod connections, verify the caller isn't spoofing another pod's identity.
+      // Agent connections relay routing on behalf of their managed pods.
+      if (connectionType === 'pod' && connUserId && connUserId !== request.callerPodId) {
+        logger.warn('Routing request rejected — callerPodId mismatch with connection identity', {
+          callerPodId: request.callerPodId,
+          connUserId,
+        });
+        sendResponse({
+          type: 'network:route:response',
+          payload: { error: 'Caller identity mismatch' },
           correlationId: message.correlationId,
         });
         return;
@@ -137,13 +173,26 @@ export function createNetworkWsHandlers(connectionManager: NetworkConnectionMana
     /**
      * Handle a pod's service registry heartbeat.
      * The pod tells the orchestrator which service it hosts.
+     * For pod connections, validates that podId matches the authenticated identity.
      */
     handleRegistryHeartbeat(
       message: WsMessage<{ serviceId: string; podId: string; nodeId: string }>,
+      connUserId?: string,
+      connectionType?: 'agent' | 'pod',
     ): void {
       const { serviceId, podId, nodeId } = message.payload ?? {};
       if (!serviceId || !podId || !nodeId) {
         logger.warn('Invalid registry heartbeat — missing fields');
+        return;
+      }
+
+      // For pod connections, verify the heartbeat podId matches the authenticated identity.
+      // Agent connections (node agents) can heartbeat on behalf of any pod they manage.
+      if (connectionType === 'pod' && connUserId && connUserId !== podId) {
+        logger.warn('Registry heartbeat rejected — podId mismatch with connection identity', {
+          heartbeatPodId: podId,
+          connUserId,
+        });
         return;
       }
 
@@ -153,12 +202,13 @@ export function createNetworkWsHandlers(connectionManager: NetworkConnectionMana
     /**
      * Handle pod registration for direct WebRTC signaling.
      * Called when a pod subprocess connects directly to orchestrator.
+     * Validates pod auth token to prevent spoofing.
      */
     handlePodRegister(
-      message: WsMessage<{ podId: string; serviceId: string }>,
+      message: WsMessage<{ podId: string; serviceId: string; authToken?: string }>,
       sendResponse: (response: WsMessage) => void,
     ): void {
-      const { podId, serviceId } = message.payload ?? {};
+      const { podId, serviceId, authToken } = message.payload ?? {};
       if (!podId || !serviceId) {
         sendResponse({
           type: 'network:pod:register:error',
@@ -168,13 +218,72 @@ export function createNetworkWsHandlers(connectionManager: NetworkConnectionMana
         return;
       }
 
+      // Validate the pod auth token to prevent spoofing
+      if (!authToken) {
+        logger.warn('Pod registration rejected — missing auth token', { podId, serviceId });
+        sendResponse({
+          type: 'network:pod:register:error',
+          payload: { error: 'Missing auth token' },
+          correlationId: message.correlationId,
+        });
+        return;
+      }
+
+      const tokenResult = validatePodToken(authToken);
+      if (!tokenResult.valid || !tokenResult.claims) {
+        logger.warn('Pod registration rejected — invalid auth token', { 
+          podId, 
+          serviceId, 
+          error: tokenResult.error,
+        });
+        sendResponse({
+          type: 'network:pod:register:error',
+          payload: { error: `Invalid auth token: ${tokenResult.error}` },
+          correlationId: message.correlationId,
+        });
+        return;
+      }
+
+      // Verify the token claims match the registration request
+      if (tokenResult.claims.podId !== podId) {
+        logger.warn('Pod registration rejected — podId mismatch', { 
+          claimedPodId: podId, 
+          tokenPodId: tokenResult.claims.podId,
+        });
+        sendResponse({
+          type: 'network:pod:register:error',
+          payload: { error: 'Pod ID mismatch' },
+          correlationId: message.correlationId,
+        });
+        return;
+      }
+
+      if (tokenResult.claims.serviceId !== serviceId) {
+        logger.warn('Pod registration rejected — serviceId mismatch', { 
+          claimedServiceId: serviceId, 
+          tokenServiceId: tokenResult.claims.serviceId,
+        });
+        sendResponse({
+          type: 'network:pod:register:error',
+          payload: { error: 'Service ID mismatch' },
+          correlationId: message.correlationId,
+        });
+        return;
+      }
+
       // Register the pod connection
       connectionManager.registerPodConnection?.(podId, serviceId);
 
-      // Register in service registry (with 'direct' as nodeId since pod connects directly)
-      getServiceRegistry().register(serviceId, podId, 'direct', 'healthy');
+      // Register in service registry (with nodeId from token, 'direct' fallback)
+      const nodeId = tokenResult.claims.nodeId || 'direct';
+      getServiceRegistry().register(serviceId, podId, nodeId, 'healthy');
 
-      logger.info('Pod registered for direct signaling', { podId, serviceId });
+      logger.info('Pod registered for direct signaling', { 
+        podId, 
+        serviceId, 
+        nodeId,
+        userId: tokenResult.claims.userId,
+      });
 
       sendResponse({
         type: 'network:pod:register:ack',

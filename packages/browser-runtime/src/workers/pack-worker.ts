@@ -55,6 +55,13 @@ interface WorkerRequest {
     serviceId?: string;
     /** Orchestrator WebSocket URL for signaling (e.g., wss://localhost/ws) */
     orchestratorUrl?: string;
+    // ── Pod Authentication ──
+    /** Pod authentication token for orchestrator registration */
+    authToken?: string;
+    /** Pod refresh token for automatic token renewal */
+    refreshToken?: string;
+    /** Pod token expiration timestamp (ISO 8601) */
+    tokenExpiresAt?: string;
   };
   args: unknown[];
 }
@@ -76,6 +83,23 @@ declare const self: DedicatedWorkerGlobalScope & {
 // ── Network state (module-level for cleanup) ─────────────────────────
 let activeWs: WebSocket | null = null;
 let activeNetworkProxy: WorkerNetworkProxy | null = null;
+
+// ── Reconnect state ─────────────────────────────────────────────────
+let isShuttingDown = false;
+let reconnectAttempts = 0;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+const MAX_RECONNECT_ATTEMPTS = 10;
+const RECONNECT_DELAY_MS = 5_000;
+
+// Registration context (needed for re-registration after reconnect)
+let registrationContext: {
+  url: string;
+  podId: string;
+  serviceId: string;
+  authToken?: string;
+  log: typeof console;
+  onMessage: (msg: WsMessage) => void;
+} | null = null;
 
 // ── Main message handler ────────────────────────────────────────────
 
@@ -142,7 +166,8 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>): Promise<void> => {
         context.orchestratorUrl,
         podId,
         originalConsole,
-        (message: WsMessage) => handleOrchestratorMessage(message, pendingRoutes, originalConsole, podId)
+        (message: WsMessage) => handleOrchestratorMessage(message, pendingRoutes, originalConsole, podId),
+        pendingRoutes,
       );
 
       // 2. Set up request router for inbound traffic
@@ -165,9 +190,19 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>): Promise<void> => {
         connectionTimeout: 10_000,
       });
 
+      // Store serviceId + authToken in registration context for reconnect re-registration
+      if (registrationContext) {
+        registrationContext.serviceId = context.serviceId;
+        registrationContext.authToken = context.authToken;
+      }
+
       // 5. Set up orchestrator router (for routing requests via WS)
+      //    Uses the module-level activeWs (not a captured reference) so reconnected sockets are picked up
       const orchestratorRouter = (request: RoutingRequest): Promise<RoutingResponse> => {
-        return requestRouteFromOrchestrator(request, activeWs!, pendingRoutes, routeCounter++, podId, originalConsole);
+        if (!activeWs || activeWs.readyState !== WebSocket.OPEN) {
+          return Promise.reject(new Error('WebSocket not connected — reconnecting'));
+        }
+        return requestRouteFromOrchestrator(request, activeWs, pendingRoutes, routeCounter++, podId, originalConsole);
       };
 
       // 6. Set up service caller with the network proxy
@@ -188,6 +223,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>): Promise<void> => {
         payload: {
           podId: podId,
           serviceId: context.serviceId,
+          authToken: context.authToken,
         },
       }));
     } catch (err) {
@@ -254,13 +290,21 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>): Promise<void> => {
   } finally {
     // Clean up networking
     if (networkInitialized) {
+      isShuttingDown = true; // Prevent reconnect attempts during cleanup
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
       restoreFetch();
       activeNetworkProxy?.disconnectAll();
-      if (activeWs && activeWs.readyState === WebSocket.OPEN) {
+      if (activeWs && (activeWs.readyState === WebSocket.OPEN || activeWs.readyState === WebSocket.CONNECTING)) {
         activeWs.close(1000, 'Pod shutdown');
       }
       activeWs = null;
       activeNetworkProxy = null;
+      registrationContext = null;
+      reconnectAttempts = 0;
+      isShuttingDown = false; // Reset for potential reuse of the worker
     }
 
     // Restore console
@@ -282,8 +326,12 @@ function connectToOrchestrator(
   url: string,
   podId: string,
   log: typeof console,
-  onMessage: (msg: WsMessage) => void
+  onMessage: (msg: WsMessage) => void,
+  pendingRoutes: Map<string, { resolve: (res: RoutingResponse) => void; reject: (err: Error) => void }>,
 ): Promise<WebSocket> {
+  // Store registration context for reconnect re-registration
+  registrationContext = { url, podId, log, onMessage, serviceId: '' /* set after return */ };
+
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       reject(new Error('Connection to orchestrator timed out after 10000ms'));
@@ -293,6 +341,7 @@ function connectToOrchestrator(
 
     ws.onopen = () => {
       clearTimeout(timeout);
+      reconnectAttempts = 0; // Reset on successful connection
       resolve(ws);
     };
 
@@ -311,10 +360,83 @@ function connectToOrchestrator(
       reject(new Error('WebSocket connection error'));
     };
 
-    ws.onclose = () => {
-      // Handled elsewhere
+    ws.onclose = (event) => {
+      log.warn(
+        `[${new Date().toISOString()}][${podId}:net:warn]`,
+        `WebSocket closed (code=${event.code}, reason=${event.reason || 'none'})`
+      );
+
+      // Reject all pending routes — they'll never get a response on this socket
+      for (const [id, pending] of pendingRoutes) {
+        pending.reject(new Error('WebSocket connection closed'));
+        pendingRoutes.delete(id);
+      }
+
+      // Schedule reconnect if not shutting down
+      if (!isShuttingDown) {
+        scheduleReconnect(pendingRoutes);
+      }
     };
   });
+}
+
+function scheduleReconnect(
+  pendingRoutes: Map<string, { resolve: (res: RoutingResponse) => void; reject: (err: Error) => void }>,
+): void {
+  if (isShuttingDown || !registrationContext) return;
+
+  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    registrationContext.log.error(
+      `[${new Date().toISOString()}][${registrationContext.podId}:net:error]`,
+      `Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached — giving up`
+    );
+    return;
+  }
+
+  reconnectAttempts++;
+  // Linear backoff capped at 5x base delay (matches PodNetworkStack)
+  const delay = RECONNECT_DELAY_MS * Math.min(reconnectAttempts, 5);
+
+  registrationContext.log.info(
+    `[${new Date().toISOString()}][${registrationContext.podId}:net:info]`,
+    `Scheduling reconnect attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} in ${delay}ms`
+  );
+
+  reconnectTimer = setTimeout(async () => {
+    reconnectTimer = null;
+    if (isShuttingDown || !registrationContext) return;
+
+    const ctx = registrationContext;
+    try {
+      const ws = await connectToOrchestrator(
+        ctx.url, ctx.podId, ctx.log, ctx.onMessage, pendingRoutes
+      );
+      activeWs = ws;
+
+      // Re-register pod after reconnect
+      ws.send(JSON.stringify({
+        type: 'network:pod:register',
+        payload: {
+          podId: ctx.podId,
+          serviceId: ctx.serviceId,
+          authToken: ctx.authToken,
+        },
+      }));
+
+      ctx.log.info(
+        `[${new Date().toISOString()}][${ctx.podId}:net:info]`,
+        '✅ Reconnected and re-registered with orchestrator'
+      );
+    } catch (err) {
+      ctx.log.error(
+        `[${new Date().toISOString()}][${ctx.podId}:net:error]`,
+        `Reconnect attempt ${reconnectAttempts} failed:`,
+        err instanceof Error ? err.message : String(err)
+      );
+      // Recursive retry
+      scheduleReconnect(pendingRoutes);
+    }
+  }, delay);
 }
 
 function handleOrchestratorMessage(
@@ -324,6 +446,19 @@ function handleOrchestratorMessage(
   podId: string
 ): void {
   switch (message.type) {
+    case 'network:pod:register:ack': {
+      // Pod registration confirmed by orchestrator
+      log.info(`[${new Date().toISOString()}][${podId}:net:info]`, '✅ Pod registered and authenticated with orchestrator');
+      break;
+    }
+
+    case 'network:pod:register:error': {
+      // Pod registration rejected by orchestrator
+      const payload = message.payload as { code?: string; message?: string };
+      log.error(`[${new Date().toISOString()}][${podId}:net:error]`, '❌ Pod registration failed', payload);
+      break;
+    }
+
     case 'network:signal': {
       // Forward WebRTC signals to main thread, which manages RTCPeerConnection
       // (WebRTC is not available in Web Workers - browser limitation)
@@ -364,6 +499,16 @@ function requestRouteFromOrchestrator(
   log: typeof console
 ): Promise<RoutingResponse> {
   return new Promise((resolve, reject) => {
+    // Guard: check WebSocket readyState before attempting to send
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      log.warn(
+        `[${new Date().toISOString()}][${podId}:net:warn]`,
+        `Cannot route request — WebSocket not open (state=${ws?.readyState ?? 'null'}). Reconnect may be in progress.`
+      );
+      reject(new Error('WebSocket not connected — reconnecting'));
+      return;
+    }
+
     const correlationId = `route-${podId}-${counter}`;
 
     const timeout = setTimeout(() => {
@@ -383,11 +528,23 @@ function requestRouteFromOrchestrator(
       },
     });
 
-    ws.send(JSON.stringify({
-      type: 'network:route:request',
-      correlationId,
-      payload: request,
-    }));
+    try {
+      ws.send(JSON.stringify({
+        type: 'network:route:request',
+        correlationId,
+        payload: request,
+      }));
+    } catch (err) {
+      // send() can throw if WS transitions to CLOSING between our check and the call
+      clearTimeout(timeout);
+      pendingRoutes.delete(correlationId);
+      log.warn(
+        `[${new Date().toISOString()}][${podId}:net:warn]`,
+        'WebSocket send failed (connection lost):',
+        err instanceof Error ? err.message : String(err)
+      );
+      reject(new Error('WebSocket send failed — connection lost'));
+    }
   });
 }
 

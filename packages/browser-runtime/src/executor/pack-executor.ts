@@ -294,6 +294,12 @@ export class PackExecutor {
       args?: unknown[];
       /** Service ID for network policy checks (required for inter-service comm) */
       serviceId?: string;
+      /** Pod authentication token for orchestrator registration */
+      podToken?: string;
+      /** Pod refresh token for automatic token renewal */
+      podRefreshToken?: string;
+      /** Pod token expiration timestamp (ISO 8601) */
+      podTokenExpiresAt?: string;
     } = {}
   ): ExecutionHandle {
     this.ensureInitialized();
@@ -373,6 +379,10 @@ export class PackExecutor {
         ...pod.metadata,
       },
       serviceId,
+      // Pod authentication tokens for secure orchestrator registration
+      authToken: options.podToken,
+      refreshToken: options.podRefreshToken,
+      tokenExpiresAt: options.podTokenExpiresAt,
       lifecycle,
       onShutdown: (handler: ShutdownHandler) => {
         shutdownHandlers.push(handler);
@@ -625,6 +635,10 @@ export class PackExecutor {
         ...serializableContext,
         // Networking: pod connects directly to orchestrator for signaling
         orchestratorUrl: this.config.orchestratorWsUrl,
+        // Pod authentication for secure orchestrator registration (from context)
+        authToken: context.authToken,
+        refreshToken: context.refreshToken,
+        tokenExpiresAt: context.tokenExpiresAt,
       };
       
       this.config.logger.debug('Sending context to worker', {
@@ -632,6 +646,7 @@ export class PackExecutor {
         serviceId: workerContext.serviceId,
         orchestratorUrl: workerContext.orchestratorUrl ?? '(not configured)',
         hasNetworking: !!(workerContext.serviceId && workerContext.orchestratorUrl),
+        hasAuthToken: !!workerContext.authToken,
       });
       
       const taskHandle = this.workerAdapter.execTaskCancellable<unknown>(
