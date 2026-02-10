@@ -21,6 +21,7 @@ import { createConnectionManager, type ConnectionManagerOptions } from './ws/con
 import { createSchedulerService } from './services/scheduler-service.js';
 import { getServiceController } from './services/service-controller.js';
 import { createNodeHealthService } from './services/node-health-service.js';
+import { getIngressManager } from './services/ingress-manager.js';
 import { setConnectionManager } from './services/connection-service.js';
 import { bootstrapChaosMode } from './chaos/bootstrap.js';
 import { loadAllNetworkPolicies } from './supabase/index.js';
@@ -160,6 +161,8 @@ export interface ServerInstance {
   serviceController: ReturnType<typeof getServiceController>;
   /** Node health service for stale node detection */
   nodeHealthService: ReturnType<typeof createNodeHealthService>;
+  /** Ingress manager for service port exposure */
+  ingressManager: ReturnType<typeof getIngressManager>;
   /** Server configuration */
   config: ServerConfig;
   /** Start the server */
@@ -240,6 +243,7 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
   let schedulerService: ReturnType<typeof createSchedulerService>;
   let serviceController: ReturnType<typeof getServiceController>;
   let nodeHealthService: ReturnType<typeof createNodeHealthService>;
+  let ingressManager: ReturnType<typeof getIngressManager>;
 
   // Server instance
   const instance: ServerInstance = {
@@ -251,6 +255,7 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
     get schedulerService() { return schedulerService; },
     get serviceController() { return serviceController; },
     get nodeHealthService() { return nodeHealthService; },
+    get ingressManager() { return ingressManager; },
     config: finalConfig,
 
     start: async () => {
@@ -491,6 +496,36 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
               nodeHealthService.start();
               logger.info('Node health service started');
 
+              // Initialize the ingress manager and restore bindings from DB
+              ingressManager = getIngressManager({ host: finalConfig.host });
+              try {
+                const { getServiceQueriesAdmin } = await import('./supabase/services.js');
+                const serviceQueries = getServiceQueriesAdmin();
+                const ingressServices = await serviceQueries.listActiveServices();
+                if (ingressServices.data) {
+                  for (const svc of ingressServices.data) {
+                    if (svc.ingressPort) {
+                      try {
+                        await ingressManager.openIngress(svc.id, svc.name, svc.ingressPort);
+                      } catch (err) {
+                        logger.error('Failed to restore ingress binding', err instanceof Error ? err : undefined, {
+                          serviceId: svc.id,
+                          serviceName: svc.name,
+                          ingressPort: svc.ingressPort,
+                        });
+                      }
+                    }
+                  }
+                }
+                logger.info('Ingress manager started', {
+                  bindings: ingressManager.listBindings().length,
+                });
+              } catch (err) {
+                logger.warn('Failed to restore ingress bindings from DB', {
+                  error: err instanceof Error ? err.message : 'Unknown error',
+                });
+              }
+
               resolve();
             });
 
@@ -511,8 +546,14 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
     },
 
     stop: async () => {
-      return new Promise<void>((resolve, reject) => {
+      return new Promise<void>(async (resolve, reject) => {
         logger.info('Stopping server...');
+
+        // Stop the ingress manager (close all ingress listeners)
+        if (ingressManager) {
+          await ingressManager.shutdown();
+          logger.info('Ingress manager stopped');
+        }
 
         // Stop the node health service
         nodeHealthService.stop();

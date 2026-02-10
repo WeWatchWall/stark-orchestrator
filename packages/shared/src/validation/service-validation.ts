@@ -298,6 +298,41 @@ export function validateFollowLatest(followLatest: unknown): ValidationError | n
 }
 
 /**
+ * Validate ingress port
+ */
+export function validateIngressPort(ingressPort: unknown): ValidationError | null {
+  if (ingressPort === undefined || ingressPort === null) {
+    return null; // Optional
+  }
+
+  if (typeof ingressPort !== 'number') {
+    return {
+      field: 'ingressPort',
+      message: 'Ingress port must be a number',
+      code: 'INVALID_TYPE',
+    };
+  }
+
+  if (!Number.isInteger(ingressPort)) {
+    return {
+      field: 'ingressPort',
+      message: 'Ingress port must be an integer',
+      code: 'INVALID_TYPE',
+    };
+  }
+
+  if (ingressPort < 1 || ingressPort > 65535) {
+    return {
+      field: 'ingressPort',
+      message: 'Ingress port must be between 1 and 65535',
+      code: 'INVALID_VALUE',
+    };
+  }
+
+  return null;
+}
+
+/**
  * Validate create service input
  */
 export function validateCreateServiceInput(input: unknown): ValidationResult {
@@ -397,6 +432,10 @@ export function validateCreateServiceInput(input: unknown): ValidationResult {
   const metadataError = validateServiceMetadata(data.metadata);
   if (metadataError) errors.push(metadataError);
 
+  // Optional: ingressPort
+  const ingressPortError = validateIngressPort(data.ingressPort);
+  if (ingressPortError) errors.push(ingressPortError);
+
   return {
     valid: errors.length === 0,
     errors,
@@ -492,6 +531,12 @@ export function validateUpdateServiceInput(input: unknown): ValidationResult {
   if (data.metadata !== undefined) {
     const metadataError = validateServiceMetadata(data.metadata);
     if (metadataError) errors.push(metadataError);
+  }
+
+  // Optional: ingressPort
+  if (data.ingressPort !== undefined && data.ingressPort !== null) {
+    const ingressPortError = validateIngressPort(data.ingressPort);
+    if (ingressPortError) errors.push(ingressPortError);
   }
 
   return {

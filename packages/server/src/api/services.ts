@@ -10,6 +10,7 @@ import type { ServiceStatus, CreateServiceInput } from '@stark-o/shared';
 import { validateCreateServiceInput, validateUpdateServiceInput, createServiceLogger, generateCorrelationId } from '@stark-o/shared';
 import { getServiceQueriesAdmin, getServiceQueries } from '../supabase/services.js';
 import { getPackQueriesAdmin } from '../supabase/packs.js';
+import { getIngressManager } from '../services/ingress-manager.js';
 import {
   authMiddleware,
   abilityMiddleware,
@@ -160,8 +161,27 @@ async function createService(req: Request, res: Response): Promise<void> {
       serviceId: result.data?.id,
       name: input.name,
       replicas: input.replicas ?? 1,
+      ingressPort: input.ingressPort,
       correlationId,
     });
+
+    // Open ingress listener if ingressPort is specified
+    if (result.data && input.ingressPort) {
+      try {
+        const ingressManager = getIngressManager();
+        await ingressManager.openIngress(result.data.id, result.data.name, input.ingressPort);
+        requestLogger.info('Ingress opened for service', {
+          serviceId: result.data.id,
+          port: input.ingressPort,
+        });
+      } catch (ingressErr) {
+        requestLogger.error('Failed to open ingress — service created but port not exposed',
+          ingressErr instanceof Error ? ingressErr : undefined, {
+          serviceId: result.data.id,
+          port: input.ingressPort,
+        });
+      }
+    }
 
     sendSuccess(res, { service: result.data }, 201);
   } catch (error) {
@@ -439,6 +459,17 @@ async function deleteService(req: Request, res: Response): Promise<void> {
 
     // First mark as deleting
     await serviceQueries.updateService(id, { status: 'deleting' });
+
+    // Close ingress listener if the service has one
+    try {
+      const ingressManager = getIngressManager();
+      await ingressManager.closeIngress(id);
+    } catch (ingressErr) {
+      requestLogger.warn('Error closing ingress during service deletion', {
+        serviceId: id,
+        error: ingressErr instanceof Error ? ingressErr.message : 'Unknown error',
+      });
+    }
 
     // Then delete
     const result = await serviceQueries.deleteService(id);

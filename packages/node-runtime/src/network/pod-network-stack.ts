@@ -814,6 +814,53 @@ export class PodNetworkStack {
         }
         break;
       }
+
+      case 'ingress:request': {
+        // Incoming HTTP request proxied through the orchestrator's ingress port
+        const correlationId = message.correlationId;
+        const payload = message.payload as {
+          serviceId: string;
+          podId: string;
+          method: string;
+          url: string;
+          headers?: Record<string, string>;
+          body?: string;
+        };
+
+        if (!correlationId || !payload) {
+          this.config.log('warn', '⚠️ [Ingress] Malformed ingress:request — missing correlationId or payload');
+          break;
+        }
+
+        this.config.log('debug', '📥 [Ingress] Received ingress request', {
+          correlationId,
+          method: payload.method,
+          url: payload.url,
+          podId: payload.podId,
+        });
+
+        // Build a ServiceRequest so we can reuse handleInboundRequest's dispatch logic
+        const syntheticRequest: ServiceRequest = {
+          requestId: correlationId,
+          sourcePodId: 'ingress',
+          sourceServiceId: 'ingress',
+          targetPodId: this.config.podId,
+          targetServiceId: this.config.serviceId,
+          method: (payload.method ?? 'GET') as ServiceRequest['method'],
+          path: payload.url ?? '/',
+          headers: payload.headers,
+          body: payload.body,
+        };
+
+        // Dispatch and send the response back via WS (not WebRTC)
+        this.handleIngressRequest(syntheticRequest, correlationId).catch((err) => {
+          this.config.log('error', '❌ [Ingress] Failed to handle ingress request', {
+            correlationId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+        break;
+      }
     }
   }
 
@@ -947,5 +994,80 @@ export class PodNetworkStack {
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  /**
+   * Handle an ingress request from the orchestrator.
+   * Similar to handleInboundRequest but sends the response back via WS
+   * (as `ingress:response`) instead of WebRTC.
+   */
+  private async handleIngressRequest(request: ServiceRequest, correlationId: string): Promise<void> {
+    let response: ServiceResponse;
+
+    try {
+      if (this.serverInterceptor?.hasCapturedServers) {
+        const http = await import('http');
+        const result = await this.serverInterceptor.dispatch(
+          request,
+          http as unknown as Parameters<typeof this.serverInterceptor.dispatch>[1]
+        );
+        response = result;
+      } else if (this.requestRouter) {
+        const result = await this.requestRouter.dispatch(
+          request.method,
+          request.path,
+          request.body,
+          request.headers,
+        );
+        response = {
+          requestId: request.requestId,
+          status: result.status,
+          body: result.body,
+          headers: result.headers,
+        };
+      } else {
+        this.config.log('warn', '⚠️ [Ingress] No handler available for request', {
+          requestId: request.requestId,
+          method: request.method,
+          path: request.path,
+        });
+        response = {
+          requestId: request.requestId,
+          status: 503,
+          body: { error: 'No handler available' },
+        };
+      }
+    } catch (err) {
+      this.config.log('error', '❌ [Ingress] Handler threw exception', {
+        requestId: request.requestId,
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+      response = {
+        requestId: request.requestId,
+        status: 500,
+        body: { error: err instanceof Error ? err.message : 'Internal error' },
+      };
+    }
+
+    // Send response back to orchestrator via WS as ingress:response
+    const bodyStr = typeof response.body === 'string'
+      ? response.body
+      : JSON.stringify(response.body ?? '');
+
+    this.sendToOrchestrator({
+      type: 'ingress:response',
+      correlationId,
+      payload: {
+        status: response.status,
+        headers: response.headers,
+        body: bodyStr,
+      },
+    });
+
+    this.config.log('debug', '📤 [Ingress] Sent ingress response', {
+      correlationId,
+      status: response.status,
+    });
   }
 }

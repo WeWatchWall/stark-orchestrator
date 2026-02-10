@@ -87,6 +87,7 @@ export {
   validateServiceNamespace,
   validateServiceStatus,
   validateServiceMetadata,
+  validateIngressPort,
   validateCreateServiceInput,
   validateUpdateServiceInput,
 } from './validation/index.js';

@@ -80,6 +80,7 @@ async function createHandler(
     toleration?: string[];
     cpu?: string;
     memory?: string;
+    expose?: string;
   }
 ): Promise<void> {
   const name = nameArg || options.name;
@@ -180,6 +181,17 @@ async function createHandler(
       };
     }
 
+    // Parse ingress port
+    if (options.expose) {
+      const port = parseInt(options.expose, 10);
+      if (isNaN(port) || port < 1 || port > 65535) {
+        error('Expose port must be a number between 1 and 65535');
+        process.exit(1);
+      }
+      serviceRequest.ingressPort = port;
+      info(`Ingress: exposing port ${port} on orchestrator`);
+    }
+
     const response = await api.post('/api/services', serviceRequest);
     const result = (await response.json()) as ApiResponse<{ service: Service }>;
 
@@ -204,6 +216,7 @@ async function createHandler(
       'Pack Version': service.packVersion,
       'Namespace': service.namespace,
       'Replicas': service.replicas === 0 ? 'DaemonSet (all nodes)' : service.replicas.toString(),
+      'Ingress Port': (service as any).ingressPort ? (service as any).ingressPort.toString() : chalk.gray('(none)'),
       'Status': statusBadge(service.status),
     });
 
@@ -542,6 +555,7 @@ export function createServiceCommand(): Command {
     .option('-t, --toleration <key=value:effect...>', 'Toleration (can be repeated)')
     .option('--cpu <millicores>', 'CPU request in millicores')
     .option('--memory <mb>', 'Memory request in MB')
+    .option('--expose <port>', 'Expose ingress port on orchestrator server')
     .action(createHandler);
 
   // List services

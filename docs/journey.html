@@ -626,10 +626,10 @@
       width: 3px;
       background: linear-gradient(to bottom, 
         var(--accent-green) 0%,
-        var(--accent-green) 20%,
-        var(--accent-purple) 20%,
-        var(--accent-purple) 30%,
-        var(--border-color) 30%,
+        var(--accent-green) 56%,
+        var(--accent-purple) 56%,
+        var(--accent-purple) 67%,
+        var(--border-color) 67%,
         var(--border-color) 100%
       );
       border-radius: 100px;
@@ -1110,7 +1110,7 @@
       </div>
       <p class="subtitle" id="typewriterTarget"></p>
       <div class="header-badges">
-        <div class="date-badge">February 5, 2026</div>
+        <div class="date-badge">February 10, 2026</div>
         <div class="live-badge">
           <div class="live-dot"></div>
           Actively Developing
@@ -1137,12 +1137,11 @@
         <div class="marquee-item">🚀 Nuxt.js UI</div>
         <div class="marquee-item">🔀 Ingress / LB</div>
         <div class="marquee-item">🔍 Service Discovery</div>
-        <div class="marquee-item">💾 Pod Volumes</div>
+        <div class="marquee-item">🌐 WebRTC Transport</div>
         <div class="marquee-item">📋 Structured Logging</div>
         <div class="marquee-item">🔐 Secrets Mgmt</div>
-        <div class="marquee-item">🛡️ TLS / Audit</div>
-        <div class="marquee-item">🌐 Federation</div>
-        <div class="marquee-item">🤖 AI Scheduling</div>
+        <div class="marquee-item">🛡️ TLS / HTTPS</div>
+        <div class="marquee-item">🛡️ Network Policies</div>
         <!-- Duplicated for seamless loop -->
         <div class="marquee-item">⚡ Vue Reactivity</div>
         <div class="marquee-item">🧠 Reactive Kernel</div>
@@ -1160,12 +1159,11 @@
         <div class="marquee-item">🚀 Nuxt.js UI</div>
         <div class="marquee-item">🔀 Ingress / LB</div>
         <div class="marquee-item">🔍 Service Discovery</div>
-        <div class="marquee-item">💾 Pod Volumes</div>
+        <div class="marquee-item">🌐 WebRTC Transport</div>
         <div class="marquee-item">📋 Structured Logging</div>
         <div class="marquee-item">🔐 Secrets Mgmt</div>
-        <div class="marquee-item">🛡️ TLS / Audit</div>
-        <div class="marquee-item">🌐 Federation</div>
-        <div class="marquee-item">🤖 AI Scheduling</div>
+        <div class="marquee-item">🛡️ TLS / HTTPS</div>
+        <div class="marquee-item">🛡️ Network Policies</div>
       </div>
     </div>
 
@@ -1296,7 +1294,7 @@
 
       <div class="current-stage">
         <span class="current-stage-icon">🚩</span>
-        <span class="current-stage-text">Currently at: <span>Stage 3 — Chaos Engineering & Testing</span> — automated scenarios landing, then logging/metrics, networking, secrets, persistence, and beyond</span>
+        <span class="current-stage-text">Currently at: <span>Stage 6 — Secrets & Security</span> — secrets management API, audit logging, then persistence, dashboard, and beyond</span>
       </div>
     </section>
 
@@ -1367,12 +1365,12 @@
           </div>
         </div>
 
-        <!-- Stage 3: Chaos Engineering & Testing - CURRENT -->
-        <div class="milestone current reveal-left" data-percent="85" style="transition-delay: 0.15s">
+        <!-- Stage 3: Chaos Engineering & Testing -->
+        <div class="milestone completed reveal-left" data-percent="85" style="transition-delay: 0.15s">
           <div class="milestone-header">
             <div class="milestone-title">
               💥 Stage 3 — Chaos Engineering & Testing
-              <span class="milestone-badge badge-current">You Are Here</span>
+              <span class="milestone-badge badge-complete">Complete</span>
             </div>
             <span class="milestone-percentage high">85%</span>
           </div>
@@ -1402,11 +1400,11 @@
         </div>
 
         <!-- Stage 4: Logging, Observability, & Metrics -->
-        <div class="milestone upcoming reveal-left" data-percent="65" style="transition-delay: 0.2s">
+        <div class="milestone completed reveal-left" data-percent="65" style="transition-delay: 0.2s">
           <div class="milestone-header">
             <div class="milestone-title">
               📊 Stage 4 — Logging, Observability & Metrics
-              <span class="milestone-badge badge-current">In Progress</span>
+              <span class="milestone-badge badge-complete">Complete</span>
             </div>
             <span class="milestone-percentage medium">65%</span>
           </div>
@@ -1435,38 +1433,45 @@
         </div>
 
         <!-- Stage 5: Networking & Traffic Management -->
-        <div class="milestone upcoming reveal-left" data-percent="0" style="transition-delay: 0.25s">
+        <div class="milestone completed reveal-left" data-percent="90" style="transition-delay: 0.25s">
           <div class="milestone-header">
             <div class="milestone-title">
               🔀 Stage 5 — Networking & Traffic Management
-              <span class="milestone-badge badge-upcoming">Not Started</span>
+              <span class="milestone-badge badge-complete">Complete</span>
             </div>
-            <span class="milestone-percentage low">0%</span>
+            <span class="milestone-percentage high">90%</span>
           </div>
           <div class="milestone-progress">
-            <div class="milestone-progress-bar low" style="width: 0%"></div>
+            <div class="milestone-progress-bar high" style="width: 0%"></div>
           </div>
           <p class="milestone-desc">
-            Critical for multi-node app traffic. Ingress controllers to route external traffic to pods,
-            load balancers to distribute traffic across nodes/pods, service discovery for pods to locate
-            each other dynamically, network policies / firewalling / segmentation, and optional traffic
-            shaping & QoS. Currently only single-node pod reachability tested.
+            Big win — networking is done. IngressManager (511 lines) with full HTTPS proxy, round-robin
+            + affinity routing. ServiceRegistry with heartbeat-based health tracking, virtual URL scheme.
+            WebRTC pod-to-pod transport, HTTP interception, network policies (deny-by-default), sticky
+            sessions, browser & Node.js pod network stacks. 22+ networking files, ~7,400 lines total.
           </p>
           <div class="milestone-details">
-            <span class="detail-tag" style="color: var(--accent-red);">⬜ Ingress controllers</span>
-            <span class="detail-tag" style="color: var(--accent-red);">⬜ Load balancers</span>
-            <span class="detail-tag" style="color: var(--accent-red);">⬜ Service discovery</span>
-            <span class="detail-tag" style="color: var(--accent-red);">⬜ Network policies</span>
+            <span class="detail-tag highlight">IngressManager (511 lines)</span>
+            <span class="detail-tag highlight">ServiceRegistry + heartbeats</span>
+            <span class="detail-tag highlight">Load balancing (round-robin + affinity)</span>
+            <span class="detail-tag highlight">WebRTC transport (311 lines)</span>
+            <span class="detail-tag highlight">Network policies (deny-by-default)</span>
+            <span class="detail-tag highlight">HTTP interception (270 lines)</span>
+            <span class="detail-tag highlight">Server interceptor (446 lines)</span>
+            <span class="detail-tag highlight">Pod network stack — Node (951 lines)</span>
+            <span class="detail-tag highlight">Pod network stack — Browser (786 lines)</span>
+            <span class="detail-tag highlight">Sticky sessions + TTL cache</span>
+            <span class="detail-tag">network.test.ts (499 lines)</span>
             <span class="detail-tag" style="color: var(--accent-amber);">📋 Traffic shaping & QoS</span>
           </div>
         </div>
 
-        <!-- Stage 6: Secrets & Security -->
-        <div class="milestone upcoming reveal-left" data-percent="45" style="transition-delay: 0.3s">
+        <!-- Stage 6: Secrets & Security - CURRENT -->
+        <div class="milestone current reveal-left" data-percent="45" style="transition-delay: 0.3s">
           <div class="milestone-header">
             <div class="milestone-title">
               🔒 Stage 6 — Secrets & Security
-              <span class="milestone-badge badge-current">In Progress</span>
+              <span class="milestone-badge badge-current">You Are Here</span>
             </div>
             <span class="milestone-percentage medium">45%</span>
           </div>
@@ -1577,31 +1582,7 @@
           </div>
         </div>
 
-        <!-- Stage 10: Advanced / Optional Features -->
-        <div class="milestone upcoming reveal-left" data-percent="0" style="transition-delay: 0.5s">
-          <div class="milestone-header">
-            <div class="milestone-title">
-              🚀 Stage 10 — Advanced / Optional
-              <span class="milestone-badge badge-upcoming">Future</span>
-            </div>
-            <span class="milestone-percentage low">0%</span>
-          </div>
-          <div class="milestone-progress">
-            <div class="milestone-progress-bar low" style="width: 0%"></div>
-          </div>
-          <p class="milestone-desc">
-            Multi-cluster orchestration, advanced networking (multi-network, overlay networks),
-            federation / hybrid cloud integration, multi-tenancy support, and AI-assisted optimization
-            of scheduling & chaos scenarios. Long-term vision items.
-          </p>
-          <div class="milestone-details">
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Multi-cluster</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Overlay networks</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Federation / hybrid cloud</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 Multi-tenancy</span>
-            <span class="detail-tag" style="color: var(--accent-amber);">📋 AI-assisted optimization</span>
-          </div>
-        </div>
+
       </div>
     </section>
 
@@ -1652,8 +1633,8 @@
       <div class="stat-card reveal-scale" style="transition-delay: 0.42s">
         <div class="stat-card-glow"></div>
         <div class="stat-icon">🔀</div>
-        <div class="stat-value" data-target="12">0</div>
-        <div class="stat-label">Cluster Features Planned</div>
+        <div class="stat-value" data-target="9">0</div>
+        <div class="stat-label">Cluster Features Done</div>
       </div>
     </section>
 
@@ -1860,12 +1841,11 @@
         { percent: 88, weight: 1.0 },   // Stage 2: Node & Cluster Management
         { percent: 85, weight: 0.8 },   // Stage 3: Chaos Engineering & Testing
         { percent: 65, weight: 0.6 },   // Stage 4: Logging, Observability & Metrics
-        { percent: 0,  weight: 1.7 },   // Stage 5: Networking & Traffic Management
+        { percent: 90, weight: 1.7 },   // Stage 5: Networking & Traffic Management
         { percent: 45, weight: 0.7 },   // Stage 6: Secrets & Security
         { percent: 0,  weight: 1.4 },   // Stage 7: Persistence & State
         { percent: 10, weight: 0.6 },   // Stage 8: UI / Dashboard
         { percent: 30, weight: 0.8 },   // Stage 9: Full Regression & Reliability
-        { percent: 0,  weight: 0.5 },   // Stage 10: Advanced / Optional
       ];
 
       const totalWeight = milestones.reduce((sum, m) => sum + m.weight, 0);

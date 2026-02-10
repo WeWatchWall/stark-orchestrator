@@ -39,3 +39,9 @@ export {
   resetNodeHealthService,
   type NodeHealthServiceConfig,
 } from './node-health-service.js';
+
+export {
+  IngressManager,
+  getIngressManager,
+  resetIngressManager,
+} from './ingress-manager.js';

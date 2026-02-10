@@ -23,6 +23,7 @@ import { routeMetricsMessage } from './handlers/metrics-handler.js';
 import { createNetworkWsHandlers, NETWORK_WS_TYPES } from './handlers/network-handler.js';
 import type { RegisterNodeInput, NodeHeartbeat, UserRole, SignallingMessage, RoutingRequest } from '@stark-o/shared';
 import { getServiceRegistry } from '@stark-o/shared';
+import { getIngressManager } from '../services/ingress-manager.js';
 import { getSupabaseServiceClient } from '../supabase/client.js';
 import { getUserById } from '../supabase/auth.js';
 import { getChaosIntegration, isChaosIntegrationAttached } from '../chaos/integration.js';
@@ -553,6 +554,19 @@ export class ConnectionManager {
             return;
           }
           await routeMetricsMessage(wsConnection, message);
+          return;
+        }
+
+        // Handle ingress response messages from nodes/pods
+        if (message.type === 'ingress:response') {
+          if (message.correlationId) {
+            const payload = message.payload as {
+              status: number;
+              headers?: Record<string, string>;
+              body?: string;
+            };
+            getIngressManager().handleIngressResponse(message.correlationId, payload);
+          }
           return;
         }
 

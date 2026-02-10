@@ -103,6 +103,7 @@ export {
   validateServiceStatus,
   validateServiceMetadata,
   validateFollowLatest,
+  validateIngressPort,
   validateCreateServiceInput,
   validateUpdateServiceInput,
 } from './service-validation';

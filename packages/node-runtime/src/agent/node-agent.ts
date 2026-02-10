@@ -564,6 +564,29 @@ export class NodeAgent {
         break;
       }
 
+      case 'ingress:request': {
+        // Ingress request from orchestrator — pods normally handle this via their
+        // direct WS connection. If it arrives here, it means the orchestrator
+        // fell back to routing through the node agent. Log a warning since
+        // we have no IPC channel to forward this to the pod subprocess.
+        const ingressPayload = message.payload as { podId?: string };
+        this.config.logger.warn('Received ingress:request via node agent — pod should have a direct WS connection', {
+          podId: ingressPayload?.podId,
+          correlationId: message.correlationId,
+        });
+        // Send back a 503 so the orchestrator doesn't time out
+        this.send({
+          type: 'ingress:response',
+          correlationId: message.correlationId,
+          payload: {
+            status: 503,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Pod not reachable via node agent — direct WS connection required' }),
+          },
+        });
+        break;
+      }
+
       default:
         this.config.logger.debug('Unhandled message type', { type: message.type });
     }

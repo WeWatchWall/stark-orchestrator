@@ -51,6 +51,7 @@ interface ServiceRow {
   failed_version: string | null;
   consecutive_failures: number;
   failure_backoff_until: string | null;
+  ingress_port: number | null;
   metadata: Record<string, unknown>;
   created_by: string;
   created_at: string;
@@ -97,6 +98,7 @@ function rowToService(row: ServiceRow): Service {
     failedVersion: row.failed_version ?? undefined,
     consecutiveFailures: row.consecutive_failures ?? 0,
     failureBackoffUntil: row.failure_backoff_until ? new Date(row.failure_backoff_until) : undefined,
+    ingressPort: row.ingress_port ?? undefined,
     metadata: row.metadata ?? {},
     createdBy: row.created_by,
     createdAt: new Date(row.created_at),
@@ -119,6 +121,7 @@ function rowToServiceListItem(row: ServiceRow): ServiceListItem {
     readyReplicas: row.ready_replicas,
     availableReplicas: row.available_replicas,
     status: row.status,
+    ingressPort: row.ingress_port ?? undefined,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -165,6 +168,7 @@ export class ServiceQueries {
           memory: input.resourceLimits?.memory ?? 512,
         },
         scheduling: input.scheduling ?? null,
+        ingress_port: input.ingressPort ?? null,
         metadata: input.metadata ?? {},
         created_by: createdBy,
       })
@@ -382,6 +386,9 @@ export class ServiceQueries {
     }
     if (input.failureBackoffUntil !== undefined) {
       updates.failure_backoff_until = input.failureBackoffUntil?.toISOString() ?? null;
+    }
+    if (input.ingressPort !== undefined) {
+      updates.ingress_port = input.ingressPort;
     }
 
     updates.updated_at = new Date().toISOString();

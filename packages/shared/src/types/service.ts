@@ -113,6 +113,13 @@ export interface Service {
    * Implements exponential backoff for failed upgrades.
    */
   failureBackoffUntil?: Date;
+  /**
+   * Ingress port exposed on the orchestrator server.
+   * When set, the orchestrator opens an HTTP listener on this port
+   * and proxies incoming requests to a healthy pod in the service
+   * via WebSocket relay.
+   */
+  ingressPort?: number;
   /** Additional metadata */
   metadata: Record<string, unknown>;
   /** User who created the service */
@@ -168,6 +175,12 @@ export interface CreateServiceInput {
   resourceLimits?: Partial<ResourceRequirements>;
   /** Scheduling configuration */
   scheduling?: PodSchedulingConfig;
+  /**
+   * Ingress port to expose on the orchestrator server.
+   * The orchestrator will open an HTTP listener on this port
+   * and route requests to healthy pods in this service.
+   */
+  ingressPort?: number;
   /** Additional metadata */
   metadata?: Record<string, unknown>;
 }
@@ -214,6 +227,8 @@ export interface UpdateServiceInput {
   consecutiveFailures?: number;
   /** Backoff timestamp (for exponential backoff) */
   failureBackoffUntil?: Date | null;
+  /** Ingress port update (null to remove) */
+  ingressPort?: number | null;
 }
 
 /**
@@ -230,6 +245,7 @@ export interface ServiceListItem {
   readyReplicas: number;
   availableReplicas: number;
   status: ServiceStatus;
+  ingressPort?: number;
   createdAt: Date;
   updatedAt: Date;
 }
