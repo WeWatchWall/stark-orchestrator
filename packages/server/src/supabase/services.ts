@@ -55,6 +55,7 @@ interface ServiceRow {
   visibility: string;
   exposed: boolean;
   allowed_sources: string[];
+  secrets: string[];
   metadata: Record<string, unknown>;
   created_by: string;
   created_at: string;
@@ -105,6 +106,7 @@ function rowToService(row: ServiceRow): Service {
     visibility: (row.visibility as any) ?? 'private',
     exposed: row.exposed ?? false,
     allowedSources: row.allowed_sources ?? [],
+    secrets: row.secrets ?? [],
     metadata: row.metadata ?? {},
     createdBy: row.created_by,
     createdAt: new Date(row.created_at),

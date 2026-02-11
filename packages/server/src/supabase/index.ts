@@ -225,3 +225,22 @@ export {
   deleteNetworkPolicyByPair,
   loadAllNetworkPolicies,
 } from './network-policies.js';
+
+// Secret queries (encrypted secret persistence)
+export {
+  type SecretResult,
+  type CreateSecretDbInput,
+  type UpdateSecretDbInput,
+  SecretQueries,
+  getSecretQueries,
+  resetSecretQueries,
+  createDbSecret,
+  getDbSecretById,
+  getDbSecretByName,
+  listDbSecrets,
+  updateDbSecret,
+  deleteDbSecret,
+  deleteDbSecretByName,
+  resolveDbSecrets,
+  loadSecretsByNamespace,
+} from './secrets.js';

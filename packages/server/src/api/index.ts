@@ -87,3 +87,8 @@ export {
   createServicesRouter,
   servicesRouter,
 } from './services.js';
+
+// Secrets API
+export {
+  createSecretsRouter,
+} from './secrets.js';

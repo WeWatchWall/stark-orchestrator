@@ -15,6 +15,7 @@ import { createNamespacesRouter } from './namespaces.js';
 import { createConfigRouter } from './config.js';
 import { createServicesRouter } from './services.js';
 import { createNetworkRouter } from './network.js';
+import { createSecretsRouter } from './secrets.js';
 import { createChaosRouter } from '../chaos/routes.js';
 import { apiRateLimiter, authRateLimiter } from '../middleware/rate-limit-middleware.js';
 
@@ -251,6 +252,9 @@ export function createApiRouter(options: ApiRouterOptions = {}): Router {
   apiRouter.use('/namespaces', createNamespacesRouter());
   apiRouter.use('/services', createServicesRouter());
 
+  // Secrets routes (encrypted secret management)
+  apiRouter.use('/secrets', createSecretsRouter());
+
   // Network routes (policies, registry, routing)
   apiRouter.use('/network', createNetworkRouter());
 
@@ -272,7 +276,7 @@ export function createApiRouter(options: ApiRouterOptions = {}): Router {
   logger.info('API router initialized', {
     version: apiVersion,
     rateLimiting: enableRateLimiting,
-    routes: ['/health', '/ready', '/live', '/auth/*', '/api/packs', '/api/pods', '/api/nodes', '/api/namespaces', '/api/services', '/api/network', '/api/config'],
+    routes: ['/health', '/ready', '/live', '/auth/*', '/api/packs', '/api/pods', '/api/nodes', '/api/namespaces', '/api/services', '/api/secrets', '/api/network', '/api/config'],
   });
 
   return router;
