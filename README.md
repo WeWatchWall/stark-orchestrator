@@ -143,27 +143,47 @@ stark-orchestrator/
 
 Platform-defining ideas that become possible because Stark is a programmable visual orchestrator:
 
-- **1. Infrastructure Branching / Parallel Universes** — Fork, diff, and merge live cluster state like Git for running systems.
-- **2. Infrastructure Replay Debugger** — Step through cluster history frame-by-frame, inspecting scheduler decisions and failure paths.
-- **3. Live Infrastructure Composer** — A visual IDE where infrastructure is composed like music, with real-time feedback and forkable workspaces.
-- **4. Executable Architecture Documentation** — Cluster state becomes interactive, living documentation with click-to-run examples and architecture diffs.
-- **5. Trust Graph Explorer** — Visualizes the entire authority chain, secret lineage, and lateral movement potential as a living zero-trust map.
-- **6. Chaos Theater & Experiment Arena** — A cinematic chaos engine with gamified security hardening, slow-motion failure replay, and emergent behavior experiments.
-- **7. Distributed Workflow Engine** — Orchestrate complex DAG-based workflows visually with event-triggered execution and cross-cluster choreography.
-- **8. Infrastructure Sandbox Multiplayer Mode** — Multiple users manipulate a shared cluster in real-time with RBAC, cursor trails, and branchable state.
-- **9. Visual Infrastructure Fabric** — Define, observe, and reshape cluster topology as a living visual surface with capacity drag, pressure fields, and streaming analytics.
-- **10. Distributed AI Runtime Surface** — AI-native orchestration with visual model routing, GPU/CPU allocation, and resource-to-accuracy tradeoffs.
-- **11. Stateful Storytelling Engine** — Turn cluster evolution or interactive narratives into a timeline with chapters, story arcs, and presentation mode.
-- **12. Economic Simulation Engine** — Model infrastructure or financial systems as a market with demand-priced services and visualized cost-pressure waves.
-- **13. Capability Marketplace** — Pods advertise capabilities and users compose workflows dynamically, replacing monolithic SaaS with composable services.
-- **14. AI-Powered Personal Assistant Pod** — A runtime-native assistant that reads your visual workspace and orchestrates multi-step tasks across pods.
-- **15. Education & Citizen Science Sandbox** — Students and citizen scientists deploy pods visually in safe environments for STEM simulations and collective research.
-- **16. Real-Time Game Engine Pods** — Game logic runs inside Stark pods with network, physics, and AI pods connected visually for multiplayer simulation.
-- **17. Personal IoT Hub** — Pods represent smart devices, with automations created by visually wiring devices to logic pods under full user control.
-- **18. Creative Media Studio** — Audio, video, animation, and music pods linked visually for real-time composition and distributed jam sessions.
-- **19. Civic Infrastructure Simulator** — Visualize and simulate traffic, utilities, or energy grids with per-subsystem pods and collaborative policy testing.
-- **20. Health & Bioinformatics Sandbox** — Visualize genomic data and analytics pods with real-time collaboration and AI-assisted insights.
-- **21. Personal Finance & Tax Automation Pods** — Data pods pull from accounts while logic pods calculate taxes and risk with full visual traceability.
+**1. Infrastructure Branching / Parallel Universes** — Fork, diff, and merge live cluster state like Git for running systems.
+
+**2. Infrastructure Replay Debugger** — Step through cluster history frame-by-frame, inspecting scheduler decisions and failure paths.
+
+**3. Live Infrastructure Composer** — A visual IDE where infrastructure is composed like music, with real-time feedback and forkable workspaces.
+
+**4. Executable Architecture Documentation** — Cluster state becomes interactive, living documentation with click-to-run examples and architecture diffs.
+
+**5. Trust Graph Explorer** — Visualizes the entire authority chain, secret lineage, and lateral movement potential as a living zero-trust map.
+
+**6. Chaos Theater & Experiment Arena** — A cinematic chaos engine with gamified security hardening, slow-motion failure replay, and emergent behavior experiments.
+
+**7. Distributed Workflow Engine** — Orchestrate complex DAG-based workflows visually with event-triggered execution and cross-cluster choreography.
+
+**8. Infrastructure Sandbox Multiplayer Mode** — Multiple users manipulate a shared cluster in real-time with RBAC, cursor trails, and branchable state.
+
+**9. Visual Infrastructure Fabric** — Define, observe, and reshape cluster topology as a living visual surface with capacity drag, pressure fields, and streaming analytics.
+
+**10. Distributed AI Runtime Surface** — AI-native orchestration with visual model routing, GPU/CPU allocation, and resource-to-accuracy tradeoffs.
+
+**11. Stateful Storytelling Engine** — Turn cluster evolution or interactive narratives into a timeline with chapters, story arcs, and presentation mode.
+
+**12. Economic Simulation Engine** — Model infrastructure or financial systems as a market with demand-priced services and visualized cost-pressure waves.
+
+**13. Capability Marketplace** — Pods advertise capabilities and users compose workflows dynamically, replacing monolithic SaaS with composable services.
+
+**14. AI-Powered Personal Assistant Pod** — A runtime-native assistant that reads your visual workspace and orchestrates multi-step tasks across pods.
+
+**15. Education & Citizen Science Sandbox** — Students and citizen scientists deploy pods visually in safe environments for STEM simulations and collective research.
+
+**16. Real-Time Game Engine Pods** — Game logic runs inside Stark pods with network, physics, and AI pods connected visually for multiplayer simulation.
+
+**17. Personal IoT Hub** — Pods represent smart devices, with automations created by visually wiring devices to logic pods under full user control.
+
+**18. Creative Media Studio** — Audio, video, animation, and music pods linked visually for real-time composition and distributed jam sessions.
+
+**19. Civic Infrastructure Simulator** — Visualize and simulate traffic, utilities, or energy grids with per-subsystem pods and collaborative policy testing.
+
+**20. Health & Bioinformatics Sandbox** — Visualize genomic data and analytics pods with real-time collaboration and AI-assisted insights.
+
+**21. Personal Finance & Tax Automation Pods** — Data pods pull from accounts while logic pods calculate taxes and risk with full visual traceability.
 
 ## License
 
