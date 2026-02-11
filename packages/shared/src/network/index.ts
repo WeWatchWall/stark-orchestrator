@@ -8,7 +8,18 @@
  */
 
 // Network policies
-export { NetworkPolicyEngine, getNetworkPolicyEngine, isServiceCallAllowed } from './network-policy.js';
+export {
+  NetworkPolicyEngine,
+  getNetworkPolicyEngine,
+  isServiceCallAllowed,
+  evaluateNetworkPolicy,
+  ServiceNetworkMetaStore,
+  getServiceNetworkMetaStore,
+  type ServiceNetworkMeta,
+  type ServiceNetworkMetaLookup,
+  type PolicyEvaluationRequest,
+  type PolicyEvaluationResult,
+} from './network-policy.js';
 
 // Service registry (orchestrator-side)
 export { ServiceRegistry, getServiceRegistry } from './service-registry.js';

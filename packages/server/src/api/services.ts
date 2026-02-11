@@ -6,11 +6,12 @@
  */
 
 import { Router, Request, Response } from 'express';
-import type { ServiceStatus, CreateServiceInput } from '@stark-o/shared';
-import { validateCreateServiceInput, validateUpdateServiceInput, createServiceLogger, generateCorrelationId } from '@stark-o/shared';
+import type { ServiceStatus, CreateServiceInput, ServiceVisibility } from '@stark-o/shared';
+import { validateCreateServiceInput, validateUpdateServiceInput, createServiceLogger, generateCorrelationId, VALID_SERVICE_VISIBILITY_VALUES } from '@stark-o/shared';
 import { getServiceQueriesAdmin, getServiceQueries } from '../supabase/services.js';
 import { getPackQueriesAdmin } from '../supabase/packs.js';
 import { getIngressManager } from '../services/ingress-manager.js';
+import { getServiceNetworkMetaStore } from '@stark-o/shared';
 import {
   authMiddleware,
   abilityMiddleware,
@@ -181,6 +182,18 @@ async function createService(req: Request, res: Response): Promise<void> {
           port: input.ingressPort,
         });
       }
+    }
+
+    // Populate in-memory network metadata store
+    if (result.data) {
+      const metaStore = getServiceNetworkMetaStore();
+      metaStore.set({
+        serviceId: result.data.name,
+        namespace: result.data.namespace,
+        visibility: result.data.visibility ?? 'private',
+        exposed: result.data.exposed ?? false,
+        allowedSources: result.data.allowedSources ?? [],
+      });
     }
 
     sendSuccess(res, { service: result.data }, 201);
@@ -495,6 +508,282 @@ async function deleteService(req: Request, res: Response): Promise<void> {
   }
 }
 
+// ── Network Policy Handlers: visibility, expose, allowedSources ─────────
+
+/**
+ * Set visibility for a service
+ * POST /api/services/:id/visibility
+ * Body: { visibility: 'public' | 'private' | 'system' }
+ */
+async function setVisibilityHandler(req: Request, res: Response): Promise<void> {
+  const correlationId = generateCorrelationId();
+
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.user?.id) {
+    sendError(res, 'UNAUTHORIZED', 'Authentication required', 401);
+    return;
+  }
+
+  const { id } = req.params;
+  const { visibility } = req.body as { visibility?: string };
+
+  if (!id || !UUID_PATTERN.test(id)) {
+    sendError(res, 'INVALID_ID', 'Invalid service ID', 400);
+    return;
+  }
+
+  if (!visibility || !VALID_SERVICE_VISIBILITY_VALUES.includes(visibility as ServiceVisibility)) {
+    sendError(res, 'VALIDATION_ERROR', `Visibility must be one of: ${VALID_SERVICE_VISIBILITY_VALUES.join(', ')}`, 400);
+    return;
+  }
+
+  try {
+    const serviceQueries = getServiceQueriesAdmin();
+    const result = await serviceQueries.updateService(id, { visibility: visibility as ServiceVisibility });
+
+    if (result.error) {
+      if (result.error.code === 'PGRST116') {
+        sendError(res, 'NOT_FOUND', 'Service not found', 404);
+        return;
+      }
+      sendError(res, 'INTERNAL_ERROR', 'Failed to update visibility', 500);
+      return;
+    }
+
+    // Update in-memory network meta store
+    const metaStore = getServiceNetworkMetaStore();
+    const serviceName = result.data?.name ?? id;
+    const serviceNamespace = result.data?.namespace ?? 'default';
+    metaStore.setVisibility(serviceName, visibility as ServiceVisibility, serviceNamespace);
+
+    logger.info('Service visibility updated', { serviceId: id, visibility, correlationId });
+    sendSuccess(res, { service: result.data });
+  } catch (error) {
+    logger.error('Unexpected error setting visibility', error instanceof Error ? error : undefined);
+    sendError(res, 'INTERNAL_ERROR', 'Internal server error', 500);
+  }
+}
+
+/**
+ * Expose a service (make reachable from ingress)
+ * POST /api/services/:id/expose
+ */
+async function exposeHandler(req: Request, res: Response): Promise<void> {
+  const correlationId = generateCorrelationId();
+
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.user?.id) {
+    sendError(res, 'UNAUTHORIZED', 'Authentication required', 401);
+    return;
+  }
+
+  const { id } = req.params;
+  if (!id || !UUID_PATTERN.test(id)) {
+    sendError(res, 'INVALID_ID', 'Invalid service ID', 400);
+    return;
+  }
+
+  try {
+    const serviceQueries = getServiceQueriesAdmin();
+    const result = await serviceQueries.updateService(id, { exposed: true } as any);
+
+    if (result.error) {
+      if (result.error.code === 'PGRST116') {
+        sendError(res, 'NOT_FOUND', 'Service not found', 404);
+        return;
+      }
+      sendError(res, 'INTERNAL_ERROR', 'Failed to expose service', 500);
+      return;
+    }
+
+    // Update in-memory network meta store
+    const metaStore = getServiceNetworkMetaStore();
+    const serviceName = result.data?.name ?? id;
+    const serviceNamespace = result.data?.namespace ?? 'default';
+    metaStore.setExposed(serviceName, true, serviceNamespace);
+
+    logger.info('Service exposed', { serviceId: id, correlationId });
+    sendSuccess(res, { service: result.data });
+  } catch (error) {
+    logger.error('Unexpected error exposing service', error instanceof Error ? error : undefined);
+    sendError(res, 'INTERNAL_ERROR', 'Internal server error', 500);
+  }
+}
+
+/**
+ * Unexpose a service (remove from ingress)
+ * POST /api/services/:id/unexpose
+ */
+async function unexposeHandler(req: Request, res: Response): Promise<void> {
+  const correlationId = generateCorrelationId();
+
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.user?.id) {
+    sendError(res, 'UNAUTHORIZED', 'Authentication required', 401);
+    return;
+  }
+
+  const { id } = req.params;
+  if (!id || !UUID_PATTERN.test(id)) {
+    sendError(res, 'INVALID_ID', 'Invalid service ID', 400);
+    return;
+  }
+
+  try {
+    const serviceQueries = getServiceQueriesAdmin();
+    const result = await serviceQueries.updateService(id, { exposed: false } as any);
+
+    if (result.error) {
+      if (result.error.code === 'PGRST116') {
+        sendError(res, 'NOT_FOUND', 'Service not found', 404);
+        return;
+      }
+      sendError(res, 'INTERNAL_ERROR', 'Failed to unexpose service', 500);
+      return;
+    }
+
+    // Update in-memory network meta store
+    const metaStore = getServiceNetworkMetaStore();
+    const serviceName = result.data?.name ?? id;
+    const serviceNamespace = result.data?.namespace ?? 'default';
+    metaStore.setExposed(serviceName, false, serviceNamespace);
+
+    logger.info('Service unexposed', { serviceId: id, correlationId });
+    sendSuccess(res, { service: result.data });
+  } catch (error) {
+    logger.error('Unexpected error unexposing service', error instanceof Error ? error : undefined);
+    sendError(res, 'INTERNAL_ERROR', 'Internal server error', 500);
+  }
+}
+
+/**
+ * Add an allowed source for internal traffic
+ * POST /api/services/:id/allow-source
+ * Body: { sourceService: string }
+ */
+async function allowSourceHandler(req: Request, res: Response): Promise<void> {
+  const correlationId = generateCorrelationId();
+
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.user?.id) {
+    sendError(res, 'UNAUTHORIZED', 'Authentication required', 401);
+    return;
+  }
+
+  const { id } = req.params;
+  const { sourceService } = req.body as { sourceService?: string };
+
+  if (!id || !UUID_PATTERN.test(id)) {
+    sendError(res, 'INVALID_ID', 'Invalid service ID', 400);
+    return;
+  }
+
+  if (!sourceService || typeof sourceService !== 'string') {
+    sendError(res, 'VALIDATION_ERROR', 'sourceService is required', 400);
+    return;
+  }
+
+  try {
+    // First get the current service to read existing allowedSources
+    const serviceQueries = getServiceQueriesAdmin();
+    const getResult = await serviceQueries.getServiceById(id);
+
+    if (getResult.error || !getResult.data) {
+      sendError(res, 'NOT_FOUND', 'Service not found', 404);
+      return;
+    }
+
+    const service = getResult.data;
+    const currentSources: string[] = (service as any).allowedSources ?? [];
+    if (!currentSources.includes(sourceService)) {
+      currentSources.push(sourceService);
+    }
+
+    const result = await serviceQueries.updateService(id, { allowedSources: currentSources } as any);
+
+    if (result.error) {
+      sendError(res, 'INTERNAL_ERROR', 'Failed to update allowed sources', 500);
+      return;
+    }
+
+    // Update in-memory network meta store
+    const metaStore = getServiceNetworkMetaStore();
+    const serviceName = service.name;
+    const serviceNamespace = service.namespace ?? 'default';
+    metaStore.addAllowedSource(serviceName, sourceService, serviceNamespace);
+
+    logger.info('Allowed source added', { serviceId: id, sourceService, correlationId });
+    sendSuccess(res, { service: result.data });
+  } catch (error) {
+    logger.error('Unexpected error adding allowed source', error instanceof Error ? error : undefined);
+    sendError(res, 'INTERNAL_ERROR', 'Internal server error', 500);
+  }
+}
+
+/**
+ * Remove an allowed source for internal traffic
+ * POST /api/services/:id/deny-source
+ * Body: { sourceService: string }
+ */
+async function denySourceHandler(req: Request, res: Response): Promise<void> {
+  const correlationId = generateCorrelationId();
+
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.user?.id) {
+    sendError(res, 'UNAUTHORIZED', 'Authentication required', 401);
+    return;
+  }
+
+  const { id } = req.params;
+  const { sourceService } = req.body as { sourceService?: string };
+
+  if (!id || !UUID_PATTERN.test(id)) {
+    sendError(res, 'INVALID_ID', 'Invalid service ID', 400);
+    return;
+  }
+
+  if (!sourceService || typeof sourceService !== 'string') {
+    sendError(res, 'VALIDATION_ERROR', 'sourceService is required', 400);
+    return;
+  }
+
+  try {
+    const serviceQueries = getServiceQueriesAdmin();
+    const getResult = await serviceQueries.getServiceById(id);
+
+    if (getResult.error || !getResult.data) {
+      sendError(res, 'NOT_FOUND', 'Service not found', 404);
+      return;
+    }
+
+    const service = getResult.data;
+    const currentSources: string[] = (service as any).allowedSources ?? [];
+    const idx = currentSources.indexOf(sourceService);
+    if (idx !== -1) {
+      currentSources.splice(idx, 1);
+    }
+
+    const result = await serviceQueries.updateService(id, { allowedSources: currentSources } as any);
+
+    if (result.error) {
+      sendError(res, 'INTERNAL_ERROR', 'Failed to update allowed sources', 500);
+      return;
+    }
+
+    // Update in-memory network meta store
+    const metaStore = getServiceNetworkMetaStore();
+    const serviceName = service.name;
+    const serviceNamespace = service.namespace ?? 'default';
+    metaStore.removeAllowedSource(serviceName, sourceService, serviceNamespace);
+
+    logger.info('Allowed source removed', { serviceId: id, sourceService, correlationId });
+    sendSuccess(res, { service: result.data });
+  } catch (error) {
+    logger.error('Unexpected error removing allowed source', error instanceof Error ? error : undefined);
+    sendError(res, 'INTERNAL_ERROR', 'Internal server error', 500);
+  }
+}
+
 /**
  * Create and configure the services router
  */
@@ -522,6 +811,13 @@ export function createServicesRouter(): Router {
 
   // Scale service (POST /api/services/:id/scale)
   router.post('/:id/scale', canCreatePod, scaleService);
+
+  // Network policy: visibility, expose/unexpose, allowed sources
+  router.post('/:id/visibility', canCreatePod, setVisibilityHandler);
+  router.post('/:id/expose', canCreatePod, exposeHandler);
+  router.post('/:id/unexpose', canCreatePod, unexposeHandler);
+  router.post('/:id/allow-source', canCreatePod, allowSourceHandler);
+  router.post('/:id/deny-source', canCreatePod, denySourceHandler);
 
   // Delete service (DELETE /api/services/:id)
   router.delete('/:id', canDeletePod, deleteService);

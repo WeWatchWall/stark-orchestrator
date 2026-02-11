@@ -36,16 +36,23 @@ interface NetworkPolicy {
 
 // ── Handlers ────────────────────────────────────────────────────────────────
 
-async function allowHandler(sourceService: string, targetService: string): Promise<void> {
+async function allowHandler(
+  sourceService: string,
+  targetService: string,
+  options: { namespace?: string },
+): Promise<void> {
   requireAuth();
   const config = loadConfig();
   const api = createApiClient(config);
+  const namespace = options.namespace ?? config.defaultNamespace ?? 'default';
 
   try {
+    // Create allow policy
     const res = await api.post('/api/network/policies', {
       sourceService,
       targetService,
       action: 'allow',
+      namespace,
     });
     const body = (await res.json()) as ApiResponse<NetworkPolicy>;
 
@@ -54,23 +61,38 @@ async function allowHandler(sourceService: string, targetService: string): Promi
       process.exit(1);
     }
 
-    success(`Network policy created: ${chalk.green('ALLOW')} ${sourceService} → ${targetService}`);
+    // Also update allowedSources on target service
+    const svcRes = await api.get(`/api/services/name/${targetService}?namespace=${namespace}`);
+    const svcBody = (await svcRes.json()) as ApiResponse<{ service: { id: string } }>;
+    if (svcBody.success && svcBody.data) {
+      await api.post(`/api/services/${svcBody.data.service.id}/allow-source`, {
+        sourceService,
+      });
+    }
+
+    success(`Network policy created: ${chalk.green('ALLOW')} ${sourceService} → ${targetService} (namespace: ${namespace})`);
   } catch (err) {
     error(err instanceof Error ? err.message : 'Failed to create network policy');
     process.exit(1);
   }
 }
 
-async function denyHandler(sourceService: string, targetService: string): Promise<void> {
+async function denyHandler(
+  sourceService: string,
+  targetService: string,
+  options: { namespace?: string },
+): Promise<void> {
   requireAuth();
   const config = loadConfig();
   const api = createApiClient(config);
+  const namespace = options.namespace ?? config.defaultNamespace ?? 'default';
 
   try {
     const res = await api.post('/api/network/policies', {
       sourceService,
       targetService,
       action: 'deny',
+      namespace,
     });
     const body = (await res.json()) as ApiResponse<NetworkPolicy>;
 
@@ -79,22 +101,41 @@ async function denyHandler(sourceService: string, targetService: string): Promis
       process.exit(1);
     }
 
-    success(`Network policy created: ${chalk.red('DENY')} ${sourceService} → ${targetService}`);
+    // Also remove from allowedSources on target service
+    try {
+      const svcRes = await api.get(`/api/services/name/${targetService}?namespace=${namespace}`);
+      const svcBody = (await svcRes.json()) as ApiResponse<{ service: { id: string } }>;
+      if (svcBody.success && svcBody.data) {
+        await api.post(`/api/services/${svcBody.data.service.id}/deny-source`, {
+          sourceService,
+        });
+      }
+    } catch {
+      // Non-fatal: allowedSources update failed but policy was created
+    }
+
+    success(`Network policy created: ${chalk.red('DENY')} ${sourceService} → ${targetService} (namespace: ${namespace})`);
   } catch (err) {
     error(err instanceof Error ? err.message : 'Failed to create network policy');
     process.exit(1);
   }
 }
 
-async function removeHandler(sourceService: string, targetService: string): Promise<void> {
+async function removeHandler(
+  sourceService: string,
+  targetService: string,
+  options: { namespace?: string },
+): Promise<void> {
   requireAuth();
   const config = loadConfig();
   const api = createApiClient(config);
+  const namespace = options.namespace ?? config.defaultNamespace ?? 'default';
 
   try {
     const res = await api.post('/api/network/policies/delete-pair', {
       sourceService,
       targetService,
+      namespace,
     });
     const body = (await res.json()) as ApiResponse<{ deleted: boolean }>;
 
@@ -103,20 +144,25 @@ async function removeHandler(sourceService: string, targetService: string): Prom
       process.exit(1);
     }
 
-    success(`Network policy removed: ${sourceService} → ${targetService}`);
+    success(`Network policy removed: ${sourceService} → ${targetService} (namespace: ${namespace})`);
   } catch (err) {
     error(err instanceof Error ? err.message : 'Failed to remove network policy');
     process.exit(1);
   }
 }
 
-async function policiesHandler(): Promise<void> {
+async function policiesHandler(options: { namespace?: string }): Promise<void> {
   requireAuth();
   const config = loadConfig();
   const api = createApiClient(config);
 
   try {
-    const res = await api.get('/api/network/policies');
+    const params = new URLSearchParams();
+    if (options.namespace) {
+      params.set('namespace', options.namespace);
+    }
+    const url = `/api/network/policies${params.toString() ? '?' + params.toString() : ''}`;
+    const res = await api.get(url);
     const body = (await res.json()) as ApiResponse<NetworkPolicy[]>;
 
     if (!body.success || !body.data) {
@@ -228,22 +274,26 @@ export function createNetworkCommand(): Command {
   cmd
     .command('allow <source-service> <target-service>')
     .description('Allow communication from source service to target service')
+    .option('--namespace <namespace>', 'Namespace', 'default')
     .action(allowHandler);
 
   cmd
     .command('deny <source-service> <target-service>')
     .description('Deny communication from source service to target service')
+    .option('--namespace <namespace>', 'Namespace', 'default')
     .action(denyHandler);
 
   cmd
     .command('remove <source-service> <target-service>')
     .description('Remove the network policy for a source → target pair')
+    .option('--namespace <namespace>', 'Namespace', 'default')
     .action(removeHandler);
 
   cmd
     .command('policies')
     .alias('list')
     .description('List all network policies')
+    .option('--namespace <namespace>', 'Filter by namespace')
     .action(policiesHandler);
 
   cmd

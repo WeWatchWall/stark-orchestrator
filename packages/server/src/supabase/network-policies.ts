@@ -17,6 +17,7 @@ interface NetworkPolicyRow {
   source_service: string;
   target_service: string;
   action: NetworkPolicyAction;
+  namespace: string;
   created_at: string;
   updated_at: string;
 }
@@ -38,6 +39,7 @@ function rowToNetworkPolicy(row: NetworkPolicyRow): NetworkPolicy {
     sourceService: row.source_service,
     targetService: row.target_service,
     action: row.action,
+    namespace: row.namespace ?? 'default',
     createdAt: new Date(row.created_at).getTime(),
   };
 }
@@ -60,9 +62,10 @@ export class NetworkPolicyQueries {
           source_service: input.sourceService,
           target_service: input.targetService,
           action: input.action,
+          namespace: input.namespace ?? 'default',
         },
         {
-          onConflict: 'source_service,target_service',
+          onConflict: 'source_service,target_service,namespace',
         }
       )
       .select()
@@ -153,13 +156,15 @@ export class NetworkPolicyQueries {
    */
   async deletePolicyByPair(
     sourceService: string,
-    targetService: string
+    targetService: string,
+    namespace: string = 'default'
   ): Promise<NetworkPolicyResult<{ deleted: boolean }>> {
     const { error, count } = await this.client
       .from('network_policies')
       .delete({ count: 'exact' })
       .eq('source_service', sourceService)
-      .eq('target_service', targetService);
+      .eq('target_service', targetService)
+      .eq('namespace', namespace);
 
     if (error) {
       return { data: null, error };
@@ -257,9 +262,10 @@ export async function deleteNetworkPolicy(
  */
 export async function deleteNetworkPolicyByPair(
   sourceService: string,
-  targetService: string
+  targetService: string,
+  namespace: string = 'default'
 ): Promise<NetworkPolicyResult<{ deleted: boolean }>> {
-  return getNetworkPolicyQueries().deletePolicyByPair(sourceService, targetService);
+  return getNetworkPolicyQueries().deletePolicyByPair(sourceService, targetService, namespace);
 }
 
 /**

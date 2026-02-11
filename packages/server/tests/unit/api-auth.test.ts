@@ -18,9 +18,15 @@ vi.mock('../../src/supabase/auth.js', () => ({
   getAuthQueries: vi.fn(),
 }));
 
+// Mock app-config so the registration guard passes
+vi.mock('../../src/supabase/app-config.js', () => ({
+  isPublicRegistrationEnabled: vi.fn().mockResolvedValue({ data: true, error: null }),
+}));
+
 // Import after mocking
 import { register, login, logout } from '../../src/api/auth.js';
 import { getAuthQueries } from '../../src/supabase/auth.js';
+import { isPublicRegistrationEnabled } from '../../src/supabase/app-config.js';
 
 /**
  * Create a mock Express request
@@ -100,6 +106,9 @@ describe('Auth API Handlers', () => {
     };
 
     vi.mocked(getAuthQueries).mockReturnValue(mockAuthQueries as any);
+
+    // Re-set after resetAllMocks strips the factory implementation
+    vi.mocked(isPublicRegistrationEnabled).mockResolvedValue({ data: true, error: null });
   });
 
   afterEach(() => {

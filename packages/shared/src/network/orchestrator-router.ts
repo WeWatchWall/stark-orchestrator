@@ -18,16 +18,30 @@
 import type { RoutingRequest, RoutingResponse } from '../types/network.js';
 import type { ServiceRegistry } from './service-registry.js';
 import type { NetworkPolicyEngine } from './network-policy.js';
+import { evaluateNetworkPolicy, type ServiceNetworkMetaLookup } from './network-policy.js';
 
 export interface OrchestratorRouterConfig {
   /** The service registry (maps serviceId → pods) */
   registry: ServiceRegistry;
-  /** The network policy engine (optional — if omitted, all traffic allowed) */
+  /** The network policy engine (allow/deny rules) */
   policyEngine?: NetworkPolicyEngine;
+  /**
+   * Lookup function for service network metadata (visibility/exposed/allowedSources).
+   * Used for visibility-based policy evaluation.
+   */
+  networkMetaLookup?: ServiceNetworkMetaLookup;
 }
 
 /**
  * Handle a routing request from a caller pod.
+ *
+ * Policy evaluation order:
+ *   1. Visibility-based check (public allows all; private/system checks allowedSources)
+ *   2. Policy engine check (explicit allow/deny rules supplement visibility)
+ *
+ * For private/system services, traffic is allowed if the caller is in
+ * allowedSources OR has an explicit allow policy. Both systems are part
+ * of the same unified access-control model.
  *
  * @returns A RoutingResponse with the selected target pod,
  *          or a denied response if a network policy blocks it.
@@ -39,8 +53,44 @@ export function handleRoutingRequest(
 ): RoutingResponse {
   const { callerServiceId, targetServiceId } = request;
 
-  // ── Policy check ────────────────────────────────────────────────────
-  if (config.policyEngine) {
+  // ── Unified policy check ────────────────────────────────────────────
+  if (config.networkMetaLookup) {
+    const result = evaluateNetworkPolicy(
+      {
+        sourceServiceId: callerServiceId,
+        targetServiceId,
+        isIngressRequest: false,
+      },
+      config.networkMetaLookup,
+    );
+
+    if (!result.allowed) {
+      // For private/system services denied by allowedSources,
+      // check if an explicit allow policy exists as a fallback
+      if (config.policyEngine) {
+        const policyCheck = config.policyEngine.isAllowed(callerServiceId, targetServiceId);
+        if (policyCheck.allowed) {
+          // Explicit allow policy overrides visibility denial
+          // (this is the unified model — policies and allowedSources are equivalent)
+        } else {
+          return {
+            targetPodId: '',
+            targetNodeId: '',
+            policyAllowed: false,
+            policyDeniedReason: result.reason,
+          };
+        }
+      } else {
+        return {
+          targetPodId: '',
+          targetNodeId: '',
+          policyAllowed: false,
+          policyDeniedReason: result.reason,
+        };
+      }
+    }
+  } else if (config.policyEngine) {
+    // Fallback: no visibility metadata available, use policy engine only
     const check = config.policyEngine.isAllowed(callerServiceId, targetServiceId);
     if (!check.allowed) {
       return {

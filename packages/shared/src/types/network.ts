@@ -57,6 +57,7 @@ export interface NetworkPolicy {
   sourceService: string;
   targetService: string;
   action: NetworkPolicyAction;
+  namespace?: string;
   createdAt: number; // epoch ms
 }
 
@@ -67,6 +68,7 @@ export interface CreateNetworkPolicyInput {
   sourceService: string;
   targetService: string;
   action: NetworkPolicyAction;
+  namespace?: string;
 }
 
 // ── Request / Response Envelopes ────────────────────────────────────────────
@@ -224,12 +226,11 @@ export const DEFAULT_SERVICE_CALL_TIMEOUT = 30_000;
 export const INTERNAL_URL_SUFFIX = '.internal';
 
 /**
- * Parse a virtual internal URL into serviceId and path.
- * Input:  `http://my-service.internal/api/users` or `https://my-service.internal/api/users`
- * Output: `{ serviceId: 'my-service', path: '/api/users' }`
+ * Parse a virtual internal URL into serviceId, optional namespace, and path.
+ * Input:  `http://my-service.internal/api/users` → `{ serviceId: 'my-service', path: '/api/users' }`
+ * Input:  `http://my-service.production.internal/api/users` → `{ serviceId: 'my-service', namespace: 'production', path: '/api/users' }`
  */
-export function parseInternalUrl(url: string): { serviceId: string; path: string } | null {
-  // Support http://, https://, and plain forms
+export function parseInternalUrl(url: string): { serviceId: string; namespace?: string; path: string } | null {
   let normalised = url;
   if (normalised.startsWith('https://')) {
     normalised = normalised.slice(8);
@@ -239,10 +240,21 @@ export function parseInternalUrl(url: string): { serviceId: string; path: string
   const suffixIdx = normalised.indexOf(INTERNAL_URL_SUFFIX);
   if (suffixIdx === -1) return null;
 
-  const serviceId = normalised.slice(0, suffixIdx);
-  if (!serviceId) return null;
+  const host = normalised.slice(0, suffixIdx);
+  if (!host) return null;
 
   const rest = normalised.slice(suffixIdx + INTERNAL_URL_SUFFIX.length);
   const path = rest.startsWith('/') ? rest : `/${rest}`;
-  return { serviceId, path };
+
+  // Check for cross-namespace format: <service>.<namespace>.internal
+  const dotIdx = host.indexOf('.');
+  if (dotIdx !== -1) {
+    const serviceId = host.slice(0, dotIdx);
+    const namespace = host.slice(dotIdx + 1);
+    if (serviceId && namespace) {
+      return { serviceId, namespace, path };
+    }
+  }
+
+  return { serviceId: host, path };
 }

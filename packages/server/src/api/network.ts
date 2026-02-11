@@ -15,6 +15,7 @@ import {
   getNetworkPolicyEngine,
   getServiceRegistry,
   handleRoutingRequest,
+  getServiceNetworkMetaStore,
 } from '@stark-o/shared';
 import type {
   CreateNetworkPolicyInput,
@@ -33,8 +34,12 @@ const logger = createServiceLogger(
 
 // ── Network Policies ────────────────────────────────────────────────────────
 
-async function listPoliciesHandler(_req: Request, res: Response): Promise<void> {
-  const policies = getNetworkPolicyEngine().listPolicies();
+async function listPoliciesHandler(req: Request, res: Response): Promise<void> {
+  const namespace = req.query.namespace as string | undefined;
+  const engine = getNetworkPolicyEngine();
+  const policies = namespace
+    ? engine.listPoliciesByNamespace(namespace)
+    : engine.listPolicies();
   res.json({ success: true, data: policies });
 }
 
@@ -132,7 +137,9 @@ async function deletePolicyHandler(req: Request, res: Response): Promise<void> {
 }
 
 async function deletePolicyByPairHandler(req: Request, res: Response): Promise<void> {
-  const { sourceService, targetService } = req.body as { sourceService?: string; targetService?: string };
+  const { sourceService, targetService, namespace } = req.body as {
+    sourceService?: string; targetService?: string; namespace?: string;
+  };
   if (!sourceService || !targetService) {
     res.status(400).json({
       success: false,
@@ -141,8 +148,10 @@ async function deletePolicyByPairHandler(req: Request, res: Response): Promise<v
     return;
   }
 
+  const ns = namespace ?? 'default';
+
   // Delete from database first
-  const dbResult = await deleteNetworkPolicyByPair(sourceService, targetService);
+  const dbResult = await deleteNetworkPolicyByPair(sourceService, targetService, ns);
   if (dbResult.error) {
     logger.error('Failed to delete network policy from DB', undefined, {
       sourceService,
@@ -229,6 +238,7 @@ async function routeHandler(req: Request, res: Response): Promise<void> {
     const response = handleRoutingRequest(request, {
       registry: getServiceRegistry(),
       policyEngine: getNetworkPolicyEngine(),
+      networkMetaLookup: getServiceNetworkMetaStore().createLookup(),
     });
 
     if (!response.policyAllowed) {

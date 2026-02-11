@@ -21,6 +21,7 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import { createServiceLogger } from '@stark-o/shared';
 import { getServiceRegistry } from '@stark-o/shared';
+import { evaluateNetworkPolicy, getServiceNetworkMetaStore } from '@stark-o/shared';
 import type { ServiceRegistryEntry } from '@stark-o/shared';
 import { getConnectionManager } from './connection-service.js';
 
@@ -316,9 +317,10 @@ export class IngressManager {
 
   /**
    * Handle an incoming HTTP request on an ingress port.
-   * 1. Selects a pod using modulus on the request counter.
-   * 2. Sends the request payload to the pod via WebSocket.
-   * 3. Waits for the pod's response (or timeout).
+   * 1. Checks network policy (exposed flag via evaluateNetworkPolicy).
+   * 2. Selects a pod using modulus on the request counter.
+   * 3. Sends the request payload to the pod via WebSocket.
+   * 4. Waits for the pod's response (or timeout).
    */
   private handleIngressRequest(port: number, req: http.IncomingMessage, res: http.ServerResponse): void {
     const binding = this.bindings.get(port);
@@ -329,6 +331,29 @@ export class IngressManager {
     }
 
     const { serviceId, serviceName } = binding;
+
+    // ── Ingress policy check ────────────────────────────────────────
+    const metaStore = getServiceNetworkMetaStore();
+    const policyResult = evaluateNetworkPolicy(
+      {
+        sourceServiceId: 'ingress',
+        targetServiceId: serviceName,
+        isIngressRequest: true,
+      },
+      metaStore.createLookup(),
+    );
+
+    if (!policyResult.allowed) {
+      logger.warn('Ingress request denied by network policy', {
+        serviceId,
+        serviceName,
+        port,
+        reason: policyResult.reason,
+      });
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Forbidden', reason: policyResult.reason }));
+      return;
+    }
 
     // Collect request body
     const bodyChunks: Buffer[] = [];

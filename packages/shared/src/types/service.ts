@@ -17,6 +17,21 @@ export type ServiceStatus =
   | 'deleting'; // Being deleted
 
 /**
+ * Network visibility level for a service.
+ *
+ * Controls internal (service-to-service) access:
+ * - `public`  → internal traffic allowed by default
+ * - `private` → internal traffic denied unless caller is in `allowedSources`
+ * - `system`  → internal traffic denied unless caller is in `allowedSources`
+ */
+export type ServiceVisibility = 'public' | 'private' | 'system';
+
+/**
+ * Valid visibility values (for validation)
+ */
+export const VALID_SERVICE_VISIBILITY_VALUES: ServiceVisibility[] = ['public', 'private', 'system'];
+
+/**
  * Service entity - persistent pod scheduling configuration
  * 
  * A Service maintains a desired number of pod replicas:
@@ -120,6 +135,26 @@ export interface Service {
    * via WebSocket relay.
    */
   ingressPort?: number;
+  /**
+   * Network visibility level.
+   * - `public`  → internal traffic allowed by default
+   * - `private` → internal traffic denied unless caller is in `allowedSources`
+   * - `system`  → internal traffic denied unless caller is in `allowedSources`
+   * @default 'private'
+   */
+  visibility: ServiceVisibility;
+  /**
+   * Whether this service is reachable from ingress (external traffic).
+   * Exposure alone determines external access — visibility is irrelevant for ingress.
+   * @default false
+   */
+  exposed: boolean;
+  /**
+   * List of service IDs (names) allowed to call this service internally.
+   * Only evaluated when visibility is `private` or `system`.
+   * If empty/undefined and visibility is private/system, all internal traffic is denied.
+   */
+  allowedSources?: string[];
   /** Additional metadata */
   metadata: Record<string, unknown>;
   /** User who created the service */
@@ -181,6 +216,21 @@ export interface CreateServiceInput {
    * and route requests to healthy pods in this service.
    */
   ingressPort?: number;
+  /**
+   * Network visibility level.
+   * @default 'private'
+   */
+  visibility?: ServiceVisibility;
+  /**
+   * Whether this service is reachable from ingress.
+   * @default false
+   */
+  exposed?: boolean;
+  /**
+   * List of service IDs allowed to call this service internally.
+   * Only relevant for private/system visibility.
+   */
+  allowedSources?: string[];
   /** Additional metadata */
   metadata?: Record<string, unknown>;
 }
@@ -229,6 +279,12 @@ export interface UpdateServiceInput {
   failureBackoffUntil?: Date | null;
   /** Ingress port update (null to remove) */
   ingressPort?: number | null;
+  /** Network visibility update */
+  visibility?: ServiceVisibility;
+  /** Exposed flag update */
+  exposed?: boolean;
+  /** Allowed sources update (null to clear) */
+  allowedSources?: string[] | null;
 }
 
 /**

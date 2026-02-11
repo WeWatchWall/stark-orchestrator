@@ -19,6 +19,7 @@ import {
   getServiceRegistry,
   getNetworkPolicyEngine,
   handleRoutingRequest,
+  getServiceNetworkMetaStore,
 } from '@stark-o/shared';
 import type {
   WsMessage,
@@ -142,6 +143,7 @@ export function createNetworkWsHandlers(connectionManager: NetworkConnectionMana
         const response = handleRoutingRequest(request, {
           registry: getServiceRegistry(),
           policyEngine: getNetworkPolicyEngine(),
+          networkMetaLookup: getServiceNetworkMetaStore().createLookup(),
         });
 
         sendResponse({

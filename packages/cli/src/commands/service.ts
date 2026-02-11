@@ -45,6 +45,9 @@ interface Service {
   readyReplicas: number;
   availableReplicas: number;
   updatedReplicas: number;
+  visibility?: string;
+  exposed?: boolean;
+  allowedSources?: string[];
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -74,6 +77,7 @@ async function createHandler(
     ver?: string;
     namespace?: string;
     replicas?: string;
+    visibility?: string;
     label?: string[];
     podLabel?: string[];
     nodeSelector?: string[];
@@ -104,6 +108,15 @@ async function createHandler(
   info(`Creating service: ${name} → ${options.pack}${options.ver ? '@' + options.ver : ''}`);
   info(`Replicas: ${replicasDesc}`);
 
+  // Validate visibility
+  const validVisibility = ['public', 'private', 'system'];
+  const visibility = options.visibility ?? 'private';
+  if (!validVisibility.includes(visibility)) {
+    error(`Visibility must be one of: ${validVisibility.join(', ')}`);
+    process.exit(1);
+  }
+  info(`Visibility: ${visibility}`);
+
   try {
     const api = createApiClient();
 
@@ -114,6 +127,7 @@ async function createHandler(
       packVersion: options.ver,
       namespace: options.namespace ?? config.defaultNamespace ?? 'default',
       replicas,
+      visibility: options.visibility ?? 'private',
     };
 
     // Parse labels
@@ -216,6 +230,7 @@ async function createHandler(
       'Pack Version': service.packVersion,
       'Namespace': service.namespace,
       'Replicas': service.replicas === 0 ? 'DaemonSet (all nodes)' : service.replicas.toString(),
+      'Visibility': (service as any).visibility ?? 'private',
       'Ingress Port': (service as any).ingressPort ? (service as any).ingressPort.toString() : chalk.gray('(none)'),
       'Status': statusBadge(service.status),
     });
@@ -533,6 +548,135 @@ async function resumeHandler(name: string, options: { namespace?: string }): Pro
 }
 
 /**
+ * Set visibility command handler
+ */
+async function setVisibilityHandler(
+  name: string,
+  visibility: string,
+  options: { namespace?: string },
+): Promise<void> {
+  requireAuth();
+
+  const validValues = ['public', 'private', 'system'];
+  if (!validValues.includes(visibility)) {
+    error(`Visibility must be one of: ${validValues.join(', ')}`);
+    process.exit(1);
+  }
+
+  info(`Setting visibility for service '${name}' to '${visibility}'`);
+
+  try {
+    const api = createApiClient();
+    const namespace = options.namespace ?? 'default';
+
+    // Get service by name
+    const getResponse = await api.get(`/api/services/name/${name}?namespace=${namespace}`);
+    const getResult = (await getResponse.json()) as ApiResponse<{ service: Service }>;
+
+    if (!getResult.success || !getResult.data) {
+      error('Service not found', getResult.error);
+      process.exit(1);
+    }
+
+    const serviceId = getResult.data.service.id;
+
+    // Set visibility
+    const response = await api.post(`/api/services/${serviceId}/visibility`, { visibility });
+    const result = (await response.json()) as ApiResponse<{ service: Service }>;
+
+    if (!result.success) {
+      error('Failed to set visibility', result.error);
+      process.exit(1);
+    }
+
+    success(`Service '${name}' visibility set to '${visibility}'`);
+  } catch (err) {
+    error('Failed to set visibility', err instanceof Error ? { message: err.message } : undefined);
+    process.exit(1);
+  }
+}
+
+/**
+ * Expose command handler
+ */
+async function exposeCommandHandler(
+  name: string,
+  options: { namespace?: string },
+): Promise<void> {
+  requireAuth();
+
+  info(`Exposing service '${name}' to ingress`);
+
+  try {
+    const api = createApiClient();
+    const namespace = options.namespace ?? 'default';
+
+    const getResponse = await api.get(`/api/services/name/${name}?namespace=${namespace}`);
+    const getResult = (await getResponse.json()) as ApiResponse<{ service: Service }>;
+
+    if (!getResult.success || !getResult.data) {
+      error('Service not found', getResult.error);
+      process.exit(1);
+    }
+
+    const serviceId = getResult.data.service.id;
+
+    const response = await api.post(`/api/services/${serviceId}/expose`, {});
+    const result = (await response.json()) as ApiResponse<{ service: Service }>;
+
+    if (!result.success) {
+      error('Failed to expose service', result.error);
+      process.exit(1);
+    }
+
+    success(`Service '${name}' is now exposed (reachable from ingress)`);
+  } catch (err) {
+    error('Failed to expose service', err instanceof Error ? { message: err.message } : undefined);
+    process.exit(1);
+  }
+}
+
+/**
+ * Unexpose command handler
+ */
+async function unexposeCommandHandler(
+  name: string,
+  options: { namespace?: string },
+): Promise<void> {
+  requireAuth();
+
+  info(`Unexposing service '${name}' from ingress`);
+
+  try {
+    const api = createApiClient();
+    const namespace = options.namespace ?? 'default';
+
+    const getResponse = await api.get(`/api/services/name/${name}?namespace=${namespace}`);
+    const getResult = (await getResponse.json()) as ApiResponse<{ service: Service }>;
+
+    if (!getResult.success || !getResult.data) {
+      error('Service not found', getResult.error);
+      process.exit(1);
+    }
+
+    const serviceId = getResult.data.service.id;
+
+    const response = await api.post(`/api/services/${serviceId}/unexpose`, {});
+    const result = (await response.json()) as ApiResponse<{ service: Service }>;
+
+    if (!result.success) {
+      error('Failed to unexpose service', result.error);
+      process.exit(1);
+    }
+
+    success(`Service '${name}' is now unexposed (not reachable from ingress)`);
+  } catch (err) {
+    error('Failed to unexpose service', err instanceof Error ? { message: err.message } : undefined);
+    process.exit(1);
+  }
+}
+
+/**
  * Creates the service command group
  */
 export function createServiceCommand(): Command {
@@ -549,6 +693,7 @@ export function createServiceCommand(): Command {
     .option('-V, --ver <version>', 'Pack version (defaults to latest)')
     .option('--namespace <namespace>', 'Target namespace', 'default')
     .option('-r, --replicas <count>', 'Number of replicas (0 = all matching nodes)', '1')
+    .option('--visibility <level>', 'Network visibility (public, private, system)', 'private')
     .option('-l, --label <key=value...>', 'Service labels')
     .option('--pod-label <key=value...>', 'Labels applied to created pods')
     .option('-s, --node-selector <key=value...>', 'Node selector (can be repeated)')
@@ -583,6 +728,27 @@ export function createServiceCommand(): Command {
     .requiredOption('-r, --replicas <count>', 'Number of replicas (0 = all matching nodes)')
     .option('--namespace <namespace>', 'Namespace', 'default')
     .action(scaleHandler);
+
+  // Set visibility
+  service
+    .command('set-visibility <name> <visibility>')
+    .description('Set network visibility for a service (public, private, or system)')
+    .option('--namespace <namespace>', 'Namespace', 'default')
+    .action(setVisibilityHandler);
+
+  // Expose service
+  service
+    .command('expose <name>')
+    .description('Expose service to ingress (make reachable from external traffic)')
+    .option('--namespace <namespace>', 'Namespace', 'default')
+    .action(exposeCommandHandler);
+
+  // Unexpose service
+  service
+    .command('unexpose <name>')
+    .description('Unexpose service from ingress (remove from external traffic)')
+    .option('--namespace <namespace>', 'Namespace', 'default')
+    .action(unexposeCommandHandler);
 
   // Pause service
   service

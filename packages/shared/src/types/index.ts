@@ -267,6 +267,7 @@ export {
 export type {
   Service,
   ServiceStatus,
+  ServiceVisibility,
   CreateServiceInput,
   UpdateServiceInput,
   ServiceListItem,
@@ -278,6 +279,7 @@ export {
   isServiceReady,
   DEFAULT_SERVICE_RESOURCE_REQUESTS,
   DEFAULT_SERVICE_RESOURCE_LIMITS,
+  VALID_SERVICE_VISIBILITY_VALUES,
 } from './service.js';
 
 // App config types

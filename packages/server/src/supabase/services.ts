@@ -52,6 +52,9 @@ interface ServiceRow {
   consecutive_failures: number;
   failure_backoff_until: string | null;
   ingress_port: number | null;
+  visibility: string;
+  exposed: boolean;
+  allowed_sources: string[];
   metadata: Record<string, unknown>;
   created_by: string;
   created_at: string;
@@ -99,6 +102,9 @@ function rowToService(row: ServiceRow): Service {
     consecutiveFailures: row.consecutive_failures ?? 0,
     failureBackoffUntil: row.failure_backoff_until ? new Date(row.failure_backoff_until) : undefined,
     ingressPort: row.ingress_port ?? undefined,
+    visibility: (row.visibility as any) ?? 'private',
+    exposed: row.exposed ?? false,
+    allowedSources: row.allowed_sources ?? [],
     metadata: row.metadata ?? {},
     createdBy: row.created_by,
     createdAt: new Date(row.created_at),
@@ -169,6 +175,9 @@ export class ServiceQueries {
         },
         scheduling: input.scheduling ?? null,
         ingress_port: input.ingressPort ?? null,
+        visibility: input.visibility ?? 'private',
+        exposed: input.exposed ?? false,
+        allowed_sources: input.allowedSources ?? [],
         metadata: input.metadata ?? {},
         created_by: createdBy,
       })
@@ -389,6 +398,15 @@ export class ServiceQueries {
     }
     if (input.ingressPort !== undefined) {
       updates.ingress_port = input.ingressPort;
+    }
+    if (input.visibility !== undefined) {
+      updates.visibility = input.visibility;
+    }
+    if (input.exposed !== undefined) {
+      updates.exposed = input.exposed;
+    }
+    if (input.allowedSources !== undefined) {
+      updates.allowed_sources = input.allowedSources;
     }
 
     updates.updated_at = new Date().toISOString();
