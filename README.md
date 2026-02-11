@@ -165,8 +165,6 @@ Platform-defining ideas that become possible because Stark is a programmable vis
 - **20. Health & Bioinformatics Sandbox** — Visualize genomic data and analytics pods with real-time collaboration and AI-assisted insights.
 - **21. Personal Finance & Tax Automation Pods** — Data pods pull from accounts while logic pods calculate taxes and risk with full visual traceability.
 
-See [docs/ideas.md](docs/ideas.md) for full descriptions.
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
