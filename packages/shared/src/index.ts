@@ -90,6 +90,15 @@ export {
   validateIngressPort,
   validateCreateServiceInput,
   validateUpdateServiceInput,
+  // Secret validation
+  validateSecretName,
+  validateSecretType,
+  validateSecretData,
+  validateSecretInjection,
+  validateSecretNamespace,
+  validateCreateSecretInput,
+  validateUpdateSecretInput,
+  validateMountPathConflicts,
 } from './validation/index.js';
 
 // Logging

@@ -18,6 +18,7 @@ import { createNamespaceCommand } from './commands/namespace.js';
 import { createServerConfigCommand } from './commands/server-config.js';
 import { createChaosCommand } from './commands/chaos.js';
 import { createNetworkCommand } from './commands/network.js';
+import { createSecretCommand } from './commands/secret.js';
 
 /**
  * CLI version from package.json
@@ -41,6 +42,7 @@ Commands:
   service  Service management (create, list, scale, pause)
   namespace   Namespace management (create, list, delete)
   chaos       Chaos testing commands (fault injection, partitions)
+  secret      Secret management (create, list, get, update, delete)
 
 Examples:
   $ stark auth login
@@ -93,6 +95,7 @@ function createProgram(): Command {
   program.addCommand(createServerConfigCommand());
   program.addCommand(createChaosCommand());
   program.addCommand(createNetworkCommand());
+  program.addCommand(createSecretCommand());
 
   // Add config command for managing CLI settings
   program

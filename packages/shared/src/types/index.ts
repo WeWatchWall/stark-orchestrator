@@ -282,6 +282,35 @@ export {
   VALID_SERVICE_VISIBILITY_VALUES,
 } from './service.js';
 
+// Secret types
+export type {
+  SecretType,
+  SecretInjectionMode,
+  SecretEnvInjection,
+  SecretVolumeInjection,
+  SecretInjection,
+  Secret,
+  CreateSecretInput,
+  UpdateSecretInput,
+  SecretListItem,
+  ResolvedSecretMaterial,
+  SecretEnvBundle,
+  SecretVolumeMount,
+  PodSecretPayload,
+} from './secret.js';
+
+export {
+  VALID_SECRET_TYPES,
+  VALID_INJECTION_MODES,
+  TLS_REQUIRED_KEYS,
+  DOCKER_REGISTRY_REQUIRED_KEYS,
+  MAX_SECRET_NAME_LENGTH,
+  MAX_SECRET_KEYS,
+  MAX_SECRET_DATA_SIZE,
+  SECRET_NAME_PATTERN,
+  getRequiredKeysForType,
+} from './secret.js';
+
 // App config types
 export type {
   AppConfig,

@@ -155,6 +155,13 @@ export interface Service {
    * If empty/undefined and visibility is private/system, all internal traffic is denied.
    */
   allowedSources?: string[];
+  /**
+   * List of secret names referenced by this service.
+   * Secrets are resolved by name within the service's namespace.
+   * Injection behavior is defined by each Secret resource — the service
+   * only declares which secrets it needs.
+   */
+  secrets: string[];
   /** Additional metadata */
   metadata: Record<string, unknown>;
   /** User who created the service */
@@ -231,6 +238,12 @@ export interface CreateServiceInput {
    * Only relevant for private/system visibility.
    */
   allowedSources?: string[];
+  /**
+   * List of secret names to attach to this service's pods.
+   * Each secret must exist in the same namespace.
+   * Injection behavior is defined inside the Secret resource.
+   */
+  secrets?: string[];
   /** Additional metadata */
   metadata?: Record<string, unknown>;
 }
@@ -285,6 +298,8 @@ export interface UpdateServiceInput {
   exposed?: boolean;
   /** Allowed sources update (null to clear) */
   allowedSources?: string[] | null;
+  /** Secrets update (replace list) */
+  secrets?: string[];
 }
 
 /**

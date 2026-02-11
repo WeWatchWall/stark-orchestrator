@@ -393,6 +393,7 @@ export class ServiceModel {
       visibility: input.visibility ?? 'private',
       exposed: input.exposed ?? false,
       allowedSources: input.allowedSources ?? [],
+      secrets: input.secrets ?? [],
       metadata: input.metadata ?? {},
       createdBy,
       createdAt: new Date(),

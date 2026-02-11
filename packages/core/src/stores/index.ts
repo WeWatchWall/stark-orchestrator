@@ -153,3 +153,28 @@ export {
   getNextMinorVersion,
   getNextMajorVersion,
 } from './pack-store';
+
+// Secret store - secret lifecycle management
+export {
+  // Computed
+  secretCount,
+  secretsList,
+  secretsByNamespace,
+  secretsByType,
+  // Actions
+  addSecret,
+  updateSecret,
+  removeSecret,
+  removeSecretByName,
+  // Queries
+  findSecretById,
+  findSecretByName,
+  findSecretsByNamespace,
+  findSecretsByType,
+  secretExists,
+  resolveSecretNames,
+  getSecretListItems,
+  toSecretListItem,
+  // Reset
+  resetSecretStore,
+} from './secret-store';

@@ -85,6 +85,7 @@ async function createHandler(
     cpu?: string;
     memory?: string;
     expose?: string;
+    secret?: string[];
   }
 ): Promise<void> {
   const name = nameArg || options.name;
@@ -129,6 +130,12 @@ async function createHandler(
       replicas,
       visibility: options.visibility ?? 'private',
     };
+
+    // Attach secrets (names only — injection is defined by the secret)
+    if (options.secret && options.secret.length > 0) {
+      serviceRequest.secrets = options.secret;
+      info(`Secrets: ${options.secret.join(', ')}`);
+    }
 
     // Parse labels
     if (options.label && options.label.length > 0) {
@@ -701,6 +708,7 @@ export function createServiceCommand(): Command {
     .option('--cpu <millicores>', 'CPU request in millicores')
     .option('--memory <mb>', 'Memory request in MB')
     .option('--expose <port>', 'Expose ingress port on orchestrator server')
+    .option('--secret <name...>', 'Secret name to attach (can be repeated)')
     .action(createHandler);
 
   // List services

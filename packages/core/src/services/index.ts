@@ -78,3 +78,22 @@ export {
   type NamespaceCreationResult,
   type QuotaCheckResult,
 } from './namespace-manager';
+
+export {
+  SecretManager,
+  secretManager,
+  createSecretManager,
+  resetSecretManager,
+  SecretManagerErrorCodes,
+  type SecretManagerOptions,
+  type SecretOperationResult,
+} from './secret-manager';
+
+export {
+  encryptSecretData,
+  decryptSecretData,
+  wipeSecretMaterial,
+  initMasterKey,
+  resetMasterKey,
+  type EncryptionResult,
+} from './secret-crypto';

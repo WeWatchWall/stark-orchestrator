@@ -57,3 +57,11 @@ export {
   type ServiceListResponse,
   type ServiceListFilters,
 } from './service';
+
+export {
+  SecretModel,
+  createReactiveSecretListItem,
+  type SecretCreationResult,
+  type SecretListResponse,
+  type SecretListFilters,
+} from './secret';

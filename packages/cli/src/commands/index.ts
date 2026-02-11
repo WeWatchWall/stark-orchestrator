@@ -14,3 +14,4 @@ export { createNamespaceCommand } from './namespace.js';
 export { createServerConfigCommand } from './server-config.js';
 export { createChaosCommand } from './chaos.js';
 export { createNetworkCommand } from './network.js';
+export { createSecretCommand } from './secret.js';

@@ -107,3 +107,15 @@ export {
   validateCreateServiceInput,
   validateUpdateServiceInput,
 } from './service-validation';
+
+// Secret validation
+export {
+  validateSecretName,
+  validateSecretType,
+  validateSecretData,
+  validateSecretInjection,
+  validateSecretNamespace,
+  validateCreateSecretInput,
+  validateUpdateSecretInput,
+  validateMountPathConflicts,
+} from './secret-validation';
