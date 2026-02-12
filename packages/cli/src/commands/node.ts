@@ -733,6 +733,19 @@ async function agentStartHandler(options: {
         email: data.user!.email!,
       };
       saveCredentials(credentials);
+
+      // Also save as node credentials with password for re-login on refresh token expiry
+      const nodeCredentials: NodeCredentials = {
+        accessToken: data.session.access_token,
+        refreshToken: data.session.refresh_token,
+        expiresAt: new Date(data.session.expires_at! * 1000).toISOString(),
+        userId: data.user!.id,
+        email: data.user!.email!,
+        password: options.password,
+        createdAt: new Date().toISOString(),
+      };
+      saveNodeCredentials(nodeCredentials);
+
       success(`Authenticated as ${options.email}`);
     } catch (err) {
       error('Authentication failed', err instanceof Error ? { message: err.message } : undefined);
@@ -825,6 +838,7 @@ async function agentStartHandler(options: {
         expiresAt: registerResult.data.expiresAt,
         userId: registerResult.data.user.id,
         email: registerResult.data.user.email,
+        password: autoPassword,
         createdAt: new Date().toISOString(),
       };
       saveNodeCredentials(nodeCredentials);

@@ -39,6 +39,8 @@ export interface NodeCredentials {
   userId: string;
   /** The email used for this credential */
   email: string;
+  /** The password for re-login when refresh tokens expire (encrypted at rest via file permissions) */
+  password?: string;
   /** Timestamp when credentials were created */
   createdAt: string;
 }
@@ -132,7 +134,7 @@ export function areNodeCredentialsValid(): boolean {
 export const TOKEN_REFRESH_THRESHOLD_MS = 15 * 60 * 1000;
 
 /**
- * Check if node credentials should be refreshed (within threshold of expiration)
+ * Check if node credentials should be refreshed (within threshold of expiration or already expired)
  */
 export function shouldRefreshNodeCredentials(): boolean {
   const creds = loadNodeCredentials();
@@ -142,8 +144,8 @@ export function shouldRefreshNodeCredentials(): boolean {
   const now = new Date();
   const timeRemaining = expiresAt.getTime() - now.getTime();
   
-  // Should refresh if within threshold of expiration
-  return timeRemaining > 0 && timeRemaining <= TOKEN_REFRESH_THRESHOLD_MS;
+  // Should refresh if already expired OR within threshold of expiration
+  return timeRemaining <= TOKEN_REFRESH_THRESHOLD_MS;
 }
 
 /**
