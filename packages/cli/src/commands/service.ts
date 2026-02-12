@@ -86,6 +86,7 @@ async function createHandler(
     memory?: string;
     expose?: string;
     secret?: string[];
+    enableEphemeral?: boolean;
   }
 ): Promise<void> {
   const name = nameArg || options.name;
@@ -130,6 +131,12 @@ async function createHandler(
       replicas,
       visibility: options.visibility ?? 'private',
     };
+
+    // Enable ephemeral data plane if requested
+    if (options.enableEphemeral) {
+      serviceRequest.enableEphemeral = true;
+      info('Ephemeral data plane: enabled');
+    }
 
     // Attach secrets (names only — injection is defined by the secret)
     if (options.secret && options.secret.length > 0) {
@@ -709,6 +716,7 @@ export function createServiceCommand(): Command {
     .option('--memory <mb>', 'Memory request in MB')
     .option('--expose <port>', 'Expose ingress port on orchestrator server')
     .option('--secret <name...>', 'Secret name to attach (can be repeated)')
+    .option('--enable-ephemeral', 'Enable EphemeralDataPlane for pods in this service')
     .action(createHandler);
 
   // List services

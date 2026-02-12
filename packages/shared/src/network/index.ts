@@ -76,3 +76,19 @@ export { StarkBrowserListener } from './browser-listener.js';
 
 // Default PeerFactory implementation using simple-peer
 export { createSimplePeerFactory, type SimplePeerFactoryOptions } from './peer-factory.js';
+
+// Ephemeral data plane — PodGroup store + developer-facing API
+export {
+  PodGroupStore,
+  getPodGroupStore,
+  resetPodGroupStore,
+} from './pod-group-store.js';
+
+export {
+  EphemeralDataPlane,
+  createEphemeralDataPlane,
+  type EphemeralQueryHandler,
+  type EphemeralTransport,
+  type GroupTransport,
+  type EphemeralDataPlaneOptions,
+} from './ephemeral-data-plane.js';

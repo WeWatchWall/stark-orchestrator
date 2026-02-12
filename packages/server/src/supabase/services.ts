@@ -56,6 +56,7 @@ interface ServiceRow {
   exposed: boolean;
   allowed_sources: string[];
   secrets: string[];
+  enable_ephemeral: boolean;
   metadata: Record<string, unknown>;
   created_by: string;
   created_at: string;
@@ -107,6 +108,7 @@ function rowToService(row: ServiceRow): Service {
     exposed: row.exposed ?? false,
     allowedSources: row.allowed_sources ?? [],
     secrets: row.secrets ?? [],
+    enableEphemeral: row.enable_ephemeral ?? false,
     metadata: row.metadata ?? {},
     createdBy: row.created_by,
     createdAt: new Date(row.created_at),
@@ -180,6 +182,7 @@ export class ServiceQueries {
         visibility: input.visibility ?? 'private',
         exposed: input.exposed ?? false,
         allowed_sources: input.allowedSources ?? [],
+        enable_ephemeral: input.enableEphemeral ?? false,
         metadata: input.metadata ?? {},
         created_by: createdBy,
       })
@@ -409,6 +412,9 @@ export class ServiceQueries {
     }
     if (input.allowedSources !== undefined) {
       updates.allowed_sources = input.allowedSources;
+    }
+    if (input.enableEphemeral !== undefined) {
+      updates.enable_ephemeral = input.enableEphemeral;
     }
 
     updates.updated_at = new Date().toISOString();

@@ -36,6 +36,14 @@ export interface PackMetadata {
    * Scheduler will refuse to schedule on nodes with incompatible versions.
    */
   minNodeVersion?: string;
+  /**
+   * Enable the ephemeral data plane for this pack.
+   * When true, the runtime injects an `EphemeralDataPlane` instance as
+   * `context.ephemeral`, enabling transient pod-to-pod group membership,
+   * fan-out queries, and presence tracking.
+   * @default false
+   */
+  enableEphemeral?: boolean;
   /** Additional configuration */
   [key: string]: unknown;
 }

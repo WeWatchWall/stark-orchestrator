@@ -11,6 +11,7 @@ import type { RuntimeTag, PackNamespace } from './pack.js';
 import type { Labels, Annotations } from './labels.js';
 import type { ResourceRequirements } from './pod.js';
 import type { Capability } from './capabilities.js';
+import type { EphemeralDataPlane } from '../network/ephemeral-data-plane.js';
 
 /**
  * WebSocket message structure used for agent communication
@@ -240,6 +241,24 @@ export interface PackExecutionContext {
    * @internal Set by the runtime, not intended for pack code use.
    */
   tokenExpiresAt?: string;
+
+  /**
+   * Ephemeral data plane instance for transient pod-to-pod communication.
+   * Only available when `metadata.enableEphemeral` is `true` on the pack.
+   *
+   * Provides group membership, fan-out queries, and presence tracking
+   * without requiring persistent state or external dependencies.
+   *
+   * @example
+   * ```typescript
+   * if (context.ephemeral) {
+   *   context.ephemeral.joinGroup('room:lobby');
+   *   const members = context.ephemeral.getGroupPods('room:lobby');
+   *   const result = await context.ephemeral.queryPods(members, '/ping');
+   * }
+   * ```
+   */
+  ephemeral?: EphemeralDataPlane;
 
   /**
    * Browser-only: register inbound request handlers.

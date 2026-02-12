@@ -394,6 +394,7 @@ export class ServiceModel {
       exposed: input.exposed ?? false,
       allowedSources: input.allowedSources ?? [],
       secrets: input.secrets ?? [],
+      enableEphemeral: input.enableEphemeral ?? false,
       metadata: input.metadata ?? {},
       createdBy,
       createdAt: new Date(),

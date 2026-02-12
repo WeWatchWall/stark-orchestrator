@@ -19,6 +19,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "node-cache": "^5.1.2",
     "simple-peer": "^9.11.1",
     "uuid": "^10.0.0",
     "zod": "^3.23.8"

@@ -20,6 +20,7 @@ import {
   requiresMainThread,
   createPodLogSink,
   formatLogArgs,
+  createEphemeralDataPlane,
   type Logger,
   type Pack,
   type Pod,
@@ -387,6 +388,13 @@ export class PackExecutor {
       onShutdown: (handler: ShutdownHandler) => {
         shutdownHandlers.push(handler);
       },
+      // Ephemeral data plane: opt-in via pack metadata
+      ...(pack.metadata?.enableEphemeral ? {
+        ephemeral: createEphemeralDataPlane({
+          podId: pod.id,
+          serviceId,
+        }),
+      } : {}),
     };
 
     this.config.logger.info('Starting pack execution', {
@@ -440,6 +448,8 @@ export class PackExecutor {
         state.completedAt = new Date();
         state.result = result;
         state.logSink.close();
+        // Dispose ephemeral data plane if it was created
+        context.ephemeral?.dispose();
         this.config.logger.info('Pack execution completed', {
           executionId,
           podId: pod.id,
@@ -463,6 +473,8 @@ export class PackExecutor {
         state.completedAt = new Date();
         state.result = result;
         state.logSink.close();
+        // Dispose ephemeral data plane if it was created
+        context.ephemeral?.dispose();
         this.config.logger.error(
           'Pack execution failed',
           error instanceof Error ? error : new Error(String(error)),
@@ -626,9 +638,12 @@ export class PackExecutor {
       // Execute in Web Worker. The worker script imports all dependencies
       // (formatLogArgs, etc.) directly — no serialized function injection.
       // Only bundleCode, context (metadata/state), and args are passed via postMessage.
-      // Strip non-serializable properties (lifecycle, onShutdown) — they use
+      // Strip non-serializable properties (lifecycle, onShutdown, ephemeral) — they use
       // getters/closures and cannot survive structured clone.
-      const { lifecycle: _lc, onShutdown: _os, ...serializableContext } = context;
+      // The ephemeral data plane (EphemeralDataPlane) contains a PodGroupStore with
+      // event listeners and Map handlers — none of which can be cloned.
+      // The worker will recreate it from context.metadata.enableEphemeral.
+      const { lifecycle: _lc, onShutdown: _os, ephemeral: _eph, ...serializableContext } = context;
       
       // Add networking config for pack-worker
       const workerContext = {

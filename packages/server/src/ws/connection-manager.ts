@@ -21,6 +21,15 @@ import {
 import { routePodMessage } from './handlers/pod-handler.js';
 import { routeMetricsMessage } from './handlers/metrics-handler.js';
 import { createNetworkWsHandlers, NETWORK_WS_TYPES } from './handlers/network-handler.js';
+import {
+  createPodGroupWsHandlers,
+  PODGROUP_WS_TYPES,
+  type GroupJoinPayload,
+  type GroupLeavePayload,
+  type GroupLeaveAllPayload,
+  type GroupGetPodsPayload,
+  type GroupGetGroupsPayload,
+} from './handlers/podgroup-handler.js';
 import type { RegisterNodeInput, NodeHeartbeat, UserRole, SignallingMessage, RoutingRequest } from '@stark-o/shared';
 import { getServiceRegistry } from '@stark-o/shared';
 import { getIngressManager } from '../services/ingress-manager.js';
@@ -173,6 +182,7 @@ export class ConnectionManager {
   private pingInterval: NodeJS.Timeout | null = null;
   private readonly options: Required<ConnectionManagerOptions>;
   private networkHandlers: ReturnType<typeof createNetworkWsHandlers> | null = null;
+  private podGroupHandlers: ReturnType<typeof createPodGroupWsHandlers> | null = null;
 
   constructor(options: ConnectionManagerOptions = {}) {
     this.options = {
@@ -198,6 +208,9 @@ export class ConnectionManager {
       sendToNode: (nodeId, message) => this.sendToNodeId(nodeId, message),
       registerPodConnection: (podId, serviceId) => this.registerPodConnection(podId, serviceId),
     });
+
+    // Initialise PodGroup handlers (central membership store)
+    this.podGroupHandlers = createPodGroupWsHandlers();
 
     // Start ping interval
     this.startPingInterval();
@@ -570,6 +583,41 @@ export class ConnectionManager {
           return;
         }
 
+        // Check if it's a group message (central PodGroupStore)
+        if (message.type.startsWith('group:') && this.podGroupHandlers) {
+          // Require authentication for group operations
+          if (this.options.requireAuth && !conn.isAuthenticated) {
+            this.sendMessage(conn.ws, {
+              type: PODGROUP_WS_TYPES.ERROR,
+              payload: { code: 'UNAUTHORIZED', message: 'Authentication required' },
+              correlationId: message.correlationId,
+            });
+            return;
+          }
+
+          const respond = (response: WsMessage) => this.sendMessage(conn.ws, response);
+
+          switch (message.type) {
+            case PODGROUP_WS_TYPES.JOIN:
+              this.podGroupHandlers.handleJoin(message as WsMessage<GroupJoinPayload>, respond, conn.userId, conn.connectionType);
+              return;
+            case PODGROUP_WS_TYPES.LEAVE:
+              this.podGroupHandlers.handleLeave(message as WsMessage<GroupLeavePayload>, respond, conn.userId, conn.connectionType);
+              return;
+            case PODGROUP_WS_TYPES.LEAVE_ALL:
+              this.podGroupHandlers.handleLeaveAll(message as WsMessage<GroupLeaveAllPayload>, respond, conn.userId, conn.connectionType);
+              return;
+            case PODGROUP_WS_TYPES.GET_PODS:
+              this.podGroupHandlers.handleGetPods(message as WsMessage<GroupGetPodsPayload>, respond);
+              return;
+            case PODGROUP_WS_TYPES.GET_GROUPS:
+              this.podGroupHandlers.handleGetGroups(message as WsMessage<GroupGetGroupsPayload>, respond);
+              return;
+            default:
+              break; // fall through to unknown
+          }
+        }
+
         this.sendError(
           conn.ws,
           'UNKNOWN_MESSAGE_TYPE',
@@ -661,6 +709,10 @@ export class ConnectionManager {
         // Unregister from ServiceRegistry
         if (this.networkHandlers) {
           this.networkHandlers.handlePodDisconnected(podId);
+        }
+        // Clean up pod's group memberships from central PodGroupStore
+        if (this.podGroupHandlers) {
+          this.podGroupHandlers.handlePodDisconnected(podId);
         }
         // Clean up pod-to-connection mapping
         this.podToConnection.delete(podId);
@@ -755,8 +807,10 @@ export class ConnectionManager {
         // Check if connection has timed out
         if (now - lastActivity > this.options.pingInterval + timeout) {
           logger.warn('Connection timed out', { connectionId: id });
+          // terminate() fires 'close' asynchronously — do NOT delete the
+          // connection here. handleClose() needs the entry to clean up
+          // pod group memberships and network registrations.
           conn.ws.terminate();
-          this.connections.delete(id);
           continue;
         }
 

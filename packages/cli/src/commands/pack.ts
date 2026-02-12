@@ -161,6 +161,7 @@ async function registerHandler(
     description?: string;
     visibility?: string;
     minNodeVersion?: string;
+    enableEphemeral?: boolean;
     yes?: boolean;
   }
 ): Promise<void> {
@@ -242,6 +243,11 @@ async function registerHandler(
     // Add minNodeVersion if specified
     if (minNodeVersion) {
       requestBody.minNodeVersion = minNodeVersion;
+    }
+
+    // Add enableEphemeral metadata flag if specified
+    if (options.enableEphemeral) {
+      requestBody.metadata = { ...((requestBody.metadata as Record<string, unknown>) ?? {}), enableEphemeral: true };
     }
     
     info(`Sending registration request for ${options.name}@${options.ver}...`);
@@ -527,6 +533,7 @@ export function createPackCommand(): Command {
     .option('-d, --description <desc>', 'Pack description')
     .option('--visibility <visibility>', 'Pack visibility: private (default) or public')
     .option('--min-node-version <version>', 'Minimum Node.js version required (e.g., 18, 20.10.0)')
+    .option('--enable-ephemeral', 'Enable EphemeralDataPlane for this pack (context.ephemeral)')
     .option('-y, --yes', 'Skip confirmation prompts')
     .action(registerHandler);
 

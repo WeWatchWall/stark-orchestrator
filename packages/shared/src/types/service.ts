@@ -162,6 +162,13 @@ export interface Service {
    * only declares which secrets it needs.
    */
   secrets: string[];
+  /**
+   * Enable the ephemeral data plane for pods in this service.
+   * When true, each pod receives an `EphemeralDataPlane` instance
+   * as `context.ephemeral`.
+   * @default false
+   */
+  enableEphemeral: boolean;
   /** Additional metadata */
   metadata: Record<string, unknown>;
   /** User who created the service */
@@ -244,6 +251,14 @@ export interface CreateServiceInput {
    * Injection behavior is defined inside the Secret resource.
    */
   secrets?: string[];
+  /**
+   * Enable the ephemeral data plane for pods in this service.
+   * When true, each pod receives an `EphemeralDataPlane` instance as
+   * `context.ephemeral` — enabling transient group membership,
+   * fan-out queries, and presence tracking.
+   * @default false
+   */
+  enableEphemeral?: boolean;
   /** Additional metadata */
   metadata?: Record<string, unknown>;
 }
@@ -300,6 +315,8 @@ export interface UpdateServiceInput {
   allowedSources?: string[] | null;
   /** Secrets update (replace list) */
   secrets?: string[];
+  /** Enable/disable ephemeral data plane */
+  enableEphemeral?: boolean;
 }
 
 /**

@@ -790,6 +790,12 @@ export class ServiceController {
     }
     const pack = packResult.data;
 
+    // Merge service-level enableEphemeral into pack metadata so it flows
+    // through the deploy payload to the runtime executor.
+    if (service.enableEphemeral && !pack.metadata?.enableEphemeral) {
+      pack.metadata = { ...pack.metadata, enableEphemeral: true };
+    }
+
     // Get the next incarnation number for this service
     // This ensures late messages from old incarnations are rejected
     const incarnationResult = await podQueries.getNextIncarnation(service.id);

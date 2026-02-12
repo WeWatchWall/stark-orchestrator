@@ -444,3 +444,22 @@ export {
   INTERNAL_URL_SUFFIX,
   parseInternalUrl,
 } from './network.js';
+
+// Ephemeral data plane types
+export type {
+  PodGroupMembership,
+  PodGroup,
+  EphemeralQuery,
+  EphemeralResponse,
+  EphemeralQueryResult,
+  EphemeralEventType,
+  EphemeralEvent,
+  EphemeralAuditHook,
+  EphemeralDataPlaneConfig,
+} from './ephemeral.js';
+
+export {
+  DEFAULT_MEMBERSHIP_TTL,
+  DEFAULT_REAP_INTERVAL,
+  DEFAULT_EPHEMERAL_QUERY_TIMEOUT,
+} from './ephemeral.js';

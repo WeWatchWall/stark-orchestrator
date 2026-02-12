@@ -22,6 +22,7 @@ import {
   requiresMainThread,
   createPodLogSink,
   formatLogArgs,
+  createEphemeralDataPlane,
   type Logger,
   type Pack,
   type Pod,
@@ -342,6 +343,13 @@ export class PackExecutor {
       authToken: options.podToken,
       refreshToken: options.podRefreshToken,
       tokenExpiresAt: options.podTokenExpiresAt,
+      // Ephemeral data plane: opt-in via pack metadata
+      ...(pack.metadata?.enableEphemeral ? {
+        ephemeral: createEphemeralDataPlane({
+          podId: pod.id,
+          serviceId,
+        }),
+      } : {}),
     };
 
     this.config.logger.info('Starting pack execution', {
@@ -395,6 +403,8 @@ export class PackExecutor {
         state.completedAt = new Date();
         state.result = result;
         state.logSink.close();
+        // Dispose ephemeral data plane if it was created
+        context.ephemeral?.dispose();
         this.config.logger.info('Pack execution completed', {
           executionId,
           podId: pod.id,
@@ -418,6 +428,8 @@ export class PackExecutor {
         state.completedAt = new Date();
         state.result = result;
         state.logSink.close();
+        // Dispose ephemeral data plane if it was created
+        context.ephemeral?.dispose();
         this.config.logger.error(
           'Pack execution failed',
           error instanceof Error ? error : new Error(String(error)),
@@ -594,10 +606,13 @@ export class PackExecutor {
       // The worker script imports PodLogSink and other dependencies directly —
       // no serialized functions are injected. Only bundleCode, context (metadata/state),
       // and args are passed via IPC.
-      // Strip non-serializable properties (lifecycle, onShutdown) — they use
+      // Strip non-serializable properties (lifecycle, onShutdown, ephemeral) — they use
       // getters/closures and cannot survive structured clone over IPC.
+      // The ephemeral data plane (EphemeralDataPlane) contains a PodGroupStore with
+      // NodeCache event listeners and Map handlers — none of which can be cloned.
+      // The worker will recreate it from context.metadata.enableEphemeral.
       // Add networking config for direct pod-to-orchestrator WebRTC signaling.
-      const { lifecycle: _lc, onShutdown: _os, ...serializableContext } = context;
+      const { lifecycle: _lc, onShutdown: _os, ephemeral: _eph, ...serializableContext } = context;
       const workerContext = {
         ...serializableContext,
         // Networking: pod connects directly to orchestrator for signaling

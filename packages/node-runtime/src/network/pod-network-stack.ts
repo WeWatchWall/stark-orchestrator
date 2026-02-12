@@ -25,6 +25,9 @@ import {
   PodRequestRouter,
   type SignalSender,
   type OrchestratorRouter,
+  type GroupTransport,
+  type EphemeralTransport,
+  type EphemeralDataPlane,
 } from '@stark-o/shared';
 import type {
   SignallingMessage,
@@ -33,6 +36,9 @@ import type {
   ServiceRequest,
   ServiceResponse,
   WsMessage,
+  PodGroupMembership,
+  EphemeralQuery,
+  EphemeralResponse,
 } from '@stark-o/shared';
 
 // ── Configuration ───────────────────────────────────────────────────────────
@@ -124,8 +130,31 @@ export class PodNetworkStack {
     resolve: (res: RoutingResponse) => void;
     reject: (err: Error) => void;
   }> = new Map();
+  /** Pending group WS round-trips keyed by correlationId */
+  private pendingGroupRequests: Map<string, {
+    resolve: (payload: unknown) => void;
+    reject: (err: Error) => void;
+  }> = new Map();
   private routeCounter = 0;
+  private groupRequestCounter = 0;
+  // @ts-expect-error reserved for future ephemeral correlation IDs
+  private ephemeralResponseCounter = 0;
   private reconnectAttempts = 0;
+
+  /**
+   * EphemeralDataPlane reference for dispatching inbound ephemeral queries.
+   * Set via `setEphemeralPlane()` after the plane is created.
+   */
+  private ephemeralPlane: EphemeralDataPlane | null = null;
+
+  /**
+   * Pending ephemeral query responses, keyed by `queryId:targetPodId`.
+   * Used by `createEphemeralTransport()` to resolve outbound queries.
+   */
+  private pendingEphemeralResponses: Map<string, {
+    resolve: (res: EphemeralResponse) => void;
+    reject: (err: Error) => void;
+  }> = new Map();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private tokenRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private isShuttingDown = false;
@@ -861,6 +890,32 @@ export class PodNetworkStack {
         });
         break;
       }
+
+      // ── Group ack / error messages ──────────────────────────────────────
+      case 'group:join:ack':
+      case 'group:leave:ack':
+      case 'group:leave-all:ack':
+      case 'group:get-pods:ack':
+      case 'group:get-groups:ack': {
+        const cid = message.correlationId;
+        if (cid && this.pendingGroupRequests.has(cid)) {
+          this.pendingGroupRequests.get(cid)!.resolve(message.payload);
+          this.pendingGroupRequests.delete(cid);
+        }
+        break;
+      }
+
+      case 'group:error': {
+        const cid = message.correlationId;
+        const errPayload = message.payload as { error?: string };
+        if (cid && this.pendingGroupRequests.has(cid)) {
+          this.pendingGroupRequests.get(cid)!.reject(
+            new Error(errPayload?.error ?? 'Group operation failed'),
+          );
+          this.pendingGroupRequests.delete(cid);
+        }
+        break;
+      }
     }
   }
 
@@ -897,11 +952,149 @@ export class PodNetworkStack {
     });
   }
 
+  // ── Group Transport (central PodGroupStore via WS) ────────────────────────
+
+  /**
+   * Send a group-related WS message and wait for the ack.
+   */
+  private groupRequest<T>(type: string, payload: Record<string, unknown>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const correlationId = `grp-${this.config.podId}-${++this.groupRequestCounter}`;
+
+      const timeout = setTimeout(() => {
+        this.pendingGroupRequests.delete(correlationId);
+        reject(new Error(`Group request '${type}' timed out`));
+      }, this.config.connectionTimeout);
+
+      this.pendingGroupRequests.set(correlationId, {
+        resolve: (data) => {
+          clearTimeout(timeout);
+          resolve(data as T);
+        },
+        reject: (err) => {
+          clearTimeout(timeout);
+          reject(err);
+        },
+      });
+
+      this.sendToOrchestrator({ type, payload, correlationId });
+    });
+  }
+
+  /**
+   * Set the EphemeralDataPlane so the network stack can dispatch
+   * inbound ephemeral queries received over WebRTC.
+   */
+  setEphemeralPlane(plane: EphemeralDataPlane): void {
+    this.ephemeralPlane = plane;
+  }
+
+  /**
+   * Create an EphemeralTransport that sends ephemeral queries
+   * to remote pods over WebRTC data channels.
+   *
+   * Outbound: serialises the query with an `_ephemeral` flag and sends
+   * it via `connectionManager.send()`. A pending-response map resolves
+   * when `handleIncomingData` sees the matching `_ephemeralResp`.
+   *
+   * Inbound: handled automatically inside `handleIncomingData` which
+   * dispatches to `ephemeralPlane.handleIncomingQuery()` and sends
+   * the response back.
+   */
+  createEphemeralTransport(): EphemeralTransport {
+    return (async (targetPodId: string, query: EphemeralQuery): Promise<EphemeralResponse> => {
+      if (!this.connectionManager) {
+        throw new Error('WebRTC not initialised — cannot send ephemeral query');
+      }
+
+      // Ensure WebRTC connection is established before sending
+      if (!this.connectionManager.isConnected(targetPodId)) {
+        await this.connectionManager.connect(targetPodId);
+      }
+
+      const key = `${query.queryId}:${targetPodId}`;
+
+      return new Promise<EphemeralResponse>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          this.pendingEphemeralResponses.delete(key);
+          reject(new Error(`Ephemeral query to ${targetPodId} timed out`));
+        }, query.timeout || 5_000);
+
+        this.pendingEphemeralResponses.set(key, {
+          resolve: (res) => { clearTimeout(timeout); resolve(res); },
+          reject:  (err) => { clearTimeout(timeout); reject(err); },
+        });
+
+        try {
+          this.connectionManager!.send(targetPodId, JSON.stringify({
+            _ephemeral: true,
+            type: 'query',
+            ...query,
+          }));
+        } catch (err) {
+          clearTimeout(timeout);
+          this.pendingEphemeralResponses.delete(key);
+          reject(err);
+        }
+      });
+    }) as EphemeralTransport;
+  }
+
+  /**
+   * Create a GroupTransport that proxies group operations to the
+   * orchestrator's central PodGroupStore over WS.
+   */
+  createGroupTransport(): GroupTransport {
+    return {
+      join: async (groupId, podId, ttl, metadata) => {
+        const res = await this.groupRequest<{ membership: PodGroupMembership }>(
+          'group:join',
+          { groupId, podId, ttl, metadata },
+        );
+        return res.membership;
+      },
+      leave: async (groupId, podId) => {
+        const res = await this.groupRequest<{ removed: boolean }>('group:leave', { groupId, podId });
+        return res.removed;
+      },
+      leaveAll: async (podId) => {
+        const res = await this.groupRequest<{ removedFrom: string[] }>('group:leave-all', { podId });
+        return res.removedFrom;
+      },
+      getGroupPods: async (groupId) => {
+        const res = await this.groupRequest<{ members: PodGroupMembership[] }>('group:get-pods', { groupId });
+        return res.members;
+      },
+      getGroupsForPod: async (podId) => {
+        const res = await this.groupRequest<{ groups: string[] }>('group:get-groups', { podId });
+        return res.groups;
+      },
+    };
+  }
+
   // ── Inbound Data Handling ─────────────────────────────────────────────────
 
   private handleIncomingData(fromPodId: string, data: string): void {
     try {
       const parsed = JSON.parse(data);
+
+      // ── Ephemeral messages (PodGroup data plane) ──────────────────────
+      if (parsed._ephemeral) {
+        if (parsed.type === 'query') {
+          // Inbound ephemeral query — dispatch to local plane
+          this.handleInboundEphemeralQuery(fromPodId, parsed as EphemeralQuery);
+        } else if (parsed.type === 'response') {
+          // Inbound ephemeral response — resolve pending query
+          const resp = parsed as EphemeralResponse;
+          const key = `${resp.queryId}:${fromPodId}`;
+          const pending = this.pendingEphemeralResponses.get(key);
+          if (pending) {
+            this.pendingEphemeralResponses.delete(key);
+            pending.resolve(resp);
+          }
+        }
+        return;
+      }
 
       // Check if it's a ServiceResponse (reply to our request)
       if (parsed.requestId && 'status' in parsed) {
@@ -927,6 +1120,39 @@ export class PodNetworkStack {
         fromPodId,
         error: err instanceof Error ? err.message : String(err),
         rawData: data.substring(0, 100),
+      });
+    }
+  }
+
+  /**
+   * Handle an inbound ephemeral query from a remote pod.
+   * Dispatches to the local EphemeralDataPlane's handler and sends
+   * the response back over WebRTC.
+   */
+  private async handleInboundEphemeralQuery(fromPodId: string, query: EphemeralQuery): Promise<void> {
+    if (!this.ephemeralPlane) {
+      this.config.log('warn', '⚠️ [Ephemeral] Received query but no EphemeralDataPlane set', {
+        fromPodId,
+        queryId: query.queryId,
+        path: query.path,
+      });
+      return;
+    }
+
+    try {
+      const response = await this.ephemeralPlane.handleIncomingQuery(query);
+      if (response && this.connectionManager) {
+        this.connectionManager.send(fromPodId, JSON.stringify({
+          _ephemeral: true,
+          type: 'response',
+          ...response,
+        }));
+      }
+    } catch (err) {
+      this.config.log('error', '❌ [Ephemeral] Handler error', {
+        fromPodId,
+        queryId: query.queryId,
+        error: err instanceof Error ? err.message : String(err),
       });
     }
   }

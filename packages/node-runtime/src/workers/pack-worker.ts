@@ -16,6 +16,10 @@ import http from 'http';
 import https from 'https';
 import {
   formatLogArgs,
+  createEphemeralDataPlane,
+  type EphemeralTransport,
+  type GroupTransport,
+  type EphemeralDataPlane,
 } from '@stark-o/shared';
 import { PodNetworkStack } from '../network/pod-network-stack.js';
 
@@ -172,6 +176,46 @@ async function executePack(request: WorkerRequest): Promise<void> {
     );
   }
 
+  // 4b. Recreate EphemeralDataPlane inside the worker if enabled
+  // The EphemeralDataPlane cannot be serialized over IPC (it contains closures,
+  // NodeCache event listeners, Maps, etc.), so the parent strips it and we
+  // recreate a fresh instance here with the same podId/serviceId.
+  let ephemeralPlane: EphemeralDataPlane | null = null;
+  if (context.metadata?.enableEphemeral) {
+    // Build transport bridges when networking is available
+    let groupTransport: GroupTransport | undefined;
+    let transport: EphemeralTransport | undefined;
+
+    if (networkStack) {
+      // GroupTransport: proxies join/leave/getGroupPods to orchestrator's
+      // central PodGroupStore over the already-connected WS.
+      groupTransport = networkStack.createGroupTransport();
+
+      // EphemeralTransport: delivers ephemeral queries to remote pods
+      // over WebRTC data channels. Responses are correlated inside
+      // PodNetworkStack.handleIncomingData.
+      transport = networkStack.createEphemeralTransport();
+    }
+
+    ephemeralPlane = createEphemeralDataPlane({
+      podId: context.podId,
+      serviceId: context.serviceId,
+      groupTransport,
+      transport,
+    });
+
+    // Let the network stack dispatch inbound ephemeral queries to the plane
+    if (networkStack) {
+      networkStack.setEphemeralPlane(ephemeralPlane);
+    }
+
+    (context as Record<string, unknown>).ephemeral = ephemeralPlane;
+    originalConsole.log(
+      `[${new Date().toISOString()}][${podId}:out]`,
+      `EphemeralDataPlane created in worker subprocess (mode=${groupTransport ? 'remote' : 'local'})`,
+    );
+  }
+
   try {
     // 5. Evaluate the pack bundle code
     // The bundle is a fully-bundled CJS module — we provide exports/module
@@ -248,6 +292,12 @@ async function executePack(request: WorkerRequest): Promise<void> {
       } catch {
         // Ignore shutdown errors
       }
+    }
+
+    // Clean up ephemeral data plane
+    if (ephemeralPlane) {
+      ephemeralPlane.dispose();
+      ephemeralPlane = null;
     }
 
     // Clean up environment variables

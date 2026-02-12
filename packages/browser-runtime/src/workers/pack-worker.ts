@@ -20,6 +20,7 @@
 
 import {
   formatLogArgs,
+  createEphemeralDataPlane,
   ServiceCaller,
   PodRequestRouter,
   StarkBrowserListener,
@@ -31,6 +32,12 @@ import {
   type SignallingMessage,
   type ServiceRequest,
   type ServiceResponse,
+  type GroupTransport,
+  type EphemeralTransport,
+  type EphemeralDataPlane,
+  type EphemeralQuery,
+  type EphemeralResponse,
+  type PodGroupMembership,
 } from '@stark-o/shared';
 import { WorkerNetworkProxy } from '../network/worker-network-proxy.js';
 
@@ -83,6 +90,20 @@ declare const self: DedicatedWorkerGlobalScope & {
 // ── Network state (module-level for cleanup) ─────────────────────────
 let activeWs: WebSocket | null = null;
 let activeNetworkProxy: WorkerNetworkProxy | null = null;
+let activeEphemeralPlane: EphemeralDataPlane | null = null;
+
+// ── Group transport state (WS round-trips for PodGroup operations) ────
+const pendingGroupRequests = new Map<string, {
+  resolve: (payload: unknown) => void;
+  reject: (err: Error) => void;
+}>();
+let groupRequestCounter = 0;
+
+// ── Ephemeral transport state (WebRTC round-trips for queries) ────────
+const pendingEphemeralResponses = new Map<string, {
+  resolve: (res: EphemeralResponse) => void;
+  reject: (err: Error) => void;
+}>();
 
 // ── Reconnect state ─────────────────────────────────────────────────
 let isShuttingDown = false;
@@ -242,6 +263,42 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>): Promise<void> => {
     );
   }
 
+  // Recreate EphemeralDataPlane inside the worker if enabled
+  // The EphemeralDataPlane cannot be serialized via postMessage (it contains
+  // closures, event listeners, Maps, etc.), so the main thread strips it
+  // and we recreate a fresh instance here with the same podId/serviceId.
+  let ephemeralPlane: EphemeralDataPlane | null = null;
+  if (context.metadata?.enableEphemeral) {
+    // Build transport bridges when networking is available
+    let groupTransport: GroupTransport | undefined;
+    let transport: EphemeralTransport | undefined;
+
+    if (activeWs && networkInitialized) {
+      // GroupTransport: proxies join/leave/getGroupPods to orchestrator's
+      // central PodGroupStore over the already-connected WS.
+      groupTransport = createWorkerGroupTransport(podId);
+
+      // EphemeralTransport: delivers ephemeral queries to remote pods
+      // over WebRTC via the WorkerNetworkProxy.
+      if (activeNetworkProxy) {
+        transport = createWorkerEphemeralTransport();
+      }
+    }
+
+    ephemeralPlane = createEphemeralDataPlane({
+      podId: context.podId,
+      serviceId: context.serviceId,
+      groupTransport,
+      transport,
+    });
+    activeEphemeralPlane = ephemeralPlane;
+    (context as Record<string, unknown>).ephemeral = ephemeralPlane;
+    originalConsole.log(
+      `[${new Date().toISOString()}][${podId}:out]`,
+      `EphemeralDataPlane created in Web Worker (mode=${groupTransport ? 'remote' : 'local'})`,
+    );
+  }
+
   try {
     // Evaluate the pack bundle code
     // The bundle is a fully-bundled CJS module — we provide exports/module
@@ -306,6 +363,22 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>): Promise<void> => {
       reconnectAttempts = 0;
       isShuttingDown = false; // Reset for potential reuse of the worker
     }
+
+    // Clean up ephemeral data plane
+    if (ephemeralPlane) {
+      ephemeralPlane.dispose();
+      ephemeralPlane = null;
+      activeEphemeralPlane = null;
+    }
+    // Clear any leftover pending group/ephemeral requests
+    for (const [, pending] of pendingGroupRequests) {
+      pending.reject(new Error('Worker shutting down'));
+    }
+    pendingGroupRequests.clear();
+    for (const [, pending] of pendingEphemeralResponses) {
+      pending.reject(new Error('Worker shutting down'));
+    }
+    pendingEphemeralResponses.clear();
 
     // Restore console
     console.log = originalConsole.log;
@@ -487,6 +560,32 @@ function handleOrchestratorMessage(
       }
       break;
     }
+
+    // ── Group ack / error messages ──────────────────────────────────────
+    case 'group:join:ack':
+    case 'group:leave:ack':
+    case 'group:leave-all:ack':
+    case 'group:get-pods:ack':
+    case 'group:get-groups:ack': {
+      const cid = message.correlationId;
+      if (cid && pendingGroupRequests.has(cid)) {
+        pendingGroupRequests.get(cid)!.resolve(message.payload);
+        pendingGroupRequests.delete(cid);
+      }
+      break;
+    }
+
+    case 'group:error': {
+      const cid = message.correlationId;
+      const errPayload = message.payload as { error?: string };
+      if (cid && pendingGroupRequests.has(cid)) {
+        pendingGroupRequests.get(cid)!.reject(
+          new Error(errPayload?.error ?? 'Group operation failed'),
+        );
+        pendingGroupRequests.delete(cid);
+      }
+      break;
+    }
   }
 }
 
@@ -558,6 +657,38 @@ function handleIncomingData(
 ): void {
   try {
     const parsed = JSON.parse(data) as Record<string, unknown>;
+
+    // ── Ephemeral messages (PodGroup data plane) ──────────────────────
+    if (parsed._ephemeral) {
+      if (parsed.type === 'query') {
+        // Inbound ephemeral query — dispatch to local plane
+        if (activeEphemeralPlane) {
+          activeEphemeralPlane.handleIncomingQuery(parsed as unknown as EphemeralQuery).then((response) => {
+            if (response && activeNetworkProxy) {
+              activeNetworkProxy.send(fromPodId, JSON.stringify({
+                _ephemeral: true,
+                type: 'response',
+                ...response,
+              }));
+            }
+          }).catch((err) => {
+            log.error(`[${new Date().toISOString()}][${localPodId}:net:error]`, 'Ephemeral handler error', err);
+          });
+        } else {
+          log.warn(`[${new Date().toISOString()}][${localPodId}:net:warn]`, 'Received ephemeral query but no EphemeralDataPlane set');
+        }
+      } else if (parsed.type === 'response') {
+        // Inbound ephemeral response — resolve pending query
+        const resp = parsed as unknown as EphemeralResponse;
+        const key = `${resp.queryId}:${fromPodId}`;
+        const pending = pendingEphemeralResponses.get(key);
+        if (pending) {
+          pendingEphemeralResponses.delete(key);
+          pending.resolve(resp);
+        }
+      }
+      return;
+    }
     
     // Check if this is a RESPONSE (has status field) vs REQUEST (has method field)
     if (typeof parsed.status === 'number' && parsed.requestId) {
@@ -595,4 +726,114 @@ function handleIncomingData(
   } catch {
     // Not JSON or not a service message — ignore
   }
+}
+
+// ── Group Transport (WS round-trip for PodGroup operations) ─────────
+
+/**
+ * Send a group-related WS message and wait for the ack.
+ */
+function workerGroupRequest<T>(type: string, payload: Record<string, unknown>, podId: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    if (!activeWs || activeWs.readyState !== WebSocket.OPEN) {
+      reject(new Error('WebSocket not connected — cannot send group request'));
+      return;
+    }
+
+    const correlationId = `grp-${podId}-${++groupRequestCounter}`;
+
+    const timeout = setTimeout(() => {
+      pendingGroupRequests.delete(correlationId);
+      reject(new Error(`Group request '${type}' timed out`));
+    }, 10_000);
+
+    pendingGroupRequests.set(correlationId, {
+      resolve: (data) => {
+        clearTimeout(timeout);
+        resolve(data as T);
+      },
+      reject: (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      },
+    });
+
+    activeWs.send(JSON.stringify({ type, payload, correlationId }));
+  });
+}
+
+/**
+ * Create a GroupTransport that proxies group operations to the
+ * orchestrator's central PodGroupStore over WS.
+ */
+function createWorkerGroupTransport(podId: string): GroupTransport {
+  return {
+    join: async (groupId, pId, ttl, metadata) => {
+      const res = await workerGroupRequest<{ membership: PodGroupMembership }>(
+        'group:join',
+        { groupId, podId: pId, ttl, metadata },
+        podId,
+      );
+      return res.membership;
+    },
+    leave: async (groupId, pId) => {
+      const res = await workerGroupRequest<{ removed: boolean }>('group:leave', { groupId, podId: pId }, podId);
+      return res.removed;
+    },
+    leaveAll: async (pId) => {
+      const res = await workerGroupRequest<{ removedFrom: string[] }>('group:leave-all', { podId: pId }, podId);
+      return res.removedFrom;
+    },
+    getGroupPods: async (groupId) => {
+      const res = await workerGroupRequest<{ members: PodGroupMembership[] }>('group:get-pods', { groupId }, podId);
+      return res.members;
+    },
+    getGroupsForPod: async (pId) => {
+      const res = await workerGroupRequest<{ groups: string[] }>('group:get-groups', { podId: pId }, podId);
+      return res.groups;
+    },
+  };
+}
+
+/**
+ * Create an EphemeralTransport that sends ephemeral queries to
+ * remote pods over WebRTC via the WorkerNetworkProxy.
+ */
+function createWorkerEphemeralTransport(): EphemeralTransport {
+  return (async (targetPodId: string, query: EphemeralQuery): Promise<EphemeralResponse> => {
+    if (!activeNetworkProxy) {
+      throw new Error('Network proxy not initialised — cannot send ephemeral query');
+    }
+
+    // Ensure WebRTC connection is established before sending
+    if (!activeNetworkProxy.isConnected(targetPodId)) {
+      await activeNetworkProxy.connect(targetPodId);
+    }
+
+    const key = `${query.queryId}:${targetPodId}`;
+
+    return new Promise<EphemeralResponse>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        pendingEphemeralResponses.delete(key);
+        reject(new Error(`Ephemeral query to ${targetPodId} timed out`));
+      }, query.timeout || 5_000);
+
+      pendingEphemeralResponses.set(key, {
+        resolve: (res) => { clearTimeout(timeout); resolve(res); },
+        reject:  (err) => { clearTimeout(timeout); reject(err); },
+      });
+
+      try {
+        activeNetworkProxy!.send(targetPodId, JSON.stringify({
+          _ephemeral: true,
+          type: 'query',
+          ...query,
+        }));
+      } catch (err) {
+        clearTimeout(timeout);
+        pendingEphemeralResponses.delete(key);
+        reject(err);
+      }
+    });
+  }) as EphemeralTransport;
 }
