@@ -14,9 +14,21 @@
 import type {
   PeerConnectionState,
   WebRTCConfig,
+  RTCIceServerInit,
   SignallingMessage,
 } from '../types/network.js';
 import { DEFAULT_CONNECTION_TIMEOUT } from '../types/network.js';
+
+/**
+ * Default STUN servers used when no iceServers are provided.
+ * Without STUN, WebRTC can only generate host candidates which often fail
+ * on multi-homed machines (e.g. Windows with Hyper-V / WSL / Docker adapters)
+ * because the wrtc library may pick an unreachable interface address.
+ */
+const DEFAULT_ICE_SERVERS: RTCIceServerInit[] = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+];
 
 /** Maximum number of retry attempts when a WebRTC connection times out. */
 const MAX_CONNECT_RETRIES = 2;
@@ -107,7 +119,7 @@ export class WebRTCConnectionManager {
     this.peerFactory = opts.peerFactory;
     this.onPeerGone = opts.onPeerGone;
     this.config = {
-      iceServers: opts.config?.iceServers ?? [],
+      iceServers: opts.config?.iceServers?.length ? opts.config.iceServers : DEFAULT_ICE_SERVERS,
       connectionTimeout: opts.config?.connectionTimeout ?? DEFAULT_CONNECTION_TIMEOUT,
       trickleICE: opts.config?.trickleICE ?? true,
     };
@@ -169,6 +181,30 @@ export class WebRTCConnectionManager {
     if (message.targetPodId !== this.localPodId) return;
 
     let conn = this.connections.get(message.sourcePodId);
+
+    // If we receive a new offer but already have a non-connected peer,
+    // we need to decide whether to keep our peer or yield.
+    if (conn && message.type === 'offer' && conn.state !== 'connected') {
+      if (conn.initiator) {
+        // GLARE: both sides initiated simultaneously.  Use a deterministic
+        // tie-breaker so exactly one side keeps its initiator role and the
+        // other becomes the responder.  The pod with the lexicographically
+        // *lower* ID keeps its initiator peer (ignores the incoming offer);
+        // the pod with the *higher* ID yields and becomes the responder.
+        if (this.localPodId < message.sourcePodId) {
+          // We win the tie — keep our initiator, ignore the remote offer.
+          return;
+        }
+        // We lose the tie — fall through to destroy our initiator and
+        // create a responder peer for the remote's offer.
+      }
+      // Either a non-initiator peer that the remote is re-negotiating,
+      // or we lost the glare tie-break — tear down and create a fresh
+      // responder peer.
+      this.destroyPeer(message.sourcePodId);
+      conn = undefined;
+    }
+
     if (!conn) {
       // We are the responder — create a non-initiator peer.
       // The Promise is intentionally fire-and-forget but we MUST catch
@@ -263,6 +299,7 @@ export class WebRTCConnectionManager {
         state: 'connecting',
         createdAt: Date.now(),
         lastActivity: Date.now(),
+        initiator,
         peer,
         send: (data: string) => {
           peer.send(data);
@@ -318,19 +355,27 @@ export class WebRTCConnectionManager {
       // Errors
       peer.on('error', (err: Error) => {
         conn.state = 'failed';
-        const pending = this.pendingConnections.get(targetPodId);
-        if (pending) {
-          clearTimeout(pending.timer);
-          this.pendingConnections.delete(targetPodId);
-          pending.reject(err);
+        // Only act if this conn is still the active one for the pod.
+        // A replacement peer may already have been installed by handleSignal.
+        if (this.connections.get(targetPodId) === conn) {
+          const pending = this.pendingConnections.get(targetPodId);
+          if (pending) {
+            clearTimeout(pending.timer);
+            this.pendingConnections.delete(targetPodId);
+            pending.reject(err);
+          }
+          this.destroyPeer(targetPodId);
         }
-        this.destroyPeer(targetPodId);
       });
 
       // Close
       peer.on('close', () => {
         conn.state = 'closed';
-        this.connections.delete(targetPodId);
+        // Only remove from the map if this conn is still the active one.
+        // If a new peer was already created for this pod, leave it alone.
+        if (this.connections.get(targetPodId) === conn) {
+          this.connections.delete(targetPodId);
+        }
       });
     });
   }
@@ -346,6 +391,9 @@ export class WebRTCConnectionManager {
     if (pending) {
       clearTimeout(pending.timer);
       this.pendingConnections.delete(targetPodId);
+      // Reject so callers of connect() / createPeer() don't hang forever
+      // (e.g. when an initiator peer is torn down due to glare resolution).
+      pending.reject(new Error(`WebRTC connection to pod '${targetPodId}' was destroyed`));
     }
   }
 }
@@ -378,6 +426,8 @@ export type PeerFactory = (initiator: boolean, config: Required<WebRTCConfig>) =
 
 interface PeerConnectionInternal extends PeerConnection {
   peer: SimplePeerLike;
+  /** Whether this peer was created as the initiator (called connect()) or responder (received offer). */
+  initiator: boolean;
 }
 
 /** Check if a signalling payload is an SDP offer/answer (vs ICE candidate). */

@@ -256,7 +256,10 @@ export class BrowserPodNetworkStack {
       config: {
         connectionTimeout: this.config.connectionTimeout,
         trickleICE: true,
-        iceServers: [], // STUN/TURN can be configured here if needed
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+        ],
       },
     });
 
@@ -792,6 +795,14 @@ export class BrowserPodNetworkStack {
         if (deadPodId && this.serviceCaller) {
           this.serviceCaller.notifyPodDead(deadPodId);
         }
+        // Reject any pending ephemeral responses for this dead pod
+        for (const [key, pending] of this.pendingEphemeralResponses) {
+          if (key.endsWith(`:${deadPodId}`)) {
+            this.config.log('warn', '💀 [DEBUG:RECONNECT] Rejecting pending ephemeral response for dead pod', { key, deadPodId });
+            pending.reject(new Error(`Pod ${deadPodId} disconnected (peer-gone)`));
+            this.pendingEphemeralResponses.delete(key);
+          }
+        }
         break;
       }
 
@@ -928,9 +939,37 @@ export class BrowserPodNetworkStack {
         throw new Error('WebRTC not initialised — cannot send ephemeral query');
       }
 
+      const allConns = this.connectionManager.listConnections();
+      const connState = this.connectionManager.getState(targetPodId);
+      this.config.log('info', '🔍 [DEBUG:EPHEMERAL] Sending ephemeral query', {
+        targetPodId,
+        queryId: query.queryId,
+        path: query.path,
+        isConnected: this.connectionManager.isConnected(targetPodId),
+        webrtcState: connState,
+        allWebRTCConnections: allConns.map(c => ({ pod: c.targetPodId, state: c.state })),
+        wsConnected: this.connected,
+        wsAuthenticated: this.authenticated,
+        stackState: this.state,
+      });
+
       // Ensure WebRTC connection is established before sending
       if (!this.connectionManager.isConnected(targetPodId)) {
-        await this.connectionManager.connect(targetPodId);
+        this.config.log('info', '🔍 [DEBUG:EPHEMERAL] WebRTC not connected to target — initiating connection', {
+          targetPodId,
+          currentState: connState,
+        });
+        try {
+          await this.connectionManager.connect(targetPodId);
+          this.config.log('info', '🔍 [DEBUG:EPHEMERAL] WebRTC connection established', { targetPodId });
+        } catch (err) {
+          this.config.log('error', '❌ [DEBUG:EPHEMERAL] WebRTC connection FAILED', {
+            targetPodId,
+            error: err instanceof Error ? err.message : String(err),
+            stack: err instanceof Error ? err.stack : undefined,
+          });
+          throw err;
+        }
       }
 
       const key = `${query.queryId}:${targetPodId}`;

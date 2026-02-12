@@ -111,7 +111,10 @@ export class MainThreadNetworkManager {
       config: {
         connectionTimeout: 10_000,
         trickleICE: true,
-        iceServers: [],
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+        ],
       },
     });
     
