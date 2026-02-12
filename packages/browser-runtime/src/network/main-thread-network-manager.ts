@@ -151,6 +151,17 @@ export class MainThreadNetworkManager {
       this.logger.warn('[MainThreadNetworkManager] No connection manager for target pod', { targetPodId: signal.targetPodId });
     }
   }
+
+  /**
+   * Handle a `network:peer-gone` notification from the orchestrator.
+   * Propagates to all connection managers so each pod can tear down
+   * the dead PeerConnection immediately.
+   */
+  handlePeerGone(deadPodId: string): void {
+    for (const manager of this.connectionManagers.values()) {
+      manager.handlePeerGone(deadPodId);
+    }
+  }
   
   /**
    * Handle proxy requests from a worker.

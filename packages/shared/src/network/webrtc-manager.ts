@@ -88,6 +88,9 @@ export class WebRTCConnectionManager {
     timer: ReturnType<typeof setTimeout>;
   }> = new Map();
 
+  /** Optional callback invoked when a peer-gone notification is received. */
+  private onPeerGone?: (deadPodId: string) => void;
+
   constructor(opts: {
     localPodId: string;
     signalSender: SignalSender;
@@ -95,11 +98,14 @@ export class WebRTCConnectionManager {
     /** Factory to create a simple-peer instance. Keeps this module peer-library agnostic. */
     peerFactory: PeerFactory;
     config?: WebRTCConfig;
+    /** Called when a remote peer is reported dead by the orchestrator. */
+    onPeerGone?: (deadPodId: string) => void;
   }) {
     this.localPodId = opts.localPodId;
     this.signalSender = opts.signalSender;
     this.onMessage = opts.onMessage;
     this.peerFactory = opts.peerFactory;
+    this.onPeerGone = opts.onPeerGone;
     this.config = {
       iceServers: opts.config?.iceServers ?? [],
       connectionTimeout: opts.config?.connectionTimeout ?? DEFAULT_CONNECTION_TIMEOUT,
@@ -178,6 +184,19 @@ export class WebRTCConnectionManager {
     if (conn && conn.peer) {
       conn.peer.signal(message.payload);
     }
+  }
+
+  /**
+   * Handle a `network:peer-gone` notification from the orchestrator.
+   * Tears down the PeerConnection for the dead pod and invokes the optional
+   * callback so higher layers (e.g. ServiceCaller) can invalidate caches.
+   */
+  handlePeerGone(deadPodId: string): void {
+    const conn = this.connections.get(deadPodId);
+    if (conn) {
+      this.destroyPeer(deadPodId);
+    }
+    this.onPeerGone?.(deadPodId);
   }
 
   /**

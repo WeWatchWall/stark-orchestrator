@@ -34,6 +34,44 @@ const logger = createServiceLogger(
   { component: 'network-ws-handler' },
 );
 
+// ── Signal Queue ────────────────────────────────────────────────────────────
+// Buffer signals destined for pods that haven't registered yet (e.g. during
+// the window between a pod subprocess spawning and completing
+// network:pod:register).  Signals are delivered in order as soon as the pod
+// registers, or discarded after the TTL expires.
+
+/** Maximum time (ms) a queued signal is kept before being discarded. */
+const SIGNAL_QUEUE_TTL_MS = 5_000;
+
+interface QueuedSignal {
+  message: WsMessage<SignallingMessage>;
+  queuedAt: number;
+}
+
+/** podId → queued signals */
+const signalQueue = new Map<string, QueuedSignal[]>();
+
+/** Flush any queued signals for a pod that just registered. */
+function flushSignalQueue(
+  podId: string,
+  connectionManager: NetworkConnectionManager,
+): void {
+  const queued = signalQueue.get(podId);
+  if (!queued || queued.length === 0) return;
+
+  const now = Date.now();
+  let delivered = 0;
+  for (const entry of queued) {
+    if (now - entry.queuedAt > SIGNAL_QUEUE_TTL_MS) continue; // expired
+    connectionManager.sendToPod?.(podId, entry.message);
+    delivered++;
+  }
+  signalQueue.delete(podId);
+  if (delivered > 0) {
+    logger.info('Flushed queued signals on pod registration', { podId, delivered });
+  }
+}
+
 /**
  * Interface for the connection manager used to send messages to pods.
  */
@@ -96,8 +134,30 @@ export function createNetworkWsHandlers(connectionManager: NetworkConnectionMana
 
       const sent = connectionManager.sendToPod?.(signal.targetPodId, relayMessage);
       if (!sent) {
-        logger.warn('Failed to relay signal — target pod not connected', {
+        // Pod not connected yet — queue the signal for short-TTL delivery
+        // when the pod registers.  This handles the race between a pod
+        // subprocess connecting and a browser initiating signaling.
+        let queue = signalQueue.get(signal.targetPodId);
+        if (!queue) {
+          queue = [];
+          signalQueue.set(signal.targetPodId, queue);
+        }
+        queue.push({ message: relayMessage, queuedAt: Date.now() });
+        logger.info('Signal queued — target pod not yet connected', {
           targetPodId: signal.targetPodId,
+          queueLength: queue.length,
+        });
+
+        // Send a signal:nack back to the sender so it knows delivery is
+        // deferred and can choose to retry.
+        connectionManager.sendToPod?.(signal.sourcePodId, {
+          type: 'network:signal:nack',
+          payload: {
+            targetPodId: signal.targetPodId,
+            sourcePodId: signal.sourcePodId,
+            reason: 'target-not-connected',
+          },
+          correlationId: relayMessage.correlationId,
         });
       }
     },
@@ -280,6 +340,9 @@ export function createNetworkWsHandlers(connectionManager: NetworkConnectionMana
       const nodeId = tokenResult.claims.nodeId || 'direct';
       getServiceRegistry().register(serviceId, podId, nodeId, 'healthy');
 
+      // Flush any signals that were queued while this pod was connecting
+      flushSignalQueue(podId, connectionManager);
+
       logger.info('Pod registered for direct signaling', { 
         podId, 
         serviceId, 
@@ -295,10 +358,12 @@ export function createNetworkWsHandlers(connectionManager: NetworkConnectionMana
     },
 
     /**
-     * Handle pod disconnection → unregister from registry.
+     * Handle pod disconnection → unregister from registry and discard any
+     * queued signals addressed to this pod.
      */
     handlePodDisconnected(podId: string): void {
       getServiceRegistry().unregisterPod(podId);
+      signalQueue.delete(podId);
       logger.debug('Pod unregistered from service registry on disconnect', { podId });
     },
   };

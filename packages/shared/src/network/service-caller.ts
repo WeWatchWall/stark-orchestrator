@@ -133,6 +133,13 @@ export class ServiceCaller {
           this.cache.markUnhealthy(targetServiceId);
           const routing = await this.routeViaOrchestrator(targetServiceId, nonSticky);
           targetPodId = routing.targetPodId;
+
+          // If the orchestrator returned a different pod than what we had
+          // cached, the old pod is dead — tear down the stale WebRTC
+          // connection so we don't keep signaling the wrong pod.
+          if (cached.podId !== targetPodId) {
+            this.notifyPodDead(cached.podId);
+          }
         }
       } else {
         // No cache — ask orchestrator

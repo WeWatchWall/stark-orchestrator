@@ -690,6 +690,17 @@ export class BrowserAgent {
         break;
       }
 
+      case 'network:peer-gone': {
+        // A remote pod has disconnected — tear down stale PeerConnections
+        // so the next service call re-routes to a fresh pod.
+        const { podId: deadPodId } = (message.payload ?? {}) as { podId?: string };
+        if (deadPodId && this.networkManager) {
+          this.networkManager.handlePeerGone(deadPodId);
+          this.logger.debug('Handled network:peer-gone', { deadPodId });
+        }
+        break;
+      }
+
       default:
         this.logger.debug('Unhandled message type', { type: message.type });
     }

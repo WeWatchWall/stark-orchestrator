@@ -783,6 +783,18 @@ export class BrowserPodNetworkStack {
         break;
       }
 
+      case 'network:peer-gone': {
+        // A remote pod disconnected — tear down the stale PeerConnection
+        const { podId: deadPodId } = (message.payload ?? {}) as { podId?: string };
+        if (deadPodId && this.connectionManager) {
+          this.connectionManager.handlePeerGone(deadPodId);
+        }
+        if (deadPodId && this.serviceCaller) {
+          this.serviceCaller.notifyPodDead(deadPodId);
+        }
+        break;
+      }
+
       case 'network:route:response': {
         // Response to a routing request
         const correlationId = message.correlationId;

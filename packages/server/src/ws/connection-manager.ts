@@ -177,6 +177,13 @@ export class ConnectionManager {
   private podToConnection = new Map<string, string>();
   /** Reverse index: connectionId → Set of podIds (for cleanup on disconnect) */
   private connectionToPods = new Map<string, Set<string>>();
+  /**
+   * Tracks WebRTC signaling peers: podId → Set of podIds that have
+   * exchanged signals with it.  Used to send `network:peer-gone`
+   * notifications when a pod disconnects so the other side can
+   * tear down the dead PeerConnection immediately.
+   */
+  private signalingPeers = new Map<string, Set<string>>();
   /** Current connection being processed (for registration callbacks) */
   private currentConnectionId: string | null = null;
   private pingInterval: NodeJS.Timeout | null = null;
@@ -500,13 +507,20 @@ export class ConnectionManager {
             this.currentConnectionId = conn.id;
             try {
               switch (message.type) {
-                case NETWORK_WS_TYPES.SIGNAL:
+                case NETWORK_WS_TYPES.SIGNAL: {
+                  // Track the signaling peer relationship so we can send
+                  // network:peer-gone when either pod disconnects.
+                  const sig = message.payload as SignallingMessage;
+                  if (sig?.sourcePodId && sig?.targetPodId) {
+                    this.trackSignalingPeers(sig.sourcePodId, sig.targetPodId);
+                  }
                   this.networkHandlers.handleSignalRelay(
                     message as WsMessage<SignallingMessage>,
                     conn.userId,
                     conn.connectionType,
                   );
                   return;
+                }
                 case NETWORK_WS_TYPES.ROUTE_REQUEST:
                   this.networkHandlers.handleRoutingRequest(
                     message as WsMessage<RoutingRequest>,
@@ -706,6 +720,8 @@ export class ConnectionManager {
         podIds: Array.from(pods),
       });
       for (const podId of pods) {
+        // Notify all pods that had active signaling with this pod
+        this.notifyPeerGone(podId);
         // Unregister from ServiceRegistry
         if (this.networkHandlers) {
           this.networkHandlers.handlePodDisconnected(podId);
@@ -729,14 +745,18 @@ export class ConnectionManager {
     // handled above.  Node-agent pods are NOT in that map — they're tracked
     // in the ServiceRegistry by nodeId.  If we don't remove them here, the
     // PodGroupStore keeps returning dead pods until their TTL expires (~60s).
-    if (conn.nodeIds.size > 0 && this.podGroupHandlers) {
+    if (conn.nodeIds.size > 0) {
       const registry = getServiceRegistry();
       const snapshot = registry.snapshot();
       for (const nodeId of conn.nodeIds) {
         for (const entries of Object.values(snapshot)) {
           for (const entry of entries) {
             if (entry.nodeId === nodeId) {
-              this.podGroupHandlers.handlePodDisconnected(entry.podId);
+              // Notify signaling peers that this pod is gone
+              this.notifyPeerGone(entry.podId);
+              if (this.podGroupHandlers) {
+                this.podGroupHandlers.handlePodDisconnected(entry.podId);
+              }
             }
           }
         }
@@ -943,12 +963,68 @@ export class ConnectionManager {
     const snapshot = registry.snapshot();
     for (const entries of Object.values(snapshot)) {
       const entry = entries.find((e) => e.podId === podId);
-      if (entry && entry.nodeId !== 'direct') {
+      if (entry) {
+        // If the pod registered with nodeId: 'direct', it should have a
+        // direct WS connection — if we got here, that connection is gone.
+        // Don't attempt sendToNodeId, it won't work.
+        if (entry.nodeId === 'direct') {
+          logger.warn('sendToPod failed — direct pod connection lost', { podId });
+          return false;
+        }
         return this.sendToNodeId(entry.nodeId, message);
       }
     }
-    logger.warn('sendToPod failed — pod not found', { podId });
+    logger.warn('sendToPod failed — pod not found in registry or direct connections', { podId });
     return false;
+  }
+
+  // ── Signaling Peer Tracking ──────────────────────────────────────────────
+
+  /**
+   * Record that two pods have exchanged WebRTC signaling.  This is a
+   * bidirectional relationship so that when either pod disconnects we can
+   * notify the other.
+   */
+  private trackSignalingPeers(podA: string, podB: string): void {
+    let peersA = this.signalingPeers.get(podA);
+    if (!peersA) { peersA = new Set(); this.signalingPeers.set(podA, peersA); }
+    peersA.add(podB);
+
+    let peersB = this.signalingPeers.get(podB);
+    if (!peersB) { peersB = new Set(); this.signalingPeers.set(podB, peersB); }
+    peersB.add(podA);
+  }
+
+  /**
+   * Notify all known signaling peers that `deadPodId` is gone, and clean up
+   * the tracking entries.  Recipients should tear down the dead
+   * PeerConnection and (if applicable) re-route through the orchestrator.
+   */
+  private notifyPeerGone(deadPodId: string): void {
+    const peers = this.signalingPeers.get(deadPodId);
+    if (!peers || peers.size === 0) return;
+
+    const peerGoneMessage: WsMessage = {
+      type: 'network:peer-gone',
+      payload: { podId: deadPodId },
+    };
+
+    for (const peerId of peers) {
+      // Best-effort delivery — the peer may also be disconnecting.
+      this.sendToPod(peerId, peerGoneMessage);
+
+      // Remove the dead pod from the peer's tracking set
+      const peerSet = this.signalingPeers.get(peerId);
+      if (peerSet) {
+        peerSet.delete(deadPodId);
+        if (peerSet.size === 0) this.signalingPeers.delete(peerId);
+      }
+    }
+    this.signalingPeers.delete(deadPodId);
+    logger.debug('Notified signaling peers of pod disconnect', {
+      deadPodId,
+      notifiedPeers: Array.from(peers),
+    });
   }
 }
 

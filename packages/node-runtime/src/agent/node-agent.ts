@@ -587,6 +587,17 @@ export class NodeAgent {
         break;
       }
 
+      case 'network:peer-gone': {
+        // A remote pod disconnected — forward to all local pods so they
+        // can tear down stale PeerConnections.
+        const { podId: deadPodId } = (message.payload ?? {}) as { podId?: string };
+        if (deadPodId) {
+          this.config.logger.debug('Received network:peer-gone, forwarding to pods', { deadPodId });
+          this.emit('pod:peer-gone' as NodeAgentEvent, deadPodId);
+        }
+        break;
+      }
+
       default:
         this.config.logger.debug('Unhandled message type', { type: message.type });
     }
