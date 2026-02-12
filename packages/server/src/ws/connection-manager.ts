@@ -724,6 +724,25 @@ export class ConnectionManager {
     const wsConnection = this.createWsConnection(conn);
     await handleNodeDisconnect(wsConnection);
 
+    // Clean up pod group memberships for pods managed by node agents on this
+    // connection.  Browser pods (tracked in connectionToPods) are already
+    // handled above.  Node-agent pods are NOT in that map — they're tracked
+    // in the ServiceRegistry by nodeId.  If we don't remove them here, the
+    // PodGroupStore keeps returning dead pods until their TTL expires (~60s).
+    if (conn.nodeIds.size > 0 && this.podGroupHandlers) {
+      const registry = getServiceRegistry();
+      const snapshot = registry.snapshot();
+      for (const nodeId of conn.nodeIds) {
+        for (const entries of Object.values(snapshot)) {
+          for (const entry of entries) {
+            if (entry.nodeId === nodeId) {
+              this.podGroupHandlers.handlePodDisconnected(entry.podId);
+            }
+          }
+        }
+      }
+    }
+
     this.connections.delete(connectionId);
   }
 

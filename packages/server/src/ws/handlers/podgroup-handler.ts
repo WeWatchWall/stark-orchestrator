@@ -46,6 +46,9 @@ export function resetCentralPodGroupStore(): void {
   }
 }
 
+/** Expose the central PodGroupStore singleton for cross-service cleanup. */
+export { getCentralPodGroupStore };
+
 // ── Payload types ───────────────────────────────────────────────────────────
 
 export interface GroupJoinPayload {

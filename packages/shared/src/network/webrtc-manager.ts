@@ -18,6 +18,12 @@ import type {
 } from '../types/network.js';
 import { DEFAULT_CONNECTION_TIMEOUT } from '../types/network.js';
 
+/** Maximum number of retry attempts when a WebRTC connection times out. */
+const MAX_CONNECT_RETRIES = 2;
+
+/** Delay (ms) between retry attempts. */
+const RETRY_DELAY_MS = 1_000;
+
 // ── Peer Wrapper ────────────────────────────────────────────────────────────
 
 /**
@@ -104,6 +110,7 @@ export class WebRTCConnectionManager {
   /**
    * Open a connection to a target pod (initiator side).
    * If a healthy connection already exists, returns it immediately.
+   * Retries up to {@link MAX_CONNECT_RETRIES} times with a short delay on timeout.
    */
   async connect(targetPodId: string): Promise<PeerConnection> {
     const existing = this.connections.get(targetPodId);
@@ -117,7 +124,22 @@ export class WebRTCConnectionManager {
       this.destroyPeer(targetPodId);
     }
 
-    return this.createPeer(targetPodId, true);
+    let lastError: Error | undefined;
+    for (let attempt = 0; attempt <= MAX_CONNECT_RETRIES; attempt++) {
+      try {
+        return await this.createPeer(targetPodId, true);
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        // Only retry on timeout — other errors (e.g. peer error) are not transient
+        if (!lastError.message.includes('timed out') || attempt === MAX_CONNECT_RETRIES) {
+          throw lastError;
+        }
+        // Brief pause before retrying so signalling state can settle
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+        this.destroyPeer(targetPodId);
+      }
+    }
+    throw lastError!;
   }
 
   /**
@@ -142,10 +164,13 @@ export class WebRTCConnectionManager {
 
     let conn = this.connections.get(message.sourcePodId);
     if (!conn) {
-      // We are the responder — create a non-initiator peer
-      void this.createPeer(message.sourcePodId, false).then((peer) => {
-        // Signal was already applied inside createPeer path below
-        void peer;
+      // We are the responder — create a non-initiator peer.
+      // The Promise is intentionally fire-and-forget but we MUST catch
+      // rejections (e.g. timeout) to avoid crashing the Node process.
+      this.createPeer(message.sourcePodId, false).catch((err) => {
+        // Peer timed out or errored on the responder side — not fatal.
+        // The initiator will see the timeout on their end and can retry.
+        void err;
       });
       conn = this.connections.get(message.sourcePodId);
     }

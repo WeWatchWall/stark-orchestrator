@@ -15,9 +15,10 @@ import cors, { CorsOptions } from 'cors';
 import { WebSocketServer } from 'ws';
 import httpProxy from 'http-proxy';
 import selfsigned from 'selfsigned';
-import { createServiceLogger, getNetworkPolicyEngine } from '@stark-o/shared';
+import { createServiceLogger, getNetworkPolicyEngine, getServiceRegistry } from '@stark-o/shared';
 import { createApiRouter } from './api/router.js';
 import { createConnectionManager, type ConnectionManagerOptions } from './ws/connection-manager.js';
+import { getCentralPodGroupStore } from './ws/handlers/podgroup-handler.js';
 import { createSchedulerService } from './services/scheduler-service.js';
 import { getServiceController } from './services/service-controller.js';
 import { createNodeHealthService } from './services/node-health-service.js';
@@ -443,6 +444,16 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
         checkInterval: 60_000,    // Check every 60 seconds
         heartbeatTimeout: 90_000, // Mark stale after 90 seconds
         autoStart: false,
+        onPodsRevoked: (nodeId, podIds) => {
+          // Clean ephemeral in-memory stores that DB revocation doesn't cover.
+          const store = getCentralPodGroupStore();
+          for (const podId of podIds) {
+            store.leaveAllGroups(podId);
+          }
+          // Also purge stale ServiceRegistry entries for this node.
+          getServiceRegistry().unregisterPodsOnNode(nodeId);
+          logger.debug('Purged ephemeral state on lease expiry', { nodeId, podCount: podIds.length });
+        },
       });
 
       return new Promise<void>((resolve, reject) => {

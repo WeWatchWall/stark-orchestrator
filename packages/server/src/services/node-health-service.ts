@@ -35,6 +35,12 @@ export interface NodeHealthServiceConfig {
   leaseTimeout?: number;
   /** Whether to start the service automatically when attached (default: true) */
   autoStart?: boolean;
+  /**
+   * Called when pods are revoked during lease expiry.
+   * Use this to clean up ephemeral state (PodGroupStore, ServiceRegistry, etc.)
+   * that the DB-level revocation doesn't cover.
+   */
+  onPodsRevoked?: (nodeId: string, podIds: string[]) => void;
 }
 
 /**
@@ -45,6 +51,7 @@ const DEFAULT_CONFIG: Required<NodeHealthServiceConfig> = {
   heartbeatTimeout: 60_000,  // Mark suspect after 60 seconds without heartbeat
   leaseTimeout: 120_000,     // Lease expires after 2 minutes of being suspect
   autoStart: true,
+  onPodsRevoked: () => {},   // no-op by default
 };
 
 /**
@@ -273,6 +280,23 @@ export class NodeHealthService {
             error: statusResult.error,
           });
           continue;
+        }
+
+        // Purge revoked pods from ephemeral in-memory stores
+        // (PodGroupStore, ServiceRegistry) so other pods never see stale members.
+        if (revokeResult.data?.podIds?.length) {
+          try {
+            this.config.onPodsRevoked(node.id, revokeResult.data.podIds);
+            logger.info('Cleaned ephemeral state for revoked pods', {
+              nodeId: node.id,
+              podCount: revokeResult.data.podIds.length,
+            });
+          } catch (cleanupErr) {
+            logger.error('Failed to clean ephemeral state for revoked pods', 
+              cleanupErr instanceof Error ? cleanupErr : undefined, {
+              nodeId: node.id,
+            });
+          }
         }
 
         // Clear connection ID
