@@ -1,6 +1,6 @@
 {
   "name": "stark-os",
-  "version": "0.10.3",
+  "version": "0.10.4",
   "description": "JavaScript operating system and orchestration platform for Node.js and browser runtimes",
    "keywords": [
     "cloud",
@@ -20,8 +20,12 @@
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },
+  "bin": {
+    "stark": "./packages/cli/dist/index.js"
+  },
   "files": [
-    "packages/*/dist"
+    "packages/*/dist",
+    "packages/*/package.json"
   ],
   "type": "module",
   "packageManager": "pnpm@9.15.0",
@@ -50,6 +54,7 @@
     "typecheck": "tsc --noEmit",
     "clean": "rimraf packages/*/dist node_modules/.cache",
     "prepare": "pnpm -r run build",
+    "prepublishOnly": "pnpm -r run build",
     "db:start": "supabase start",
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
