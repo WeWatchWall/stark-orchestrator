@@ -1,6 +1,6 @@
 {
   "name": "stark-os",
-  "version": "0.10.2",
+  "version": "0.10.3",
   "description": "JavaScript operating system and orchestration platform for Node.js and browser runtimes",
    "keywords": [
     "cloud",
@@ -20,6 +20,9 @@
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },
+  "files": [
+    "packages/*/dist"
+  ],
   "type": "module",
   "packageManager": "pnpm@9.15.0",
   "engines": {
