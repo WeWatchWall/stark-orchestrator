@@ -116,7 +116,7 @@ For comprehensive documentation, visit the **[Stark Orchestrator Wiki](https://g
 ## Project Structure
 
 ```
-stark-orchestrator/
+stark-os/
 ├── packages/
 │   ├── core/            # Isomorphic reactive core
 │   ├── shared/          # Shared types, validation, utilities
