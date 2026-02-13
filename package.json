@@ -1,6 +1,6 @@
 {
   "name": "stark-os",
-  "version": "0.10.5",
+  "version": "0.10.6",
   "description": "JavaScript operating system and orchestration platform for Node.js and browser runtimes",
    "keywords": [
     "cloud",
@@ -76,6 +76,7 @@
     "express-rate-limit": "^8.2.1",
     "node-cache": "^5.1.2",
     "selfsigned": "^2.4.1",
+    "@mapbox/node-pre-gyp": "^1.0.11",
     "simple-peer": "^9.11.1",
     "uuid": "^10.0.0",
     "wrtc": "^0.4.7",
