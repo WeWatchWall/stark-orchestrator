@@ -11,7 +11,7 @@
 | 6                                   | Implement secrets management API (keys/passwords/certs) | Medium     | ☐ TODO    |
 | 7                                   | Enable TLS for node-orchestrator communication          | Medium     | ✅ Done   |
 | 8                                   | Add RBAC enforcement for pod capabilities               | Medium     | ✅ Done    |
-| 9                                   | Add auditing/logging hooks for sensitive actions        | Medium     | ⏳ Deferred|
+| 9                                   | Add auditing/logging hooks for sensitive actions        | Medium     | ✅ Done    |
 | **Persistence & State**             |                                                         |            |           |
 | 10                                  | Implement persistent volume abstraction for pods        | Hard       | ☐ TODO    |
 | 11                                  | Support PVCs and attach/detach logic                    | Hard       | ⛔ Skipped |
