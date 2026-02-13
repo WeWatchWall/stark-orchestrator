@@ -21,7 +21,7 @@ importers:
         specifier: ^3.5.0
         version: 3.5.26
       '@zenfs/core':
-        specifier: ^2.4.4
+        specifier: ~2.4.4
         version: 2.4.4
       axios:
         specifier: ^1.7.0
@@ -103,11 +103,11 @@ importers:
         specifier: workspace:*
         version: link:../shared
       '@zenfs/core':
-        specifier: ^2.3.11
-        version: 2.4.4
+        specifier: ~2.3.11
+        version: 2.3.11
       '@zenfs/dom':
         specifier: ^1.2.6
-        version: 1.2.6(@zenfs/core@2.4.4)(kerium@1.3.8)(utilium@2.5.8)
+        version: 1.2.6(@zenfs/core@2.3.11)(kerium@1.3.8)(utilium@2.5.8)
       axios:
         specifier: ^1.7.0
         version: 1.13.2
@@ -197,7 +197,7 @@ importers:
         specifier: workspace:*
         version: link:../shared
       '@zenfs/core':
-        specifier: ^2.4.4
+        specifier: ~2.4.4
         version: 2.4.4
       axios:
         specifier: ^1.7.0
@@ -2030,6 +2030,11 @@ packages:
 
   '@xterm/xterm@5.5.0':
     resolution: {integrity: sha512-hqJHYaQb5OptNunnyAnkHyM8aCjZ1MEIDTQu1iIbbTD/xops91NB5yq1ZK/dC2JDbVWtF23zUtl9JE2NqwT87A==}
+
+  '@zenfs/core@2.3.11':
+    resolution: {integrity: sha512-2tdkusRE80Qif21t/A7aWVl0/708Waq6StyyaKIl6H3ACyM4x+DptJ7mwgZJWHpv/eew7LgS14L9ouHxWEHAsQ==}
+    engines: {node: '>= 18'}
+    hasBin: true
 
   '@zenfs/core@2.4.4':
     resolution: {integrity: sha512-4ove99nTRyS3WPNlHN6i0AxMMYW85YBo2lVS/aNXU48dYOl78XiM98d4uly/9PwtllGJHEv9GHkomxS2eoOLFw==}
@@ -6770,6 +6775,16 @@ snapshots:
   '@xterm/xterm@5.5.0':
     optional: true
 
+  '@zenfs/core@2.3.11':
+    dependencies:
+      '@types/node': 24.10.4
+      buffer: 6.0.3
+      eventemitter3: 5.0.1
+      kerium: 1.3.8
+      memium: 0.3.11
+      readable-stream: 4.7.0
+      utilium: 2.5.8
+
   '@zenfs/core@2.4.4':
     dependencies:
       '@types/node': 24.10.4
@@ -6780,9 +6795,9 @@ snapshots:
       readable-stream: 4.7.0
       utilium: 2.5.8
 
-  '@zenfs/dom@1.2.6(@zenfs/core@2.4.4)(kerium@1.3.8)(utilium@2.5.8)':
+  '@zenfs/dom@1.2.6(@zenfs/core@2.3.11)(kerium@1.3.8)(utilium@2.5.8)':
     dependencies:
-      '@zenfs/core': 2.4.4
+      '@zenfs/core': 2.3.11
       kerium: 1.3.8
       utilium: 2.5.8
 
