@@ -26,10 +26,16 @@ A JavaScript operating system that deploys and manages software packages ("packs
 ### Prerequisites
 
 - Node.js 20+
-- pnpm 9+
-- Docker (for Supabase local development)
 
 ### Installation
+
+Install globally from npm:
+
+```bash
+npm i -g stark-os
+```
+
+#### From Source (Development)
 
 ```bash
 # Clone the repository
@@ -43,42 +49,18 @@ pnpm install
 pnpm build
 ```
 
-### Start Local Development
+### Start the Server
 
 ```bash
-# Start Supabase (database, auth, storage)
-pnpm db:start
-
-# Apply database migrations
-pnpm db:migrate
-
-# Start the development server
-pnpm dev:server
-```
-
-The server will start at `https://localhost:443`.
-
-### Production Service
-
-```bash
-# Build all packages
-pnpm build
-
 # Set required environment variables
 export SUPABASE_URL=https://your-project.supabase.co
 export SUPABASE_ANON_KEY=your-anon-key
-export NODE_ENV=production
 
-# Start the production server
-pnpm --filter @stark-o/server run start
+# Start the server
+stark server start
 ```
 
-Or from the server package directory:
-
-```bash
-cd packages/server
-node dist/index.js
-```
+The server will start at `https://localhost:443`.
 
 ### Verify Installation
 
@@ -94,6 +76,12 @@ Expected response:
   "timestamp": "2026-01-10T12:00:00.000Z",
   "version": "0.0.1"
 }
+```
+
+### Create Your First Admin Account
+
+```bash
+stark auth setup
 ```
 
 ## Documentation

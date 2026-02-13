@@ -130,6 +130,9 @@ importers:
       '@stark-o/node-runtime':
         specifier: workspace:*
         version: link:../node-runtime
+      '@stark-o/server':
+        specifier: workspace:*
+        version: link:../server
       '@stark-o/shared':
         specifier: workspace:*
         version: link:../shared

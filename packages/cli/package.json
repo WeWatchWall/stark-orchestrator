@@ -24,6 +24,7 @@
   "dependencies": {
     "@stark-o/core": "workspace:*",
     "@stark-o/node-runtime": "workspace:*",
+    "@stark-o/server": "workspace:*",
     "@stark-o/shared": "workspace:*",
     "@supabase/supabase-js": "^2.45.0",
     "commander": "^12.1.0",

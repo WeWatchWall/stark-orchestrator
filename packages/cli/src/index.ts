@@ -16,6 +16,7 @@ import { createPodCommand } from './commands/pod.js';
 import { createServiceCommand } from './commands/service.js';
 import { createNamespaceCommand } from './commands/namespace.js';
 import { createServerConfigCommand } from './commands/server-config.js';
+import { createServerCommand } from './commands/server.js';
 import { createChaosCommand } from './commands/chaos.js';
 import { createNetworkCommand } from './commands/network.js';
 import { createSecretCommand } from './commands/secret.js';
@@ -93,6 +94,7 @@ function createProgram(): Command {
   program.addCommand(createServiceCommand());
   program.addCommand(createNamespaceCommand());
   program.addCommand(createServerConfigCommand());
+  program.addCommand(createServerCommand());
   program.addCommand(createChaosCommand());
   program.addCommand(createNetworkCommand());
   program.addCommand(createSecretCommand());
