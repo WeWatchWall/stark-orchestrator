@@ -1,4 +1,4 @@
-# Stark OS – UI Core Pack (Expanded Specification)
+# StarkOS – UI Core Pack (Expanded Specification)
 
 The UI Core Pack is **not** a dashboard.
 
