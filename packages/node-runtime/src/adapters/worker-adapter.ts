@@ -3,6 +3,7 @@
 
 import { fork, type ChildProcess } from 'node:child_process';
 import { cpus } from 'node:os';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import type {
@@ -112,9 +113,12 @@ export class WorkerAdapter implements IWorkerAdapter {
     };
 
     // Resolve the default worker script path relative to this file
+    // Support both bundled (file in dist/) and unbundled (file in dist/adapters/) layouts
     const currentFilePath = fileURLToPath(import.meta.url);
     const currentDir = dirname(currentFilePath);
-    this.workerScriptPath = config.workerScript ?? join(currentDir, '..', 'workers', 'pack-worker.js');
+    const workerFromDist = join(currentDir, 'workers', 'pack-worker.js');
+    const workerFromSubdir = join(currentDir, '..', 'workers', 'pack-worker.js');
+    this.workerScriptPath = config.workerScript ?? (existsSync(workerFromDist) ? workerFromDist : workerFromSubdir);
   }
 
   /**
