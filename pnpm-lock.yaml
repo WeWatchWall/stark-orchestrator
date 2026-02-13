@@ -41,6 +41,9 @@ importers:
       express-rate-limit:
         specifier: ^8.2.1
         version: 8.2.1(express@4.22.1)
+      http-proxy:
+        specifier: ^1.18.1
+        version: 1.18.1
       node-cache:
         specifier: ^5.1.2
         version: 5.1.2
@@ -242,6 +245,9 @@ importers:
       express-rate-limit:
         specifier: ^8.2.1
         version: 8.2.1(express@4.22.1)
+      http-proxy:
+        specifier: ^1.18.1
+        version: 1.18.1
       selfsigned:
         specifier: ^2.4.1
         version: 2.4.1
@@ -267,9 +273,6 @@ importers:
       '@types/ws':
         specifier: ^8.5.12
         version: 8.18.1
-      http-proxy:
-        specifier: ^1.18.1
-        version: 1.18.1
       tsx:
         specifier: ^4.19.0
         version: 4.21.0
