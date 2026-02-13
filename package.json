@@ -18,7 +18,7 @@
     "url": "https://github.com/WeWatchWall/stark-os.git"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "registry": "https://registry.npmjs.org/"
   },
   "type": "module",
   "packageManager": "pnpm@9.15.0",
