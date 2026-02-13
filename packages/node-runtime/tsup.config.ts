@@ -8,6 +8,7 @@ export default defineConfig({
     'src/adapters/fs-adapter.ts',
     'src/adapters/http-adapter.ts',
     'src/adapters/worker-adapter.ts',
+    'src/workers/pack-worker.ts',
   ],
   format: ['esm'],
   dts: true,

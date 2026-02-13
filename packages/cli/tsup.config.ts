@@ -9,7 +9,4 @@ export default defineConfig({
   clean: true,
   outDir: 'dist',
   tsconfig: 'tsconfig.json',
-  banner: {
-    js: '#!/usr/bin/env node',
-  },
 });
