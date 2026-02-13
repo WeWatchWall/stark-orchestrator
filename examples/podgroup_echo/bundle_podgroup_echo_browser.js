@@ -34,8 +34,8 @@ module.exports.default = async function(context) {
   }
 
   // ── Join the shared PodGroup ──
-  const membership = await plane.joinGroup(groupId, { ttl: 300_000, metadata: { role: 'echo', runtime: 'browser' } });
-  console.log(`[${serviceId}] Joined PodGroup "${groupId}" (ttl=${membership.ttl}ms)`);
+  const group = await plane.joinGroup(groupId, { ttl: 300_000, metadata: { role: 'echo', runtime: 'browser' } });
+  console.log(`[${serviceId}] Joined PodGroup "${groupId}" (ttl=${group.membership.ttl}ms, ${group.podIds.length} member(s))`);
 
   // ── Register /echo handler — responds to ephemeral queries ──
   plane.handle('/echo', (path, query) => {
@@ -86,11 +86,10 @@ module.exports.default = async function(context) {
   // ── Periodic membership refresh to stay in the group ──
   const refreshId = setInterval(async () => {
     if (context.lifecycle?.isShuttingDown) return;
-    await plane.joinGroup(groupId, { ttl: 120_000, metadata: { role: 'echo', runtime: 'browser' } });
+    await group.refresh();
 
-    const members = await plane.getGroupPods(groupId);
-    console.log(`[${serviceId}] Membership refresh — ${members.length} pod(s) in group "${groupId}" | handled ${requestCount} queries`);
-  }, 30_000);
+    console.log(`[${serviceId}] Membership refresh — ${group.podIds.length} pod(s) in group "${groupId}" | handled ${requestCount} queries`);
+  }, 3_000);
 
   console.log(`[${serviceId}] Ready on pod ${podId} — waiting for PodGroup queries`);
 
@@ -98,7 +97,7 @@ module.exports.default = async function(context) {
   if (context.onShutdown) {
     context.onShutdown((reason) => {
       clearInterval(refreshId);
-      plane.leaveAllGroups();
+      group.leave();
       console.log(`[${serviceId}] Shutting down pod ${podId} after ${requestCount} requests: ${reason || 'no reason'}`);
     });
   }
@@ -109,6 +108,6 @@ module.exports.default = async function(context) {
   }
 
   clearInterval(refreshId);
-  await plane.leaveAllGroups();
+  await group.leave();
   return { message: `${serviceId} on ${podId} stopped after handling ${requestCount} requests` };
 };

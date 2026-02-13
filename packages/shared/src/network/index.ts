@@ -92,3 +92,9 @@ export {
   type GroupTransport,
   type EphemeralDataPlaneOptions,
 } from './ephemeral-data-plane.js';
+
+export {
+  PodGroupHandle,
+  type PodGroupPlaneRef,
+  type PodGroupHandleOptions,
+} from './pod-group-handle.js';

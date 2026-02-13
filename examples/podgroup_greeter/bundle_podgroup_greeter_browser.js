@@ -36,8 +36,8 @@ module.exports.default = async function(context) {
   }
 
   // ── Join the shared PodGroup ──
-  const membership = await plane.joinGroup(groupId, { ttl: 120_000, metadata: { role: 'greeter', runtime: 'browser' } });
-  console.log(`[${serviceId}] Joined PodGroup "${groupId}" (ttl=${membership.ttl}ms)`);
+  const group = await plane.joinGroup(groupId, { ttl: 120_000, metadata: { role: 'greeter', runtime: 'browser' } });
+  console.log(`[${serviceId}] Joined PodGroup "${groupId}" (ttl=${group.membership.ttl}ms, ${group.podIds.length} member(s))`);
 
   // ── Register /echo handler — responds to ephemeral queries ──
   // plane.handle('/echo', (path, query) => {
@@ -64,17 +64,13 @@ module.exports.default = async function(context) {
     seq++;
     const now = Date.now();
 
-    // Refresh our own membership to prevent expiration
-    await plane.joinGroup(groupId, { ttl: 300_000, metadata: { role: 'greeter', runtime: 'browser' } });
+    // Refresh our own membership and update the member list
+    await group.refresh();
 
-    // Discover all pods in the group
-    const members = await plane.getGroupPods(groupId);
-    const otherPodIds = members
-      .map(m => m.podId)
-      .filter(id => id !== podId);
+    const otherPodIds = group.otherPodIds;
 
     if (otherPodIds.length === 0) {
-      console.log(`[${serviceId}] #${seq} No other pods in group "${groupId}" yet (${members.length} member(s) total)`);
+      console.log(`[${serviceId}] #${seq} No other pods in group "${groupId}" yet (${group.podIds.length} member(s) total)`);
       return;
     }
 
@@ -82,26 +78,28 @@ module.exports.default = async function(context) {
 
     try {
       const sendTime = Date.now();
-      const result = await plane.queryPods(otherPodIds, '/echo', {
+      const results = await Promise.all(group.queryPods('/echo', {
         from: serviceId,
         seq: String(seq),
         timestamp: String(now),
-      });
+      }));
       const roundTripMs = Date.now() - sendTime;
 
-      for (const [targetPodId, response] of result.responses) {
-        successCount++;
-        const body = response.body || {};
-        console.log(
-          `[${serviceId}] ← Response #${seq} from pod ${targetPodId}: "${body.message || '(no message)'}" ` +
-          `| status=${response.status} | round-trip=${roundTripMs}ms ` +
-          `| success=${successCount} errors=${errorCount}`
-        );
-      }
+      for (const result of results) {
+        for (const [targetPodId, response] of result.responses) {
+          successCount++;
+          const body = response.body || {};
+          console.log(
+            `[${serviceId}] ← Response #${seq} from pod ${targetPodId}: "${body.message || '(no message)'}" ` +
+            `| status=${response.status} | round-trip=${roundTripMs}ms ` +
+            `| success=${successCount} errors=${errorCount}`
+          );
+        }
 
-      for (const timedOutPod of result.timedOut) {
-        errorCount++;
-        console.warn(`[${serviceId}] ✖ Timeout #${seq} from pod ${timedOutPod} | success=${successCount} errors=${errorCount}`);
+        for (const timedOutPod of result.timedOut) {
+          errorCount++;
+          console.warn(`[${serviceId}] ✖ Timeout #${seq} from pod ${timedOutPod} | success=${successCount} errors=${errorCount}`);
+        }
       }
     } catch (err) {
       errorCount++;
@@ -116,7 +114,7 @@ module.exports.default = async function(context) {
   if (context.onShutdown) {
     context.onShutdown((reason) => {
       clearInterval(intervalId);
-      plane.leaveAllGroups();
+      group.leave();
       console.log(`[${serviceId}] Shutting down pod ${podId}: ${reason || 'no reason'} | sent ${seq} queries (${successCount} ok, ${errorCount} errors)`);
     });
   }
@@ -127,6 +125,6 @@ module.exports.default = async function(context) {
   }
 
   clearInterval(intervalId);
-  await plane.leaveAllGroups();
+  await group.leave();
   return { message: `${serviceId} on ${podId} stopped after ${seq} queries (${successCount} ok, ${errorCount} errors)` };
 };

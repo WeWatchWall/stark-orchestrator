@@ -15,6 +15,7 @@ import {
   EphemeralDataPlane,
   createEphemeralDataPlane,
 } from '../../src/network/ephemeral-data-plane.js';
+import { PodGroupHandle } from '../../src/network/pod-group-handle.js';
 import type {
   EphemeralEvent,
   EphemeralAuditHook,
@@ -414,52 +415,83 @@ describe('EphemeralDataPlane', () => {
   // ── Group API ─────────────────────────────────────────────────────────
 
   describe('joinGroup / getGroupPods', () => {
-    it('joins a group and lists members', () => {
-      plane.joinGroup('room:lobby');
+    it('joins a group and returns a PodGroupHandle', async () => {
+      const handle = await plane.joinGroup('room:lobby');
+
+      expect(handle).toBeInstanceOf(PodGroupHandle);
+      expect(handle.groupId).toBe('room:lobby');
+      expect(handle.podIds).toContain('pod-self');
 
       const members = plane.getGroupPods('room:lobby');
       expect(members).toHaveLength(1);
-      expect(members[0]!.podId).toBe('pod-self');
+      expect((members as PodGroupMembership[])[0]!.podId).toBe('pod-self');
     });
 
     it('returns empty array for unknown group', () => {
       expect(plane.getGroupPods('nonexistent')).toEqual([]);
     });
 
-    it('supports TTL and metadata options', () => {
-      const m = plane.joinGroup('g1', { ttl: 3_000, metadata: { cursor: 42 } });
-      expect(m.ttl).toBe(3_000);
-      expect(m.metadata).toEqual({ cursor: 42 });
+    it('supports TTL and metadata options', async () => {
+      const handle = await plane.joinGroup('g1', { ttl: 3_000, metadata: { cursor: 42 } });
+      expect(handle.membership.ttl).toBe(3_000);
+      expect(handle.membership.metadata).toEqual({ cursor: 42 });
+    });
+
+    it('returns the same handle on duplicate join to same group', async () => {
+      const h1 = await plane.joinGroup('g1');
+      const h2 = await plane.joinGroup('g1');
+      expect(h1).toBe(h2);
     });
   });
 
   describe('leaveGroup / leaveAllGroups', () => {
-    it('leaves a specific group', () => {
-      plane.joinGroup('g1');
-      plane.joinGroup('g2');
+    it('leaves a specific group', async () => {
+      await plane.joinGroup('g1');
+      await plane.joinGroup('g2');
 
       plane.leaveGroup('g1');
 
       expect(plane.myGroups()).toEqual(['g2']);
     });
 
-    it('leaveAllGroups clears all memberships', () => {
-      plane.joinGroup('g1');
-      plane.joinGroup('g2');
+    it('leaveAllGroups clears all memberships', async () => {
+      await plane.joinGroup('g1');
+      await plane.joinGroup('g2');
 
-      const removed = plane.leaveAllGroups();
+      const removed = await plane.leaveAllGroups();
       expect(removed.sort()).toEqual(['g1', 'g2']);
       expect(plane.myGroups()).toEqual([]);
+    });
+
+    it('leaveGroup marks the handle as left', async () => {
+      const handle = await plane.joinGroup('g1');
+      expect(handle.isLeft).toBe(false);
+
+      plane.leaveGroup('g1');
+
+      expect(handle.isLeft).toBe(true);
+      expect(handle.podIds).toEqual([]);
+      expect(handle.members).toEqual([]);
+    });
+
+    it('leaveAllGroups marks all handles as left', async () => {
+      const h1 = await plane.joinGroup('g1');
+      const h2 = await plane.joinGroup('g2');
+
+      await plane.leaveAllGroups();
+
+      expect(h1.isLeft).toBe(true);
+      expect(h2.isLeft).toBe(true);
     });
   });
 
   describe('myGroups', () => {
-    it('lists all groups the pod belongs to', () => {
-      plane.joinGroup('a');
-      plane.joinGroup('b');
-      plane.joinGroup('c');
+    it('lists all groups the pod belongs to', async () => {
+      await plane.joinGroup('a');
+      await plane.joinGroup('b');
+      await plane.joinGroup('c');
 
-      expect(plane.myGroups().sort()).toEqual(['a', 'b', 'c']);
+      expect((plane.myGroups() as string[]).sort()).toEqual(['a', 'b', 'c']);
     });
   });
 
@@ -657,11 +689,11 @@ describe('EphemeralDataPlane', () => {
   // ── Audit Hooks (via plane) ────────────────────────────────────────────
 
   describe('audit hooks', () => {
-    it('receives group events through the plane', () => {
+    it('receives group events through the plane', async () => {
       const events: EphemeralEvent[] = [];
       plane.onEvent((e) => events.push(e));
 
-      plane.joinGroup('room:test');
+      await plane.joinGroup('room:test');
       plane.leaveGroup('room:test');
 
       expect(events.some(e => e.type === 'PodJoinedGroup')).toBe(true);
@@ -681,14 +713,292 @@ describe('EphemeralDataPlane', () => {
   // ── Lifecycle ──────────────────────────────────────────────────────────
 
   describe('dispose', () => {
-    it('cleans up all state', () => {
-      plane.joinGroup('g1');
-      plane.joinGroup('g2');
+    it('cleans up all state', async () => {
+      const h1 = await plane.joinGroup('g1');
+      const h2 = await plane.joinGroup('g2');
 
       plane.dispose();
 
       // The store is disposed — accessing it after dispose should still work without error
       expect(plane.myGroups()).toEqual([]);
+      // All handles should be marked as left
+      expect(h1.isLeft).toBe(true);
+      expect(h2.isLeft).toBe(true);
+    });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PodGroupHandle
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('PodGroupHandle', () => {
+  let plane: EphemeralDataPlane;
+
+  beforeEach(() => {
+    plane = createEphemeralDataPlane({
+      podId: 'pod-self',
+      serviceId: 'svc-test',
+      config: { reapIntervalMs: 0 },
+    });
+  });
+
+  afterEach(() => {
+    plane.dispose();
+  });
+
+  // ── Construction / Properties ─────────────────────────────────────────
+
+  describe('construction', () => {
+    it('returns a PodGroupHandle from joinGroup', async () => {
+      const handle = await plane.joinGroup('room:test');
+      expect(handle).toBeInstanceOf(PodGroupHandle);
+    });
+
+    it('populates groupId, membership, podIds, and members', async () => {
+      const handle = await plane.joinGroup('room:test', { ttl: 5_000, metadata: { role: 'x' } });
+      expect(handle.groupId).toBe('room:test');
+      expect(handle.membership.podId).toBe('pod-self');
+      expect(handle.membership.ttl).toBe(5_000);
+      expect(handle.membership.metadata).toEqual({ role: 'x' });
+      expect(handle.podIds).toEqual(['pod-self']);
+      expect(handle.members).toHaveLength(1);
+      expect(handle.members[0]!.podId).toBe('pod-self');
+    });
+
+    it('populates members from multiple pods in the group', async () => {
+      // Simulate another pod already in the group via the backing store
+      const store = plane.getStore()!;
+      store.joinGroup('room:test', 'pod-other', 60_000);
+
+      const handle = await plane.joinGroup('room:test');
+      expect(handle.podIds.sort()).toEqual(['pod-other', 'pod-self']);
+      expect(handle.members).toHaveLength(2);
+    });
+  });
+
+  // ── otherPodIds ───────────────────────────────────────────────────────
+
+  describe('otherPodIds', () => {
+    it('excludes the current pod', async () => {
+      const store = plane.getStore()!;
+      store.joinGroup('g1', 'pod-a', 60_000);
+      store.joinGroup('g1', 'pod-b', 60_000);
+
+      const handle = await plane.joinGroup('g1');
+
+      expect(handle.otherPodIds.sort()).toEqual(['pod-a', 'pod-b']);
+      expect(handle.otherPodIds).not.toContain('pod-self');
+    });
+
+    it('returns empty array when only self is in the group', async () => {
+      const handle = await plane.joinGroup('g1');
+      expect(handle.otherPodIds).toEqual([]);
+    });
+  });
+
+  // ── queryPods ─────────────────────────────────────────────────────────
+
+  describe('queryPods', () => {
+    it('returns an array of promises, one per other pod', async () => {
+      const store = plane.getStore()!;
+      store.joinGroup('g1', 'pod-a', 60_000);
+      store.joinGroup('g1', 'pod-b', 60_000);
+
+      const handle = await plane.joinGroup('g1');
+
+      const promises = handle.queryPods('/echo');
+      expect(promises).toHaveLength(2); // pod-a, pod-b (not pod-self)
+      expect(promises[0]).toBeInstanceOf(Promise);
+    });
+
+    it('each promise resolves to an EphemeralQueryResult', async () => {
+      // Use a transport so queries actually resolve
+      const mockTransport = vi.fn(async (
+        targetPodId: string,
+        query: EphemeralQuery,
+      ): Promise<EphemeralResponse> => ({
+        queryId: query.queryId,
+        podId: targetPodId,
+        status: 200,
+        body: { hello: 'back' },
+        respondedAt: Date.now(),
+      }));
+
+      const planeT = createEphemeralDataPlane({
+        podId: 'pod-self',
+        transport: mockTransport,
+        config: { reapIntervalMs: 0 },
+      });
+
+      const store = planeT.getStore()!;
+      store.joinGroup('g1', 'pod-peer', 60_000);
+
+      const handle = await planeT.joinGroup('g1');
+      const results = await Promise.all(handle.queryPods('/echo', { from: 'me' }));
+
+      expect(results).toHaveLength(1);
+      expect(results[0]!.complete).toBe(true);
+      expect(results[0]!.responses.get('pod-peer')!.status).toBe(200);
+      expect(results[0]!.responses.get('pod-peer')!.body).toEqual({ hello: 'back' });
+
+      planeT.dispose();
+    });
+
+    it('returns empty array when no other pods in group', async () => {
+      const handle = await plane.joinGroup('g1');
+      const promises = handle.queryPods('/echo');
+      expect(promises).toEqual([]);
+    });
+
+    it('returns empty array when handle is left', async () => {
+      const store = plane.getStore()!;
+      store.joinGroup('g1', 'pod-a', 60_000);
+
+      const handle = await plane.joinGroup('g1');
+      await handle.leave();
+
+      const promises = handle.queryPods('/echo');
+      expect(promises).toEqual([]);
+    });
+
+    it('includes self when includeSelf=true', async () => {
+      plane.handle('/ping', () => ({ status: 200, body: 'pong' }));
+
+      const handle = await plane.joinGroup('g1');
+      const promises = handle.queryPods('/ping', undefined, undefined, true);
+      expect(promises).toHaveLength(1); // just self
+
+      const results = await Promise.all(promises);
+      expect(results[0]!.responses.get('pod-self')!.body).toBe('pong');
+    });
+  });
+
+  // ── refresh ───────────────────────────────────────────────────────────
+
+  describe('refresh', () => {
+    it('updates membership and member list', async () => {
+      const handle = await plane.joinGroup('g1', { ttl: 5_000 });
+      expect(handle.podIds).toEqual(['pod-self']);
+
+      // Add another pod behind the scenes
+      const store = plane.getStore()!;
+      store.joinGroup('g1', 'pod-new', 60_000);
+
+      await handle.refresh();
+
+      expect(handle.podIds.sort()).toEqual(['pod-new', 'pod-self']);
+      expect(handle.members).toHaveLength(2);
+    });
+
+    it('refreshes the membership TTL', async () => {
+      const handle = await plane.joinGroup('g1', { ttl: 5_000 });
+      const originalRefresh = handle.membership.lastRefreshedAt;
+
+      const now = Date.now();
+      vi.spyOn(Date, 'now').mockReturnValue(now + 100);
+
+      await handle.refresh();
+
+      expect(handle.membership.lastRefreshedAt).toBeGreaterThan(originalRefresh);
+
+      vi.restoreAllMocks();
+    });
+
+    it('is a no-op after leave', async () => {
+      const handle = await plane.joinGroup('g1');
+      await handle.leave();
+
+      await handle.refresh(); // should not throw
+      expect(handle.podIds).toEqual([]);
+    });
+  });
+
+  // ── leave ─────────────────────────────────────────────────────────────
+
+  describe('leave', () => {
+    it('marks handle as left', async () => {
+      const handle = await plane.joinGroup('g1');
+      expect(handle.isLeft).toBe(false);
+
+      await handle.leave();
+
+      expect(handle.isLeft).toBe(true);
+    });
+
+    it('clears members and podIds', async () => {
+      const handle = await plane.joinGroup('g1');
+      expect(handle.podIds).toHaveLength(1);
+
+      await handle.leave();
+
+      expect(handle.podIds).toEqual([]);
+      expect(handle.members).toEqual([]);
+    });
+
+    it('actually leaves the group on the store', async () => {
+      const handle = await plane.joinGroup('g1');
+      expect(plane.getStore()!.isMember('g1', 'pod-self')).toBe(true);
+
+      await handle.leave();
+
+      expect(plane.getStore()!.isMember('g1', 'pod-self')).toBe(false);
+    });
+
+    it('is idempotent', async () => {
+      const handle = await plane.joinGroup('g1');
+      await handle.leave();
+      await handle.leave(); // should not throw
+      expect(handle.isLeft).toBe(true);
+    });
+
+    it('after leave, joinGroup creates a fresh handle', async () => {
+      const h1 = await plane.joinGroup('g1');
+      await h1.leave();
+
+      const h2 = await plane.joinGroup('g1');
+      expect(h2).not.toBe(h1);
+      expect(h2.isLeft).toBe(false);
+      expect(h2.podIds).toContain('pod-self');
+    });
+  });
+
+  // ── Integration with leaveAllGroups ────────────────────────────────────
+
+  describe('integration with leaveAllGroups', () => {
+    it('marks all handles as left when plane.leaveAllGroups is called', async () => {
+      const h1 = await plane.joinGroup('g1');
+      const h2 = await plane.joinGroup('g2');
+
+      await plane.leaveAllGroups();
+
+      expect(h1.isLeft).toBe(true);
+      expect(h2.isLeft).toBe(true);
+      expect(h1.podIds).toEqual([]);
+      expect(h2.podIds).toEqual([]);
+    });
+
+    it('new handles can be created after leaveAllGroups', async () => {
+      await plane.joinGroup('g1');
+      await plane.leaveAllGroups();
+
+      const h = await plane.joinGroup('g1');
+      expect(h.isLeft).toBe(false);
+      expect(h.podIds).toContain('pod-self');
+    });
+  });
+
+  // ── Integration with dispose ──────────────────────────────────────────
+
+  describe('integration with dispose', () => {
+    it('marks all handles as left when plane.dispose is called', async () => {
+      const h1 = await plane.joinGroup('g1');
+      const h2 = await plane.joinGroup('g2');
+
+      plane.dispose();
+
+      expect(h1.isLeft).toBe(true);
+      expect(h2.isLeft).toBe(true);
     });
   });
 });

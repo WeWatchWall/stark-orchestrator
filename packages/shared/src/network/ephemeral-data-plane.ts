@@ -6,10 +6,16 @@
  * orchestrator routing and policy architecture.
  *
  * **API surface:**
- *   - `joinGroup(groupId)`         — join a locally-computed group
- *   - `getGroupPods(groupId)`      — list current members of a group
- *   - `queryPods(podIds, path, q)` — fan-out ephemeral query to pods
- *   - `podResponses[podId]`        — access aggregated responses
+ *   - `joinGroup(groupId)`         — join a group, returns a PodGroupHandle
+ *   - `handle(path, handler)`      — register an ephemeral query handler
+ *   - `leaveAllGroups()`           — leave every group (graceful shutdown)
+ *
+ * **PodGroupHandle API:**
+ *   - `group.podIds`               — current member pod IDs
+ *   - `group.otherPodIds`          — members excluding this pod
+ *   - `group.queryPods(path, q)`   — fan-out query (one Promise per peer)
+ *   - `group.refresh()`            — re-join + refresh members
+ *   - `group.leave()`              — leave this group
  *
  * All state is in-memory and fully TTL-scoped. No persistent storage
  * or external dependencies beyond `node-cache`.
@@ -36,6 +42,7 @@ import {
 } from '../types/ephemeral.js';
 import { PodGroupStore } from './pod-group-store.js';
 import type { NetworkPolicyEngine } from './network-policy.js';
+import { PodGroupHandle } from './pod-group-handle.js';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -120,6 +127,9 @@ export class EphemeralDataPlane {
   /** Monotonic query counter for ID generation */
   private queryCounter = 0;
 
+  /** Active PodGroupHandle instances, keyed by groupId */
+  private activeHandles: Map<string, PodGroupHandle> = new Map();
+
   constructor(options: EphemeralDataPlaneOptions) {
     this.podId = options.podId;
     // this.serviceId = options.serviceId ?? options.podId;
@@ -141,15 +151,56 @@ export class EphemeralDataPlane {
   /**
    * Join a group by a locally-computed groupId.
    *
-   * When a `groupTransport` is configured the operation is proxied to the
-   * orchestrator's central PodGroupStore via WS and returns a Promise.
-   * Without a transport, the local store is used synchronously (legacy mode).
+   * Returns a `PodGroupHandle` that encapsulates the membership, member
+   * list, fan-out queries, refresh, and leave lifecycle for this group.
+   *
+   * If this pod already holds a handle for the given `groupId`, the
+   * existing handle is refreshed and returned (no duplicate handles).
    *
    * @param groupId  Group identifier (locally computed by the pod)
    * @param options  Optional TTL and metadata overrides
-   * @returns        The created or refreshed PodGroupMembership (or a Promise thereof)
+   * @returns        A PodGroupHandle (always async)
    */
-  joinGroup(
+  async joinGroup(
+    groupId: string,
+    options?: { ttl?: number; metadata?: Record<string, unknown> },
+  ): Promise<PodGroupHandle> {
+    // Perform the actual group join (local or remote)
+    const membership: PodGroupMembership = this.groupTransport
+      ? await this.groupTransport.join(groupId, this.podId, options?.ttl, options?.metadata)
+      : this.store!.joinGroup(groupId, this.podId, options?.ttl, options?.metadata);
+
+    // If we already have a handle for this group, refresh it and return
+    const existing = this.activeHandles.get(groupId);
+    if (existing && !existing.isLeft) {
+      existing.membership = membership;
+      existing.members = await this.getGroupPods(groupId);
+      existing.podIds = existing.members.map(m => m.podId);
+      return existing;
+    }
+
+    // Fetch current members so the handle starts fully populated
+    const members = await this.getGroupPods(groupId);
+
+    const handle = new PodGroupHandle({
+      groupId,
+      ttl: options?.ttl,
+      metadata: options?.metadata,
+      membership,
+      members,
+      plane: this as any, // satisfies PodGroupPlaneRef
+    });
+
+    this.activeHandles.set(groupId, handle);
+    return handle;
+  }
+
+  /**
+   * Low-level join that returns the raw PodGroupMembership without
+   * creating a PodGroupHandle. Used internally by PodGroupHandle.refresh().
+   * @internal
+   */
+  joinGroupRaw(
     groupId: string,
     options?: { ttl?: number; metadata?: Record<string, unknown> },
   ): PodGroupMembership | Promise<PodGroupMembership> {
@@ -161,8 +212,18 @@ export class EphemeralDataPlane {
 
   /**
    * Leave a specific group.
+   * Also marks and cleans up the associated PodGroupHandle (if any).
    */
   leaveGroup(groupId: string): boolean | Promise<boolean> {
+    // Clean up the handle for this group
+    const handle = this.activeHandles.get(groupId);
+    if (handle && !handle.isLeft) {
+      (handle as any)._left = true;
+      handle.members = [];
+      handle.podIds = [];
+    }
+    this.activeHandles.delete(groupId);
+
     if (this.groupTransport) {
       return this.groupTransport.leave(groupId, this.podId);
     }
@@ -171,9 +232,23 @@ export class EphemeralDataPlane {
 
   /**
    * Leave all groups this pod belongs to.
+   * Marks all active PodGroupHandle instances as left.
    * Call during graceful shutdown.
    */
-  leaveAllGroups(): string[] | Promise<string[]> {
+  async leaveAllGroups(): Promise<string[]> {
+    // Mark every active handle as left and clear its state
+    for (const handle of this.activeHandles.values()) {
+      if (!handle.isLeft) {
+        // Directly mark internal state without calling handle.leave()
+        // to avoid redundant per-group leave calls
+        (handle as any)._left = true;
+        handle.members = [];
+        handle.podIds = [];
+      }
+    }
+    this.activeHandles.clear();
+
+    // Perform the actual leave-all on the store / transport
     if (this.groupTransport) {
       return this.groupTransport.leaveAll(this.podId);
     }
@@ -393,6 +468,14 @@ export class EphemeralDataPlane {
    * Graceful shutdown: leave all groups, clear results, dispose the store.
    */
   dispose(): void {
+    // Clean up all active handles
+    for (const handle of this.activeHandles.values()) {
+      (handle as any)._left = true;
+      handle.members = [];
+      handle.podIds = [];
+    }
+    this.activeHandles.clear();
+
     if (this.store) {
       this.store.leaveAllGroups(this.podId);
     } else if (this.groupTransport) {
@@ -461,9 +544,18 @@ export class EphemeralDataPlane {
  *   serviceId: 'my-service',
  * });
  *
- * plane.joinGroup('room:lobby');
- * const members = plane.getGroupPods('room:lobby');
- * const result = await plane.queryPods(['pod-def'], '/state/presence');
+ * const group = await plane.joinGroup('room:lobby');
+ * console.log(group.podIds);          // all members
+ * console.log(group.otherPodIds);     // everyone except me
+ *
+ * // Fan-out query — one promise per remote pod
+ * const results = await Promise.all(group.queryPods('/state/presence'));
+ *
+ * // Refresh TTL + member list
+ * await group.refresh();
+ *
+ * // Leave when done
+ * await group.leave();
  * ```
  */
 export function createEphemeralDataPlane(options: EphemeralDataPlaneOptions): EphemeralDataPlane {
