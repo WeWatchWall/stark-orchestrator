@@ -2,13 +2,13 @@
 | #                                   | Task                                                    | Difficulty | Status    |
 | ----------------------------------- | ------------------------------------------------------- | ---------- | --------- |
 | **Networking & Traffic Management** |                                                         |            |           |
-| 1                                   | Implement basic Ingress routing for pods                | Hard       | ☐ TODO    |
+| 1                                   | Implement basic Ingress routing for pods                | Hard       | ✅ Done    |
 | 2                                   | Add Service Discovery for pods                          | Hard       | ✅ Done    |
 | 3                                   | Implement Load Balancing between nodes                  | Hard       | ✅ Done    |
 | 4                                   | Polish ingress/LB configuration & edge cases            | Medium     | ⛔ Skipped |
 | 5                                   | Test network failures + chaos (slow/dropped packets)    | Medium     | ⏳ Deferred|
 | **Secrets & Security**              |                                                         |            |           |
-| 6                                   | Implement secrets management API (keys/passwords/certs) | Medium     | ☐ TODO    |
+| 6                                   | Implement secrets management API (keys/passwords/certs) | Medium     | ✅ Done    |
 | 7                                   | Enable TLS for node-orchestrator communication          | Medium     | ✅ Done   |
 | 8                                   | Add RBAC enforcement for pod capabilities               | Medium     | ✅ Done    |
 | 9                                   | Add auditing/logging hooks for sensitive actions        | Medium     | ✅ Done    |
