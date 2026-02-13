@@ -1,0 +1,70 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Source files (dist is built output - DO NOT ignore)
+packages/*/src/
+packages/*/.nuxt/
+packages/*/tests/
+
+# Test coverage
+coverage/
+
+# IDE and editors
+.vscode/
+.idea/
+*.suo
+*.user
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Supabase local data
+supabase/
+
+# Dev/build configs at package level
+packages/*/tsconfig.json
+packages/*/tsconfig.*.json
+packages/*/tsup.config.ts
+packages/*/vite.config.ts
+packages/*/vite.worker.config.ts
+packages/*/nuxt.config.ts
+
+# Development files
+.specify/
+.github/
+docs/
+examples/
+tests/
+*.tsbuildinfo
+tsconfig.json
+tsconfig.tsbuildinfo
+vitest.config.ts
+.eslintrc.cjs
+.eslintignore
+.prettierrc
+.prettierignore
+pnpm-workspace.yaml
+pnpm-lock.yaml
+stark-orchestrator.code-workspace

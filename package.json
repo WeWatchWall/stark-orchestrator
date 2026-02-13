@@ -1,6 +1,6 @@
 {
   "name": "stark-os",
-  "version": "0.10.4",
+  "version": "0.10.5",
   "description": "JavaScript operating system and orchestration platform for Node.js and browser runtimes",
    "keywords": [
     "cloud",
@@ -24,8 +24,10 @@
     "stark": "./packages/cli/dist/index.js"
   },
   "files": [
-    "packages/*/dist",
-    "packages/*/package.json"
+    "packages/*/dist/**",
+    "packages/*/package.json",
+    "scripts/postinstall.js",
+    "README.md"
   ],
   "type": "module",
   "packageManager": "pnpm@9.15.0",
@@ -34,6 +36,7 @@
     "pnpm": ">=9.0.0"
   },
   "scripts": {
+    "postinstall": "node scripts/postinstall.js",
     "build": "pnpm -r run build",
     "build:shared": "pnpm --filter @stark-o/shared run build",
     "build:core": "pnpm --filter @stark-o/core run build",
@@ -59,6 +62,25 @@
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
     "db:migrate": "supabase db reset --no-seed"
+  },
+  "dependencies": {
+    "@casl/ability": "^6.7.5",
+    "@supabase/supabase-js": "^2.45.0",
+    "@vue/reactivity": "^3.5.0",
+    "@zenfs/core": "^2.4.4",
+    "axios": "^1.7.0",
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "express-rate-limit": "^8.2.1",
+    "node-cache": "^5.1.2",
+    "selfsigned": "^2.4.1",
+    "simple-peer": "^9.11.1",
+    "uuid": "^10.0.0",
+    "wrtc": "^0.4.7",
+    "ws": "^8.18.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.32.0",
