@@ -12,7 +12,7 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsup",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "chaos": "tsx src/chaos-cli.ts",
