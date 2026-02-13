@@ -1,7 +1,7 @@
 {
-  "name": "stark-orchestrator",
+  "name": "stark-os",
   "version": "0.10.2",
-  "description": "Isomorphic JavaScript orchestration platform for Node.js and browser runtimes",
+  "description": "JavaScript operating system and orchestration platform for Node.js and browser runtimes",
    "keywords": [
     "cloud",
     "javascript",
@@ -15,10 +15,10 @@
   "author": "Adrian Burlacu <adrian.burlacu@live.com>",
   "repository": {
     "type": "git",
-    "url": "https://github.com/WeWatchWall/stark-orchestrator.git"
+    "url": "https://github.com/WeWatchWall/stark-os.git"
   },
   "publishConfig": {
-    "registry": "https://registry.npmjs.org/"
+    "registry": "https://npm.pkg.github.com"
   },
   "type": "module",
   "packageManager": "pnpm@9.15.0",
