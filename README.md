@@ -1,6 +1,6 @@
 # StarkOS
 
-An isomorphic JavaScript operating system that deploys and manages software packages ("packs") across Node.js and browser runtimes.
+A JavaScript operating system that deploys and manages software packages ("packs") across Node.js and browser runtimes.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js 20+](https://img.shields.io/badge/Node.js-20+-green.svg)](https://nodejs.org/)
