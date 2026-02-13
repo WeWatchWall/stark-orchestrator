@@ -2,7 +2,7 @@
  * Default PeerFactory implementation using `simple-peer`.
  *
  * Isomorphic — works in both Node.js and browsers.
- * In Node.js, pass the `wrtc` package to enable WebRTC support.
+ * In Node.js, pass the `@roamhq/wrtc` package to enable WebRTC support.
  * In browsers, native WebRTC APIs are used automatically.
  *
  * @module @stark-o/shared/network/peer-factory
@@ -55,7 +55,7 @@ export interface SimplePeerFactoryOptions {
   /**
    * The wrtc module for Node.js environments.
    * Required in Node.js; not needed in browsers.
-   * Install with: npm install wrtc
+   * Install with: npm install @roamhq/wrtc
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   wrtc?: any;
@@ -71,7 +71,7 @@ export interface SimplePeerFactoryOptions {
  *
  * Usage (Node.js):
  * ```ts
- * import wrtc from 'wrtc';
+ * import wrtc from '@roamhq/wrtc';
  * const factory = createSimplePeerFactory({ wrtc });
  * ```
  */

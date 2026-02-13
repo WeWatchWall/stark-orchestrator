@@ -14,7 +14,7 @@
  */
 
 import WebSocket from 'ws';
-import wrtc from 'wrtc';
+import wrtc from '@roamhq/wrtc';
 import {
   WebRTCConnectionManager,
   ServiceCaller,

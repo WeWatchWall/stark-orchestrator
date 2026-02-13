@@ -1,8 +1,8 @@
 /**
- * Type declarations for the wrtc package.
- * wrtc provides WebRTC APIs for Node.js.
+ * Type declarations for the @roamhq/wrtc package.
+ * @roamhq/wrtc provides WebRTC APIs for Node.js (maintained fork of wrtc).
  */
-declare module 'wrtc' {
+declare module '@roamhq/wrtc' {
   export const RTCPeerConnection: typeof globalThis.RTCPeerConnection;
   export const RTCSessionDescription: typeof globalThis.RTCSessionDescription;
   export const RTCIceCandidate: typeof globalThis.RTCIceCandidate;
