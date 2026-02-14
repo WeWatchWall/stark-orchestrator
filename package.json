@@ -68,7 +68,7 @@
     "@supabase/supabase-js": "^2.45.0",
     "@vue/reactivity": "^3.5.0",
     "@zenfs/core": "~2.4.4",
-    "axios": "^1.7.0",
+    "axios": "^1.13.5",
     "chalk": "^5.3.0",
     "commander": "^12.1.0",
     "cors": "^2.8.5",
