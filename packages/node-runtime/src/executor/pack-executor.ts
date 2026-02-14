@@ -6,7 +6,7 @@
  * Provides lifecycle management, resource tracking, and error handling.
  */
 
-import { randomUUID, createHash, timingSafeEqual } from 'crypto';
+import { randomUUID } from 'crypto';
 import { join, isAbsolute } from 'path';
 import { Script, createContext } from 'vm';
 import {
@@ -562,28 +562,6 @@ export class PackExecutor {
       } else {
         const bundlePath = await this.resolveBundlePath(pack);
         bundleCode = await this.loadBundle(bundlePath);
-      }
-
-      // Verify bundle integrity before executing untrusted code
-      // Expected hash should be provided out-of-band (for example by the orchestrator)
-      const expectedHash = pack.metadata?.bundleSha256;
-      if (typeof expectedHash === 'string' && expectedHash.length > 0) {
-        const hash = createHash('sha256').update(bundleCode, 'utf8').digest();
-        const expectedBuffer = Buffer.from(expectedHash, 'hex');
-        // Only compare if lengths match to avoid throwing in timingSafeEqual
-        if (hash.length !== expectedBuffer.length || !timingSafeEqual(hash, expectedBuffer)) {
-          this.config.logger.error('Pack bundle integrity check failed', {
-            packId: pack.id,
-            packVersion: pack.version,
-          });
-          throw new PodError('PACK_BUNDLE_INTEGRITY_FAILED', 'Pack bundle integrity check failed');
-        }
-      } else {
-        this.config.logger.error('Missing expected bundle hash for pack', {
-          packId: pack.id,
-          packVersion: pack.version,
-        });
-        throw new PodError('PACK_BUNDLE_HASH_MISSING', 'Missing expected bundle hash for pack');
       }
 
       // Update state to running
