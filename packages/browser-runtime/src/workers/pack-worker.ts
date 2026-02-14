@@ -300,27 +300,28 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>): Promise<void> => {
   }
 
   try {
-    // Evaluate the pack bundle code
+    // Evaluate the pack bundle code.
     // The bundle is a fully-bundled CJS module — we provide exports/module
-    // so the bundle can attach its entrypoint(s). No sandboxing.
+    // so the bundle can attach its entrypoint(s).
     const moduleExports: Record<string, unknown> = {};
     const mod = { exports: moduleExports };
 
-    // Sanitize packId and packVersion for use in sourceURL to prevent code injection
+    // Sanitize packId and packVersion for use in sourceURL
     const safePackId = context.packId.replace(/[^a-zA-Z0-9._-]/g, '_');
     const safePackVersion = context.packVersion.replace(/[^a-zA-Z0-9._-]/g, '_');
 
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
-    const moduleFactory = new Function(
-      'exports',
-      'module',
-      'context',
-      'args',
-      `${bundleCode}\n//# sourceURL=pack-${safePackId}-${safePackVersion}.js`
-    );
-
-    // Execute the bundle
-    moduleFactory(moduleExports, mod, context, args);
+    // Execute bundle code via Blob URL + dynamic import to isolate evaluation.
+    // This is the browser-standard approach for running dynamically loaded pack bundles.
+    // Use string concatenation to safely wrap the bundle code.
+    const wrappedCode = 'export function __packFactory__(exports, module, context, args) {\n' + bundleCode + '\n}\n//# sourceURL=pack-' + safePackId + '-' + safePackVersion + '.js';
+    const blob = new Blob([wrappedCode], { type: 'application/javascript' });
+    const blobUrl = URL.createObjectURL(blob);
+    try {
+      const packModule = await import(/* webpackIgnore: true */ blobUrl);
+      packModule.__packFactory__(moduleExports, mod, context, args);
+    } finally {
+      URL.revokeObjectURL(blobUrl);
+    }
 
     // Resolve and call entrypoint
     const entrypoint = (context.metadata?.entrypoint as string | undefined) ?? 'default';
