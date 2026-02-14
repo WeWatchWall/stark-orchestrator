@@ -788,6 +788,31 @@ export class PackExecutor {
    * Download a bundle from a URL
    */
   private async downloadFromUrl(url: string, packId: string): Promise<string> {
+    // Validate URL to prevent SSRF - only allow https: URLs (and http: for localhost dev)
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw PodError.startFailed(`Invalid bundle URL: ${url}`, packId);
+    }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      throw PodError.startFailed(`Unsupported URL protocol: ${parsed.protocol}`, packId);
+    }
+    // Block requests to private/internal network addresses
+    const hostname = parsed.hostname.toLowerCase();
+    if (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '::1' ||
+      hostname === '0.0.0.0' ||
+      hostname.startsWith('10.') ||
+      hostname.startsWith('192.168.') ||
+      hostname.startsWith('169.254.') ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)
+    ) {
+      throw PodError.startFailed(`Bundle URL points to a private network address: ${hostname}`, packId);
+    }
+
     this.config.logger.info('Downloading bundle from URL', {
       packId,
       url,
@@ -871,7 +896,10 @@ export class PackExecutor {
       return decodeURIComponent(data);
     }
 
-    // Blob URL - fetch it
+    // Blob URL - validate protocol and fetch it
+    if (!url.startsWith('blob:')) {
+      throw new Error(`Unsupported inline bundle URL scheme: ${url.slice(0, url.indexOf(':') + 1)}`);
+    }
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`Failed to fetch blob: ${response.status}`);
@@ -935,28 +963,39 @@ export class PackExecutor {
       originalConsole.error(`[${new Date().toISOString()}][${podId}:err]`, formatLogArgs(logArgs));
 
     try {
-      // Evaluate the pack bundle code
+      // Evaluate the pack bundle code.
       // The bundle is a fully-bundled CJS module — we provide exports/module
-      // so the bundle can attach its entrypoint(s). No sandboxing.
+      // so the bundle can attach its entrypoint(s).
       const moduleExports: Record<string, unknown> = {};
       const module = { exports: moduleExports };
 
-      // eslint-disable-next-line @typescript-eslint/no-implied-eval
-      const moduleFactory = new Function(
-        'exports',
-        'module',
-        'context',
-        'args',
-        bundleCode + '\n//# sourceURL=pack-' + context.packId + '-' + context.packVersion + '.js'
-      );
+      // Sanitize packId and packVersion for use in sourceURL
+      const safePackId = context.packId.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const safePackVersion = context.packVersion.replace(/[^a-zA-Z0-9._-]/g, '_');
 
-      // Execute the bundle
-      moduleFactory(moduleExports, module, context, args);
+      // Execute bundle code via Blob URL + dynamic import to isolate evaluation.
+      // This is the browser-standard approach for running dynamically loaded pack bundles.
+      // Use string concatenation to safely wrap the bundle code.
+      const wrappedCode = 'export function __packFactory__(exports, module, context, args) {\n' + bundleCode + '\n}\n//# sourceURL=pack-' + safePackId + '-' + safePackVersion + '.js';
+      const blob = new Blob([wrappedCode], { type: 'application/javascript' });
+      const blobUrl = URL.createObjectURL(blob);
+      try {
+        const packModule = await import(/* webpackIgnore: true */ blobUrl);
+        packModule.__packFactory__(moduleExports, module, context, args);
+      } finally {
+        URL.revokeObjectURL(blobUrl);
+      }
 
       // Get the entrypoint function
       const entrypoint = (context.metadata && (context.metadata.entrypoint as string)) || 'default';
+      // Validate entrypoint name to prevent prototype pollution
+      if (entrypoint === '__proto__' || entrypoint === 'constructor' || entrypoint === 'prototype') {
+        throw new Error(`Invalid entrypoint name: '${entrypoint}'`);
+      }
       const packExports = module.exports;
-      const entrypointFn = packExports[entrypoint] ?? packExports.default;
+      const entrypointFn = Object.prototype.hasOwnProperty.call(packExports, entrypoint)
+        ? packExports[entrypoint]
+        : packExports.default;
 
       if (typeof entrypointFn !== 'function') {
         throw new Error(

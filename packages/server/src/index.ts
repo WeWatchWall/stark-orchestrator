@@ -15,6 +15,7 @@ import cors, { CorsOptions } from 'cors';
 import { WebSocketServer } from 'ws';
 import httpProxy from 'http-proxy';
 import selfsigned from 'selfsigned';
+import rateLimit from 'express-rate-limit';
 import { createServiceLogger, getNetworkPolicyEngine, getServiceRegistry } from '@stark-o/shared';
 import { createApiRouter } from './api/router.js';
 import { createConnectionManager, type ConnectionManagerOptions } from './ws/connection-manager.js';
@@ -224,8 +225,14 @@ export function createServer(config: Partial<ServerConfig> = {}): ServerInstance
   
   app.use(express.static(publicPath));
   
-  // SPA fallback - serve index.html for any unmatched routes
-  app.get('*', (_req, res) => {
+  // SPA fallback - serve index.html for any unmatched routes (rate-limited)
+  const spaRateLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 200, // 200 requests per minute
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  app.get('*', spaRateLimiter, (_req, res) => {
     const indexPath = path.join(publicPath, 'index.html');
     res.sendFile(indexPath, (err) => {
       if (err) {

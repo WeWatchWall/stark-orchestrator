@@ -8,6 +8,7 @@
 
 import { randomUUID } from 'crypto';
 import { join, isAbsolute } from 'path';
+import { Script, createContext } from 'vm';
 import {
   WorkerAdapter,
   type WorkerAdapterConfig,
@@ -844,28 +845,62 @@ export class PackExecutor {
       originalConsole.error(`[${new Date().toISOString()}][${podId}:err]`, formatLogArgs(logArgs));
 
     try {
-      // Evaluate the pack bundle code
+      // Evaluate the pack bundle code using Node.js vm module.
       // The bundle is a fully-bundled CJS module — we provide exports/module
-      // so the bundle can attach its entrypoint(s). No sandboxing.
+      // so the bundle can attach its entrypoint(s).
       const moduleExports: Record<string, unknown> = {};
       const module = { exports: moduleExports };
 
-      // eslint-disable-next-line @typescript-eslint/no-implied-eval
-      const moduleFactory = new Function(
-        'exports',
-        'module',
-        'context',
-        'args',
-        `${bundleCode}\n//# sourceURL=pack-${context.packId}-${context.packVersion}.js`
-      );
+      // Sanitize packId and packVersion for use in sourceURL
+      const safePackId = context.packId.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const safePackVersion = context.packVersion.replace(/[^a-zA-Z0-9._-]/g, '_');
+
+      // Use vm.Script for controlled code execution - this is the standard
+      // Node.js API for executing dynamically loaded pack bundles.
+      // Use string concatenation to safely wrap the bundle code in a function.
+      const wrappedCode = '(function(exports, module, context, args) {\n' + bundleCode + '\n})';
+      const script = new Script(wrappedCode, {
+        filename: 'pack-' + safePackId + '-' + safePackVersion + '.js',
+      });
+      // Provide a restricted sandbox with only the APIs pack bundles need.
+      // process is limited to env (read-only copy) and basic info — no exit/kill/spawn.
+      const restrictedProcess = {
+        env: { ...process.env },
+        version: process.version,
+        versions: process.versions,
+        platform: process.platform,
+        arch: process.arch,
+        cwd: process.cwd.bind(process),
+        nextTick: process.nextTick.bind(process),
+      };
+      const sandbox = createContext({
+        console,
+        process: restrictedProcess,
+        setTimeout, setInterval, clearTimeout, clearInterval,
+        Buffer, URL, TextEncoder, TextDecoder,
+        Promise, Error, TypeError, RangeError, SyntaxError,
+        JSON, Math, Date, RegExp, Map, Set, WeakMap, WeakSet,
+        Array, Object, String, Number, Boolean, Symbol,
+        parseInt, parseFloat, isNaN, isFinite,
+        encodeURIComponent, decodeURIComponent, encodeURI, decodeURI,
+        atob: typeof atob !== 'undefined' ? atob : undefined,
+        btoa: typeof btoa !== 'undefined' ? btoa : undefined,
+      });
+      const moduleFactory = script.runInContext(sandbox) as (exports: Record<string, unknown>, module: { exports: Record<string, unknown> }, context: PackExecutionContext, args: unknown[]) => void;
 
       // Execute the bundle
       moduleFactory(moduleExports, module, context, args);
 
       // Get the entrypoint function
       const entrypoint = (context.metadata.entrypoint as string | undefined) ?? 'default';
+      // Validate entrypoint name to prevent prototype pollution
+      if (entrypoint === '__proto__' || entrypoint === 'constructor' || entrypoint === 'prototype') {
+        throw new Error(`Invalid entrypoint name: '${entrypoint}'`);
+      }
       const packExports = module.exports;
-      const entrypointFn = packExports[entrypoint] ?? packExports.default;
+      const entrypointFn = Object.prototype.hasOwnProperty.call(packExports, entrypoint)
+        ? packExports[entrypoint]
+        : packExports.default;
 
       if (typeof entrypointFn !== 'function') {
         throw new Error(

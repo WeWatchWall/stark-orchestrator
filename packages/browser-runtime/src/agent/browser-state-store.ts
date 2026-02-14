@@ -227,10 +227,16 @@ export function saveRegisteredBrowserNodes(nodes: RegisteredBrowserNodesMap): vo
  * Normalize orchestrator URL for consistent storage keys
  */
 function normalizeOrchestratorUrl(url: string): string {
-  return url
-    .replace(/\/+$/, '')
-    .replace(/\/ws$/, '')
-    .toLowerCase();
+  let normalized = url;
+  // Remove trailing slashes using string operations to avoid ReDoS
+  while (normalized.endsWith('/')) {
+    normalized = normalized.slice(0, -1);
+  }
+  // Remove /ws suffix
+  if (normalized.endsWith('/ws')) {
+    normalized = normalized.slice(0, -3);
+  }
+  return normalized.toLowerCase();
 }
 
 /**

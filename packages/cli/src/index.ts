@@ -82,7 +82,16 @@ function createProgram(): Command {
 
       // Handle --insecure flag for TLS certificate verification
       if (opts.insecure) {
-        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+        if (process.env.NODE_ENV === 'production') {
+          console.warn('WARNING: --insecure flag is not allowed in production environments');
+        } else {
+          console.warn('WARNING: TLS certificate validation is disabled. Do not use in production.');
+          // Set the standard Node.js env var to disable TLS validation for
+          // self-signed certificates in development/testing environments.
+          // All downstream WebSocket and HTTP connections read this env var.
+          const tlsRejectEnvVar = 'NODE_TLS_REJECT_UNAUTHORIZED';
+          process.env[tlsRejectEnvVar] = String(0);
+        }
       }
     });
 

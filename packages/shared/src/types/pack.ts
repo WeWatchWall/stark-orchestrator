@@ -298,6 +298,11 @@ export function isNodeVersionCompatible(
 function extractSemVer(version: string): string | null {
   // Remove 'v' prefix if present
   const cleaned = version.replace(/^v/i, '').trim();
+
+  // Limit input length to prevent ReDoS on uncontrolled data
+  if (cleaned.length > 256) {
+    return null;
+  }
   
   // Try to match a semver pattern (x.y.z with optional prerelease)
   const semverMatch = cleaned.match(/(\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?)/);
