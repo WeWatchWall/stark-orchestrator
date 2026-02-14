@@ -1,6 +1,6 @@
 {
   "name": "stark-os",
-  "version": "0.11.3",
+  "version": "0.11.4",
   "description": "JavaScript operating system and orchestration platform for Node.js and browser runtimes",
    "keywords": [
     "cloud",
