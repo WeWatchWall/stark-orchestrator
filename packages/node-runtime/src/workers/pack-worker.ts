@@ -239,11 +239,35 @@ async function executePack(request: WorkerRequest): Promise<void> {
 
     // Use vm.Script for controlled code execution - this is the standard
     // Node.js API for executing dynamically loaded pack bundles.
-    const wrappedCode = `(function(exports, module, require, context, args) {\n${bundleCode}\n})`;
+    // Use string concatenation to safely wrap the bundle code in a function.
+    const wrappedCode = '(function(exports, module, require, context, args) {\n' + bundleCode + '\n})';
     const script = new Script(wrappedCode, {
-      filename: `pack-${safePackId}-${safePackVersion}.js`,
+      filename: 'pack-' + safePackId + '-' + safePackVersion + '.js',
     });
-    const sandbox = createContext({ ...globalThis, console, process, setTimeout, setInterval, clearTimeout, clearInterval, Buffer, URL, TextEncoder, TextDecoder });
+    // Provide a restricted sandbox with only the APIs pack bundles need.
+    // process is limited to env (read-only copy) and basic info — no exit/kill/spawn.
+    const restrictedProcess = {
+      env: { ...process.env },
+      version: process.version,
+      versions: process.versions,
+      platform: process.platform,
+      arch: process.arch,
+      cwd: process.cwd.bind(process),
+      nextTick: process.nextTick.bind(process),
+    };
+    const sandbox = createContext({
+      console,
+      process: restrictedProcess,
+      setTimeout, setInterval, clearTimeout, clearInterval,
+      Buffer, URL, TextEncoder, TextDecoder,
+      Promise, Error, TypeError, RangeError, SyntaxError,
+      JSON, Math, Date, RegExp, Map, Set, WeakMap, WeakSet,
+      Array, Object, String, Number, Boolean, Symbol,
+      parseInt, parseFloat, isNaN, isFinite,
+      encodeURIComponent, decodeURIComponent, encodeURI, decodeURI,
+      atob: typeof atob !== 'undefined' ? atob : undefined,
+      btoa: typeof btoa !== 'undefined' ? btoa : undefined,
+    });
     const moduleFactory = script.runInContext(sandbox) as (...args: unknown[]) => void;
 
     // 6. Execute the bundle

@@ -975,7 +975,8 @@ export class PackExecutor {
 
       // Execute bundle code via Blob URL + dynamic import to isolate evaluation.
       // This is the browser-standard approach for running dynamically loaded pack bundles.
-      const wrappedCode = `export function __packFactory__(exports, module, context, args) {\n${bundleCode}\n}\n//# sourceURL=pack-${safePackId}-${safePackVersion}.js`;
+      // Use string concatenation to safely wrap the bundle code.
+      const wrappedCode = 'export function __packFactory__(exports, module, context, args) {\n' + bundleCode + '\n}\n//# sourceURL=pack-' + safePackId + '-' + safePackVersion + '.js';
       const blob = new Blob([wrappedCode], { type: 'application/javascript' });
       const blobUrl = URL.createObjectURL(blob);
       try {
