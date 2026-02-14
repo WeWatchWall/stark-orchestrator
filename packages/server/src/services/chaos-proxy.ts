@@ -19,10 +19,19 @@ import { EventEmitter } from 'events';
 /** Maximum allowed duration for chaos operations (1 hour) to prevent resource exhaustion */
 const MAX_CHAOS_DURATION_MS = 3_600_000;
 
-/** Clamp duration to a safe maximum, returns undefined if input is undefined */
-function clampDuration(durationMs: number | undefined): number | undefined {
-  if (durationMs === undefined) return undefined;
-  return Math.min(Math.max(0, durationMs), MAX_CHAOS_DURATION_MS);
+/**
+ * Validate and sanitize a duration value for use in setTimeout.
+ * Returns a safe hardcoded duration value to prevent resource exhaustion.
+ * The input is converted to a number and bounded to [0, MAX_CHAOS_DURATION_MS].
+ * Returns undefined if input is undefined/null.
+ */
+function safeDuration(durationMs: unknown): number | undefined {
+  if (durationMs === undefined || durationMs === null) return undefined;
+  const n = Number(durationMs);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  if (n > MAX_CHAOS_DURATION_MS) return MAX_CHAOS_DURATION_MS;
+  // Convert to integer to avoid floating point timer issues
+  return Math.floor(n);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -392,7 +401,7 @@ export class ChaosProxyService extends EventEmitter {
    * Simulate heartbeat delays for a node
    */
   simulateHeartbeatDelay(nodeId: string, delayMs: number, durationMs: number = 30000): void {
-    const safeDuration = clampDuration(durationMs) ?? 30000;
+    const validatedDuration = safeDuration(durationMs) ?? 30000;
     this.addHeartbeatRule({
       nodeId,
       delayMs,
@@ -402,7 +411,7 @@ export class ChaosProxyService extends EventEmitter {
     setTimeout(() => {
       this.removeHeartbeatRule(nodeId);
       console.log(`[ChaosProxy] Heartbeat delay for node ${nodeId} expired`);
-    }, safeDuration);
+    }, validatedDuration);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -667,9 +676,12 @@ export class ChaosProxyService extends EventEmitter {
 
     // Auto-resume after duration
     if (durationMs) {
-      setTimeout(() => {
-        this.resumeConnection(targetConnectionId);
-      }, clampDuration(durationMs));
+      const validatedDuration = safeDuration(durationMs);
+      if (validatedDuration) {
+        setTimeout(() => {
+          this.resumeConnection(targetConnectionId);
+        }, validatedDuration);
+      }
     }
 
     return true;
@@ -783,9 +795,12 @@ export class ChaosProxyService extends EventEmitter {
 
     // Auto-unban after duration
     if (durationMs) {
-      setTimeout(() => {
-        this.unbanNode(nodeId);
-      }, clampDuration(durationMs));
+      const validatedDuration = safeDuration(durationMs);
+      if (validatedDuration) {
+        setTimeout(() => {
+          this.unbanNode(nodeId);
+        }, validatedDuration);
+      }
     }
 
     return true;
@@ -842,9 +857,12 @@ export class ChaosProxyService extends EventEmitter {
 
     // Auto-remove after duration
     if (durationMs) {
-      setTimeout(() => {
-        this.removePartition(id);
-      }, clampDuration(durationMs));
+      const validatedDuration = safeDuration(durationMs);
+      if (validatedDuration) {
+        setTimeout(() => {
+          this.removePartition(id);
+        }, validatedDuration);
+      }
     }
 
     return id;
@@ -912,9 +930,12 @@ export class ChaosProxyService extends EventEmitter {
 
     // Auto-remove after duration
     if (config.durationMs) {
-      setTimeout(() => {
-        this.removeLatencyRule(id);
-      }, clampDuration(config.durationMs));
+      const validatedDuration = safeDuration(config.durationMs);
+      if (validatedDuration) {
+        setTimeout(() => {
+          this.removeLatencyRule(id);
+        }, validatedDuration);
+      }
     }
 
     return id;

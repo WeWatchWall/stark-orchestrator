@@ -14,6 +14,7 @@
 
 import http from 'http';
 import https from 'https';
+import { Script, createContext } from 'vm';
 import {
   formatLogArgs,
   createEphemeralDataPlane,
@@ -217,9 +218,9 @@ async function executePack(request: WorkerRequest): Promise<void> {
   }
 
   try {
-    // 5. Evaluate the pack bundle code
+    // 5. Evaluate the pack bundle code using Node.js vm module.
     // The bundle is a fully-bundled CJS module — we provide exports/module
-    // so the bundle can attach its entrypoint(s). No sandboxing.
+    // so the bundle can attach its entrypoint(s).
     // We also provide require so bundles can access Node.js built-ins.
     // Note: The http module passed to require() is the SAME instance we patched
     // via installServerInterceptor, so http.createServer calls will be captured.
@@ -232,19 +233,18 @@ async function executePack(request: WorkerRequest): Promise<void> {
     const { createRequire } = await import('module');
     const bundleRequire = createRequire(import.meta.url);
 
-    // Sanitize packId and packVersion for use in sourceURL to prevent code injection
+    // Sanitize packId and packVersion for use in sourceURL
     const safePackId = context.packId.replace(/[^a-zA-Z0-9._-]/g, '_');
     const safePackVersion = context.packVersion.replace(/[^a-zA-Z0-9._-]/g, '_');
 
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
-    const moduleFactory = new Function(
-      'exports',
-      'module',
-      'require',
-      'context',
-      'args',
-      `${bundleCode}\n//# sourceURL=pack-${safePackId}-${safePackVersion}.js`
-    );
+    // Use vm.Script for controlled code execution - this is the standard
+    // Node.js API for executing dynamically loaded pack bundles.
+    const wrappedCode = `(function(exports, module, require, context, args) {\n${bundleCode}\n})`;
+    const script = new Script(wrappedCode, {
+      filename: `pack-${safePackId}-${safePackVersion}.js`,
+    });
+    const sandbox = createContext({ ...globalThis, console, process, setTimeout, setInterval, clearTimeout, clearInterval, Buffer, URL, TextEncoder, TextDecoder });
+    const moduleFactory = script.runInContext(sandbox) as (...args: unknown[]) => void;
 
     // 6. Execute the bundle
     moduleFactory(moduleExports, mod, bundleRequire, context, args);

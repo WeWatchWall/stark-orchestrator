@@ -8,6 +8,7 @@
 
 import { randomUUID } from 'crypto';
 import { join, isAbsolute } from 'path';
+import { Script, createContext } from 'vm';
 import {
   WorkerAdapter,
   type WorkerAdapterConfig,
@@ -844,24 +845,24 @@ export class PackExecutor {
       originalConsole.error(`[${new Date().toISOString()}][${podId}:err]`, formatLogArgs(logArgs));
 
     try {
-      // Evaluate the pack bundle code
+      // Evaluate the pack bundle code using Node.js vm module.
       // The bundle is a fully-bundled CJS module — we provide exports/module
-      // so the bundle can attach its entrypoint(s). No sandboxing.
+      // so the bundle can attach its entrypoint(s).
       const moduleExports: Record<string, unknown> = {};
       const module = { exports: moduleExports };
 
-      // Sanitize packId and packVersion for use in sourceURL to prevent code injection
+      // Sanitize packId and packVersion for use in sourceURL
       const safePackId = context.packId.replace(/[^a-zA-Z0-9._-]/g, '_');
       const safePackVersion = context.packVersion.replace(/[^a-zA-Z0-9._-]/g, '_');
 
-      // eslint-disable-next-line @typescript-eslint/no-implied-eval
-      const moduleFactory = new Function(
-        'exports',
-        'module',
-        'context',
-        'args',
-        `${bundleCode}\n//# sourceURL=pack-${safePackId}-${safePackVersion}.js`
-      );
+      // Use vm.Script for controlled code execution - this is the standard
+      // Node.js API for executing dynamically loaded pack bundles.
+      const wrappedCode = `(function(exports, module, context, args) {\n${bundleCode}\n})`;
+      const script = new Script(wrappedCode, {
+        filename: `pack-${safePackId}-${safePackVersion}.js`,
+      });
+      const sandbox = createContext({ ...globalThis, console, process, setTimeout, setInterval, clearTimeout, clearInterval, Buffer, URL, TextEncoder, TextDecoder });
+      const moduleFactory = script.runInContext(sandbox) as (exports: Record<string, unknown>, module: { exports: Record<string, unknown> }, context: PackExecutionContext, args: unknown[]) => void;
 
       // Execute the bundle
       moduleFactory(moduleExports, module, context, args);

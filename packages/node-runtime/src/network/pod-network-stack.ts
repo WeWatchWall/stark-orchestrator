@@ -485,14 +485,10 @@ export class PodNetworkStack {
         reject(new Error(`Connection to orchestrator timed out after ${this.config.connectionTimeout}ms`));
       }, this.config.connectionTimeout);
 
+      // TLS certificate validation is controlled via the NODE_TLS_REJECT_UNAUTHORIZED
+      // environment variable, which is set by the CLI --insecure flag when appropriate.
+      // No per-connection overrides needed - Node.js respects the env var globally.
       const wsOptions: WebSocket.ClientOptions = {};
-      if (this.config.insecure) {
-        if (process.env.NODE_ENV === 'production') {
-          console.warn('[PodNetworkStack] TLS certificate validation bypass ignored in production');
-        } else {
-          wsOptions.rejectUnauthorized = false;
-        }
-      }
 
       this.ws = new WebSocket(this.config.orchestratorUrl, wsOptions);
 
