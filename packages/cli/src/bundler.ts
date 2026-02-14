@@ -311,16 +311,21 @@ export async function bundleNuxtProject(options: BundleOptions): Promise<BundleR
         allJs = inlineAssetsInJs(allJs, assetMap);
       }
 
-      // Remove external references from HTML
-      // Use a loop to ensure complete sanitization in case removal creates new matches
-      let previousHtml;
-      do {
-        previousHtml = indexHtml;
-        indexHtml = indexHtml
-          .replace(/<script[^>]*src="[^"]*_nuxt[^"]*"[^>]*><\/script>/g, '')
-          .replace(/<link[^>]*href="[^"]*_nuxt[^"]*\.css"[^>]*>/g, '')
-          .replace(/<link[^>]*rel="modulepreload"[^>]*>/g, '');
-      } while (indexHtml !== previousHtml);
+      // Remove external references from HTML by filtering out matching lines
+      // Using line-based filtering instead of regex replacement to ensure complete sanitization
+      indexHtml = indexHtml
+        .split('\n')
+        .filter(line => {
+          const trimmed = line.trim();
+          // Remove script tags referencing _nuxt bundles
+          if (trimmed.startsWith('<script') && trimmed.includes('_nuxt') && trimmed.includes('src=')) return false;
+          // Remove CSS link tags referencing _nuxt stylesheets
+          if (trimmed.startsWith('<link') && trimmed.includes('_nuxt') && trimmed.includes('.css')) return false;
+          // Remove modulepreload link tags
+          if (trimmed.startsWith('<link') && trimmed.includes('rel="modulepreload"')) return false;
+          return true;
+        })
+        .join('\n');
 
       // Inline assets in HTML
       if (assetMap.size > 0) {

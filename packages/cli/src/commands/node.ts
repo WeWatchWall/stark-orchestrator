@@ -9,7 +9,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import * as os from 'node:os';
 import { createApiClient, requireAuth, loadConfig, createCliSupabaseClient, saveCredentials, type Credentials } from '../config.js';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 import {
   error,
   info,
@@ -673,10 +673,7 @@ function generateRandomPassword(): string {
   const all = upper + lower + digits;
 
   // Use cryptographically secure random for password generation
-  const secureRandomIndex = (max: number): number => {
-    const bytes = randomBytes(4);
-    return bytes.readUInt32BE(0) % max;
-  };
+  const secureRandomIndex = (max: number): number => randomInt(max);
   
   // Start with one of each required type
   const chars: string[] = [
