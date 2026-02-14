@@ -16,6 +16,15 @@
 import type { ConnectionManager } from '../ws/connection-manager';
 import { EventEmitter } from 'events';
 
+/** Maximum allowed duration for chaos operations (1 hour) to prevent resource exhaustion */
+const MAX_CHAOS_DURATION_MS = 3_600_000;
+
+/** Clamp duration to a safe maximum, returns undefined if input is undefined */
+function clampDuration(durationMs: number | undefined): number | undefined {
+  if (durationMs === undefined) return undefined;
+  return Math.min(Math.max(0, durationMs), MAX_CHAOS_DURATION_MS);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -383,6 +392,7 @@ export class ChaosProxyService extends EventEmitter {
    * Simulate heartbeat delays for a node
    */
   simulateHeartbeatDelay(nodeId: string, delayMs: number, durationMs: number = 30000): void {
+    const safeDuration = clampDuration(durationMs) ?? 30000;
     this.addHeartbeatRule({
       nodeId,
       delayMs,
@@ -392,7 +402,7 @@ export class ChaosProxyService extends EventEmitter {
     setTimeout(() => {
       this.removeHeartbeatRule(nodeId);
       console.log(`[ChaosProxy] Heartbeat delay for node ${nodeId} expired`);
-    }, durationMs);
+    }, safeDuration);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -659,7 +669,7 @@ export class ChaosProxyService extends EventEmitter {
     if (durationMs) {
       setTimeout(() => {
         this.resumeConnection(targetConnectionId);
-      }, durationMs);
+      }, clampDuration(durationMs));
     }
 
     return true;
@@ -775,7 +785,7 @@ export class ChaosProxyService extends EventEmitter {
     if (durationMs) {
       setTimeout(() => {
         this.unbanNode(nodeId);
-      }, durationMs);
+      }, clampDuration(durationMs));
     }
 
     return true;
@@ -834,7 +844,7 @@ export class ChaosProxyService extends EventEmitter {
     if (durationMs) {
       setTimeout(() => {
         this.removePartition(id);
-      }, durationMs);
+      }, clampDuration(durationMs));
     }
 
     return id;
@@ -904,7 +914,7 @@ export class ChaosProxyService extends EventEmitter {
     if (config.durationMs) {
       setTimeout(() => {
         this.removeLatencyRule(id);
-      }, config.durationMs);
+      }, clampDuration(config.durationMs));
     }
 
     return id;

@@ -10,6 +10,9 @@ import { getChaosController } from './controller';
 import { getChaosProxy } from '../services/chaos-proxy';
 import { getConnectionManager } from '../services/connection-service';
 
+/** Maximum allowed duration for chaos operations (1 hour) */
+const MAX_CHAOS_DURATION_MS = 3_600_000;
+
 export function createChaosRouter(): Router {
   const router = Router();
 
@@ -377,9 +380,10 @@ export function createChaosRouter(): Router {
 
     // Auto-remove after duration
     if (durationMs) {
+      const safeDuration = Math.min(Math.max(0, durationMs), MAX_CHAOS_DURATION_MS);
       setTimeout(() => {
         proxy.removeHeartbeatRule(nodeId);
-      }, durationMs);
+      }, safeDuration);
     }
 
     res.json({ success: true, nodeId, delayMs, durationMs });

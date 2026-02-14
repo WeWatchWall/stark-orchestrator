@@ -216,7 +216,11 @@ export function validateEmail(email: unknown): ValidationErrorDetail | null {
   if (typeof email !== 'string') {
     return { code: 'INVALID_TYPE', message: 'Email must be a string' };
   }
-  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  // Limit email length to prevent ReDoS (RFC 5321: max 254 chars)
+  if (email.length > 254) {
+    return { code: 'INVALID_FORMAT', message: 'Invalid email format' };
+  }
+  const emailPattern = /^[^\s@]+@[^\s@.]+\.[^\s@]+$/;
   if (!emailPattern.test(email)) {
     return { code: 'INVALID_FORMAT', message: 'Invalid email format' };
   }

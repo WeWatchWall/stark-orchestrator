@@ -306,13 +306,17 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>): Promise<void> => {
     const moduleExports: Record<string, unknown> = {};
     const mod = { exports: moduleExports };
 
+    // Sanitize packId and packVersion for use in sourceURL to prevent code injection
+    const safePackId = context.packId.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const safePackVersion = context.packVersion.replace(/[^a-zA-Z0-9._-]/g, '_');
+
     // eslint-disable-next-line @typescript-eslint/no-implied-eval
     const moduleFactory = new Function(
       'exports',
       'module',
       'context',
       'args',
-      `${bundleCode}\n//# sourceURL=pack-${context.packId}-${context.packVersion}.js`
+      `${bundleCode}\n//# sourceURL=pack-${safePackId}-${safePackVersion}.js`
     );
 
     // Execute the bundle
@@ -320,8 +324,14 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>): Promise<void> => {
 
     // Resolve and call entrypoint
     const entrypoint = (context.metadata?.entrypoint as string | undefined) ?? 'default';
+    // Validate entrypoint name to prevent prototype pollution
+    if (entrypoint === '__proto__' || entrypoint === 'constructor' || entrypoint === 'prototype') {
+      throw new Error(`Invalid entrypoint name: '${entrypoint}'`);
+    }
     const packExports = mod.exports;
-    const entrypointFn = packExports[entrypoint] ?? packExports.default;
+    const entrypointFn = Object.prototype.hasOwnProperty.call(packExports, entrypoint)
+      ? packExports[entrypoint]
+      : packExports.default;
 
     if (typeof entrypointFn !== 'function') {
       throw new Error(

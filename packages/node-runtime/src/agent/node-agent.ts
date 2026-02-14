@@ -366,8 +366,12 @@ export class NodeAgent {
         // Configure WebSocket options for TLS
         const wsOptions: WebSocket.ClientOptions = {};
         if (!this.config.validateSsl) {
-          wsOptions.rejectUnauthorized = false;
-          this.config.logger.warn('TLS certificate validation disabled');
+          if (process.env.NODE_ENV === 'production') {
+            this.config.logger.warn('TLS certificate validation bypass ignored in production');
+          } else {
+            wsOptions.rejectUnauthorized = false;
+            this.config.logger.warn('TLS certificate validation disabled - do not use in production');
+          }
         }
 
         this.ws = new WebSocket(this.config.orchestratorUrl, wsOptions);

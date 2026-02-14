@@ -85,7 +85,7 @@ interface ValidationResult {
 /**
  * Email regex pattern
  */
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@.]+\.[^\s@]+$/;
 
 /**
  * Password minimum length
@@ -113,6 +113,11 @@ function validateEmail(email: unknown): ValidationError | null {
   const trimmedEmail = email.trim();
   if (trimmedEmail === '') {
     return { code: 'REQUIRED', message: 'Email is required' };
+  }
+
+  // Limit email length to prevent ReDoS (RFC 5321: max 254 chars)
+  if (trimmedEmail.length > 254) {
+    return { code: 'INVALID_FORMAT', message: 'Email must be a valid email address' };
   }
 
   if (!EMAIL_REGEX.test(trimmedEmail)) {

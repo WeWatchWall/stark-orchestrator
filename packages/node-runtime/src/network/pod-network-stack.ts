@@ -487,7 +487,11 @@ export class PodNetworkStack {
 
       const wsOptions: WebSocket.ClientOptions = {};
       if (this.config.insecure) {
-        wsOptions.rejectUnauthorized = false;
+        if (process.env.NODE_ENV === 'production') {
+          console.warn('[PodNetworkStack] TLS certificate validation bypass ignored in production');
+        } else {
+          wsOptions.rejectUnauthorized = false;
+        }
       }
 
       this.ws = new WebSocket(this.config.orchestratorUrl, wsOptions);

@@ -82,7 +82,12 @@ function createProgram(): Command {
 
       // Handle --insecure flag for TLS certificate verification
       if (opts.insecure) {
-        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+        if (process.env.NODE_ENV === 'production') {
+          console.warn('WARNING: --insecure flag is not allowed in production environments');
+        } else {
+          console.warn('WARNING: TLS certificate validation is disabled. Do not use in production.');
+          process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+        }
       }
     });
 

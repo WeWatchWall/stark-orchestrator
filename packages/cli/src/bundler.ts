@@ -312,10 +312,15 @@ export async function bundleNuxtProject(options: BundleOptions): Promise<BundleR
       }
 
       // Remove external references from HTML
-      indexHtml = indexHtml
-        .replace(/<script[^>]*src="[^"]*_nuxt[^"]*"[^>]*><\/script>/g, '')
-        .replace(/<link[^>]*href="[^"]*_nuxt[^"]*\.css"[^>]*>/g, '')
-        .replace(/<link[^>]*rel="modulepreload"[^>]*>/g, '');
+      // Use a loop to ensure complete sanitization in case removal creates new matches
+      let previousHtml;
+      do {
+        previousHtml = indexHtml;
+        indexHtml = indexHtml
+          .replace(/<script[^>]*src="[^"]*_nuxt[^"]*"[^>]*><\/script>/g, '')
+          .replace(/<link[^>]*href="[^"]*_nuxt[^"]*\.css"[^>]*>/g, '')
+          .replace(/<link[^>]*rel="modulepreload"[^>]*>/g, '');
+      } while (indexHtml !== previousHtml);
 
       // Inline assets in HTML
       if (assetMap.size > 0) {

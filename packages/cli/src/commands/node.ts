@@ -671,20 +671,31 @@ function generateRandomPassword(): string {
   const lower = 'abcdefghijklmnopqrstuvwxyz';
   const digits = '0123456789';
   const all = upper + lower + digits;
+
+  // Use cryptographically secure random for password generation
+  const secureRandomIndex = (max: number): number => {
+    const bytes = randomBytes(4);
+    return bytes.readUInt32BE(0) % max;
+  };
   
   // Start with one of each required type
-  let password = 
-    upper[Math.floor(Math.random() * upper.length)]! +
-    lower[Math.floor(Math.random() * lower.length)]! +
-    digits[Math.floor(Math.random() * digits.length)]!;
+  const chars: string[] = [
+    upper[secureRandomIndex(upper.length)]!,
+    lower[secureRandomIndex(lower.length)]!,
+    digits[secureRandomIndex(digits.length)]!,
+  ];
   
   // Fill to 16 characters
   for (let i = 0; i < 13; i++) {
-    password += all[Math.floor(Math.random() * all.length)];
+    chars.push(all[secureRandomIndex(all.length)]!);
   }
   
-  // Shuffle the password
-  return password.split('').sort(() => Math.random() - 0.5).join('');
+  // Shuffle the password using Fisher-Yates with secure randomness
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = secureRandomIndex(i + 1);
+    [chars[i], chars[j]] = [chars[j]!, chars[i]!];
+  }
+  return chars.join('');
 }
 
 /**
